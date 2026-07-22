@@ -643,15 +643,15 @@ graph TD
 - [ ] Removing a contact leaves any existing conversation with that user, and its messages, intact and retrievable
 
 ### F04. Private Conversations
-- [ ] Creating a private conversation with a contact returns 201 with the conversation id, `type: "private"` and the counterpart's id, `@username` and display name
-- [ ] Calling the endpoint a second time for the same pair returns 200 with the identical conversation id and no second conversation row exists
-- [ ] Two concurrent creation requests for the same pair result in exactly one conversation and no 500 response
-- [ ] Creating a conversation with a user who is not in the caller's contacts returns 403 with `code: "not_a_contact"` and creates nothing
-- [ ] Creating a conversation with a non-existent user id returns 404 with `code: "user_not_found"`
-- [ ] Creating a conversation with oneself returns 422 with `code: "self_conversation"`
-- [ ] The recipient can read the conversation and receive its messages without having the initiator in their own contact list
-- [ ] `GET /api/conversations/:id` from a non-participant returns 404 and no conversation data
-- [ ] After the initiator removes the counterpart from contacts, the existing conversation is still readable but a new creation call returns 403
+- [x] Creating a private conversation with a contact returns 201 with the conversation id, `type: "private"` and the counterpart's id, `@username` and display name
+- [x] Calling the endpoint a second time for the same pair returns 200 with the identical conversation id and no second conversation row exists
+- [x] Two concurrent creation requests for the same pair result in exactly one conversation and no 500 response
+- [x] Creating a conversation with a user who is not in the caller's contacts returns 403 with `code: "not_a_contact"` and creates nothing
+- [x] Creating a conversation with a non-existent user id returns 404 with `code: "user_not_found"`
+- [x] Creating a conversation with oneself returns 422 with `code: "self_conversation"`
+- [x] The recipient can read the conversation and receive its messages without having the initiator in their own contact list
+- [x] `GET /api/conversations/:id` from a non-participant returns 404 and no conversation data
+- [x] After the initiator removes the counterpart from contacts, the existing conversation is still readable but a new creation call returns 403
 
 ### F05. Group Management
 - [ ] Creating a group with a name and 2 contact member ids returns 201 with the group id, name, creator id, and 3 active members including the creator
@@ -758,7 +758,7 @@ graph TD
 
 ### Cross-Feature Integration
 - [x] A user record created by registration (F02) is resolvable by `@username` in the add-contact flow (F03), and the returned contact carries that user's id and display name
-- [ ] A contact added in F03 is accepted as the target of a private conversation (F04), and a user removed from contacts is rejected on the next creation attempt
+- [x] A contact added in F03 is accepted as the target of a private conversation (F04), and a user removed from contacts is rejected on the next creation attempt
 - [ ] A contact added in F03 is accepted in `member_ids` when creating a group (F05), and a non-contact id in the same array causes the whole creation to fail
 - [ ] A private conversation created in F04 accepts messages from both of its participants in F06, and rejects history reads from any third user
 - [ ] A group created in F05 accepts messages from every active member in F06, and a member removed in F05 is rejected on their next send and sees no messages after `left_at`
