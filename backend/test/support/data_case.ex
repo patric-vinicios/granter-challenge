@@ -1,20 +1,16 @@
 defmodule Api.DataCase do
   @moduledoc """
-  This module defines the setup for tests requiring
-  access to the application's data layer.
+  Case template for context tests.
 
-  You may define functions here to be used as helpers in
-  your tests.
-
-  Finally, if the test case interacts with the database,
-  we enable the SQL sandbox, so changes done to the database
-  are reverted at the end of every test. If you are using
-  PostgreSQL, you can even run database tests asynchronously
-  by setting `use Api.DataCase, async: true`, although
-  this option is not recommended for other databases.
+  Every test runs inside an Ecto SQL sandbox transaction that is rolled back
+  on exit, so a test never observes another test's writes and the suite can
+  run with `async: true` against PostgreSQL.
   """
 
   use ExUnit.CaseTemplate
+  use Boundary, top_level?: true, check: [in: false, out: false]
+
+  alias Ecto.Adapters.SQL.Sandbox
 
   using do
     quote do
@@ -33,11 +29,13 @@ defmodule Api.DataCase do
   end
 
   @doc """
-  Sets up the sandbox based on the test tags.
+  Checks out a sandbox connection, shared with other processes unless the test
+  is async. Shared by `ApiWeb.ConnCase` and `ApiWeb.ChannelCase` so all three
+  case templates isolate the database the same way.
   """
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Api.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    pid = Sandbox.start_owner!(Api.Repo, shared: not tags[:async])
+    on_exit(fn -> Sandbox.stop_owner(pid) end)
   end
 
   @doc """

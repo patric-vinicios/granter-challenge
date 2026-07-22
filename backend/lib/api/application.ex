@@ -4,13 +4,16 @@ defmodule Api.Application do
   @moduledoc false
 
   use Application
+  # The composition root is the one place allowed to see both layers: it
+  # supervises the endpoint. Every other module under `Api.` stays inside the
+  # `Api` boundary and cannot reference `ApiWeb`.
+  use Boundary, top_level?: true, deps: [Api, ApiWeb]
 
   @impl true
   def start(_type, _args) do
     children = [
       ApiWeb.Telemetry,
       Api.Repo,
-      {DNSCluster, query: Application.get_env(:api, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Api.PubSub},
       # Start a worker by calling: Api.Worker.start_link(arg)
       # {Api.Worker, arg},
