@@ -4,7 +4,7 @@ defmodule ApiWeb.ErrorJSONTest do
   alias ApiWeb.ErrorJSON
 
   describe "render/2" do
-    test "renders the envelope for every status F01 owns" do
+    test "renders the documented envelope for each mapped status" do
       assert ErrorJSON.render("400.json", %{}) ==
                %{
                  errors: %{

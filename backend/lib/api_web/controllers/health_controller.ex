@@ -2,7 +2,7 @@ defmodule ApiWeb.HealthController do
   @moduledoc """
   Liveness and readiness probe.
 
-  Deliberately outside every authenticated pipeline: an orchestrator has no
+  Sits outside every authenticated pipeline: an orchestrator has no
   credentials, and the endpoint has to keep answering precisely when the
   database -- and therefore authentication -- is unavailable.
   """

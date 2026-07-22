@@ -3,15 +3,14 @@ defmodule ApiWeb.ChangesetJSON do
   Renders a failed changeset as the 422 form of the error envelope.
 
   Keeping this in one place is what lets a client write a single handler that
-  reads `errors.fields` to highlight inputs, regardless of which endpoint
-  rejected the request.
+  reads `errors.fields` to highlight inputs, whichever endpoint rejected the
+  request.
   """
 
   @doc """
   Builds the envelope for `{:error, changeset}`, with one entry per invalid
   field. Interpolation options are substituted into the message, so
-  `should be at least %{count} character(s)` reaches the client already
-  resolved.
+  `should be at least %{count} character(s)` reaches the client resolved.
   """
   def error(%{changeset: changeset}) do
     {code, detail} = ApiWeb.ErrorJSON.error_for(422)

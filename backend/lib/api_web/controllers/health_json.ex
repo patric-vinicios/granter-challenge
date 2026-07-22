@@ -3,9 +3,8 @@ defmodule ApiWeb.HealthJSON do
   Renders the health probe.
 
   The failure body carries both the probe fields and the standard error
-  envelope: a container orchestrator reads `database` without knowing anything
-  about this API's conventions, while the SPA's single error handler still
-  finds `errors.code`.
+  envelope: an orchestrator reads `database` without knowing this API's
+  conventions, while a client's single error handler still finds `errors.code`.
   """
 
   def ok(_assigns), do: %{status: "ok", database: "up"}

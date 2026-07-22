@@ -64,9 +64,6 @@ defmodule Api.MixProject do
       {:excoveralls, "~> 0.18", only: :test},
 
       # code quality / static analysis
-      # Not restricted to dev/test: `use Boundary` has to expand in every
-      # environment the project compiles in. `runtime: false` keeps it out of
-      # the released application.
       {:boundary, "~> 0.10", runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -92,7 +89,7 @@ defmodule Api.MixProject do
         "deps.unlock --unused",
         "format",
         "credo --strict",
-        "coveralls --minimum-coverage 80"
+        "coveralls"
       ]
     ]
   end

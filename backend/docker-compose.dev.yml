@@ -1,0 +1,38 @@
+services:
+  postgres-dev:
+    image: postgres:16-alpine
+    ports:
+      - 54320:5432
+    volumes:
+      - ./postgres_data/:/var/lib/postgresql/data/
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+    # postgres briefly accepts and drops connections while it initialises, so
+    # "container started" is not enough for the api service to depend on.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    ports:
+      - 4000:4000
+    env_file:
+      - .env
+    # Overrides .env: the database is reachable by service name in here, and
+    # the server must bind all interfaces for the published port to work.
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@postgres-dev:5432/api_dev
+      BIND_IP: 0.0.0.0
+      PORT: 4000
+    command: sh -c "mix deps.get && mix ecto.setup && mix phx.server"
+
+volumes:
+  postgres_data: {}

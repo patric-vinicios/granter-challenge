@@ -16,8 +16,8 @@ defmodule ApiWeb do
   below. Instead, define additional modules and import
   those modules here.
 
-  This module is also the root of the `ApiWeb` boundary, which may depend on
-  `Api` and never the reverse.
+  Root of the `ApiWeb` boundary, which may depend on `Api` and never the
+  reverse.
   """
 
   use Boundary, deps: [Api], exports: [Endpoint, Telemetry]

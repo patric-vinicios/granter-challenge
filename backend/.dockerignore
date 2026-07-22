@@ -1,0 +1,14 @@
+_build/
+deps/
+.elixir_ls/
+cover/
+postgres_data/
+
+.git/
+.gitignore
+
+.env
+
+docs/
+*.md
+!README.md

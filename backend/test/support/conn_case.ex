@@ -12,20 +12,33 @@ defmodule ApiWeb.ConnCase do
 
   using do
     quote do
-      # The default endpoint for testing
       @endpoint ApiWeb.Endpoint
 
       use ApiWeb, :verified_routes
 
-      # Import conveniences for testing with connections
-      import Plug.Conn
-      import Phoenix.ConnTest
+      import Api.Factory
       import ApiWeb.ConnCase
+      import Phoenix.ConnTest
+      import Plug.Conn
     end
   end
 
   setup tags do
-    Api.DataCase.setup_sandbox(tags)
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    owner = Api.DataCase.setup_sandbox(tags)
+
+    {:ok, conn: Phoenix.ConnTest.build_conn(), sandbox_owner: owner}
+  end
+
+  @doc """
+  A connection that negotiates JSON both ways.
+
+  `build_conn/0` sends no `accept` header, which is enough for the router's
+  `:accepts` step but leaves a request body unparsed. Controller tests that
+  post a payload need this one.
+  """
+  def json_conn do
+    Phoenix.ConnTest.build_conn()
+    |> Plug.Conn.put_req_header("accept", "application/json")
+    |> Plug.Conn.put_req_header("content-type", "application/json")
   end
 end

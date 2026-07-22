@@ -4,9 +4,9 @@ defmodule Api.Application do
   @moduledoc false
 
   use Application
-  # The composition root is the one place allowed to see both layers: it
-  # supervises the endpoint. Every other module under `Api.` stays inside the
-  # `Api` boundary and cannot reference `ApiWeb`.
+
+  # Its own boundary because the composition root is the one place allowed to
+  # see both layers; every other module under Api. is barred from ApiWeb.
   use Boundary, top_level?: true, deps: [Api, ApiWeb]
 
   @impl true

@@ -1,28 +1,12 @@
 import Config
 
-# config/runtime.exs is executed for all environments, including
-# during releases. It is executed after compilation and before the
-# system starts, so it is typically used to load configuration and
-# secrets from environment variables. Do not define any compile-time
-# configuration in here, as it won't be applied.
-#
-# Unlike the stock Phoenix file, this one serves *every* environment:
-# a native `mix phx.server` run and the `api` container read the same
-# variables, so there is a single place where the deployment surface is
-# described. `.env.example` lists all of them with working defaults.
+# Serves every environment, not just prod: a native run and the api container
+# read the same variables. `.env.example` lists them with working defaults.
 
-# ## Using releases
-#
-# If you use `mix release`, you need to explicitly enable the server
-# by passing the PHX_SERVER=true when you start it:
-#
-#     PHX_SERVER=true bin/api start
 if System.get_env("PHX_SERVER") do
   config :api, ApiWeb.Endpoint, server: true
 end
 
-# CORS origins are read in every environment, including test, so the CORS
-# integration test can swap them at runtime.
 config :api,
        :cors_origins,
        "CORS_ORIGINS"
@@ -30,15 +14,10 @@ config :api,
        |> String.split(",", trim: true)
        |> Enum.map(&String.trim/1)
 
-# The test environment is deliberately excluded from everything below:
-# `mix test` must run with no exported variable at all, against the
-# database defined in config/test.exs (docker-compose.test.yml, port
-# 54321), so a stray DATABASE_URL can never point the suite at the
-# development database.
+# Test is excluded below so `mix test` needs no exported variable, and a stray
+# DATABASE_URL can never point the suite at the development database.
 if config_env() != :test do
-  # Secrets are mandatory outside of test. Booting without one aborts
-  # immediately naming the variable, rather than failing later with an
-  # obscure signing or token error.
+  # Abort naming the variable, rather than failing later on an obscure error.
   required_env = fn name, hint ->
     System.get_env(name) ||
       raise """
@@ -50,7 +29,6 @@ if config_env() != :test do
   secret_key_base =
     required_env.("SECRET_KEY_BASE", "You can generate one by calling: mix phx.gen.secret")
 
-  # Reserved here by F01; consumed by F02's token issuing and verification.
   jwt_secret = required_env.("JWT_SECRET", "You can generate one by calling: mix phx.gen.secret")
 
   config :api, :jwt_secret, jwt_secret
@@ -69,8 +47,7 @@ if config_env() != :test do
     http: [ip: bind_ip, port: String.to_integer(System.get_env("PORT", "4000"))],
     secret_key_base: secret_key_base
 
-  # When DATABASE_URL is set it wins over the per-environment credentials,
-  # which is what lets the container and a native run share this file.
+  # Set by the container; a native run falls back to config/dev.exs.
   if database_url = System.get_env("DATABASE_URL") do
     maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 

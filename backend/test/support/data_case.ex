@@ -16,26 +16,39 @@ defmodule Api.DataCase do
     quote do
       alias Api.Repo
 
+      import Api.DataCase
+      import Api.Factory
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
-      import Api.DataCase
     end
   end
 
   setup tags do
-    Api.DataCase.setup_sandbox(tags)
-    :ok
+    {:ok, sandbox_owner: Api.DataCase.setup_sandbox(tags)}
   end
 
   @doc """
   Checks out a sandbox connection, shared with other processes unless the test
   is async. Shared by `ApiWeb.ConnCase` and `ApiWeb.ChannelCase` so all three
   case templates isolate the database the same way.
+
+  Returns the owner pid, which a test can stop early to simulate losing the
+  database.
   """
   def setup_sandbox(tags) do
     pid = Sandbox.start_owner!(Api.Repo, shared: not tags[:async])
-    on_exit(fn -> Sandbox.stop_owner(pid) end)
+
+    on_exit(fn ->
+      # Tolerant of a test that stopped the owner to simulate a dead database.
+      try do
+        Sandbox.stop_owner(pid)
+      catch
+        :exit, _reason -> :ok
+      end
+    end)
+
+    pid
   end
 
   @doc """

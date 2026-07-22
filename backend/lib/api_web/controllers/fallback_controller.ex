@@ -2,19 +2,18 @@ defmodule ApiWeb.FallbackController do
   @moduledoc """
   Translates the error tuples contexts return into HTTP responses.
 
-  Every controller from F02 onwards declares `action_fallback
-  ApiWeb.FallbackController`, so an action can end with `{:error, :not_found}`
-  and contain no rendering logic of its own. Statuses render back through
-  `ApiWeb.ErrorJSON`, which keeps one status-to-code table for the API.
+  A controller that declares `action_fallback ApiWeb.FallbackController` can
+  end an action with `{:error, :not_found}` and carry no rendering logic of
+  its own. Statuses render back through `ApiWeb.ErrorJSON`, which keeps one
+  status-to-code table for the whole API.
   """
 
   use ApiWeb, :controller
 
   alias Plug.Conn.Status
 
-  # Contexts signal "the caller may not see this" with :unauthorized, which is
-  # a 403: a 401 means the request carried no valid identity at all, and that
-  # is decided by the authentication plug, not by a context.
+  # :unauthorized is 403, not 401: "you may not see this" is a different answer
+  # from "you sent no identity", which only the authentication plug decides.
   @statuses %{
     unauthorized: :forbidden,
     forbidden: :forbidden,
@@ -34,8 +33,8 @@ defmodule ApiWeb.FallbackController do
 
   @doc """
   Renders `{:error, reason}` and `{:error, reason, detail}`, where `detail`
-  overrides the table's default message for cases that need to say something
-  specific about this particular failure.
+  overrides the default message for a failure that needs to say something
+  specific.
   """
   def call(conn, {:error, reason}) when is_atom(reason) do
     render_error(conn, status_for(reason), nil)

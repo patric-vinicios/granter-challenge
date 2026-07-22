@@ -3,9 +3,8 @@ defmodule Api.Health do
   Database connectivity probe behind `GET /api/health`.
 
   The check is a real `SELECT 1` round trip rather than an inspection of the
-  pool state, because a pool can hold connections that the server has already
-  closed. A short timeout keeps the probe itself from hanging when the
-  database is unreachable but the TCP connection is not refused outright.
+  pool state, because a pool can hold connections the server has already
+  closed.
   """
 
   alias Api.Repo
@@ -16,18 +15,17 @@ defmodule Api.Health do
   @doc """
   Returns `:ok` when the database answers, `{:error, reason}` when it does not.
 
-  An unreachable database is an expected operating condition for a health
-  endpoint, so every failure mode -- a connection error, a Postgres error, or
-  the repo process not running at all -- is returned as a value instead of
-  being raised at the controller.
+  Takes the repo to probe so a test can point it at an unreachable database;
+  callers use `check/0`.
   """
-  def check do
-    case SQL.query(Repo, "SELECT 1", [], timeout: @timeout) do
+  def check(repo \\ Repo) do
+    case SQL.query(repo, "SELECT 1", [], timeout: @timeout) do
       {:ok, _result} -> :ok
       {:error, reason} -> {:error, reason}
     end
   rescue
-    error in [DBConnection.ConnectionError, Postgrex.Error, ArgumentError] -> {:error, error}
+    # A probe that raises would turn an unavailable database into a bare 500.
+    error -> {:error, error}
   catch
     :exit, reason -> {:error, reason}
   end

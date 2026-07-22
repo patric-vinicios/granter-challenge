@@ -20,8 +20,7 @@ config :api, ApiWeb.Endpoint,
     layout: false
   ],
   pubsub_server: Api.PubSub,
-  # Retained solely because LiveDashboard mounts a LiveView in dev; the API
-  # itself signs nothing with it.
+  # Only LiveDashboard needs this; the API signs nothing with it.
   live_view: [signing_salt: "ee2QZZUQ"]
 
 # Configure Elixir's Logger
