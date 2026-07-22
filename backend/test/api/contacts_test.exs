@@ -253,6 +253,45 @@ defmodule Api.ContactsTest do
     end
   end
 
+  describe "reject_non_contacts/2" do
+    test "returns :ok when every id is a contact" do
+      owner = insert(:user)
+
+      ids =
+        for _ <- 1..3 do
+          contact = insert(:contact, owner: owner)
+          contact.contact_user_id
+        end
+
+      assert :ok = Contacts.reject_non_contacts(owner, ids)
+    end
+
+    test "names the offenders that are not contacts" do
+      owner = insert(:user)
+      c1 = insert(:contact, owner: owner, user: build(:user, username: "carlosedu"))
+      c2 = insert(:contact, owner: owner, user: build(:user, username: "anabeatriz"))
+      stranger = insert(:user, username: "joaopedro")
+
+      assert {:error, :not_a_contact, detail} =
+               Contacts.reject_non_contacts(owner, [
+                 c1.contact_user_id,
+                 c2.contact_user_id,
+                 stranger.id
+               ])
+
+      assert detail =~ "@joaopedro"
+      refute detail =~ "@carlosedu"
+      refute detail =~ "@anabeatriz"
+    end
+
+    test "treats an unknown id as an offender" do
+      owner = insert(:user)
+
+      assert {:error, :not_a_contact, _detail} =
+               Contacts.reject_non_contacts(owner, [Ecto.UUID.generate()])
+    end
+  end
+
   defp insert_contact_pair(owner_id, contact_user_id) do
     %Contact{owner_id: owner_id, contact_user_id: contact_user_id}
     |> Contact.changeset()
