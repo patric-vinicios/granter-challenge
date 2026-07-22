@@ -1,0 +1,147 @@
+<template>
+  <section class="grid min-w-0 grid-rows-[64px_minmax(0,1fr)_72px] bg-[#fbfbfb]">
+    <header class="border-b border-[#e8e8e8] bg-white px-5">
+      <div
+        v-if="isSearching"
+        class="grid h-full grid-cols-[36px_minmax(0,1fr)_auto_36px_36px] items-center gap-2"
+        @focusout="$emit('searchFocusout', $event)"
+      >
+        <button
+          class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
+          type="button"
+          aria-label="Fechar busca"
+          @click="$emit('closeSearch')"
+        >
+          <X :size="17" :stroke-width="2" aria-hidden="true" />
+        </button>
+
+        <label class="sr-only" for="message-search">Buscar na conversa</label>
+        <div class="relative">
+          <Search
+            class="absolute left-3 top-1/2 -translate-y-1/2 text-[#737373]"
+            :size="16"
+            :stroke-width="2"
+            aria-hidden="true"
+          />
+          <input
+            id="message-search"
+            :value="searchTerm"
+            class="h-10 w-full rounded-lg border border-[#171717] bg-white pl-9 pr-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
+            autofocus
+            type="text"
+            @input="$emit('update:searchTerm', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+
+        <span class="px-1 text-[13px] text-[#a3a3a3]">1 / 1</span>
+
+        <button
+          class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
+          type="button"
+          aria-label="Resultado anterior"
+        >
+          <ChevronUp :size="17" :stroke-width="2" aria-hidden="true" />
+        </button>
+
+        <button
+          class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
+          type="button"
+          aria-label="Proximo resultado"
+        >
+          <ChevronDown :size="17" :stroke-width="2" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div v-else class="flex h-full items-center gap-3">
+        <span
+          class="grid h-[40px] w-[40px] place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
+        >
+          {{ conversation.initials }}
+        </span>
+        <div class="min-w-0 flex-1">
+          <strong class="block truncate text-[15px] text-[#171717]">
+            {{ conversation.name }}
+          </strong>
+          <span class="block truncate text-[13px] text-[#737373]">
+            {{ conversation.subtitle }}
+          </span>
+        </div>
+        <button
+          class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
+          type="button"
+          aria-label="Buscar na conversa"
+          @click="$emit('openSearch')"
+        >
+          <Search :size="18" :stroke-width="2" aria-hidden="true" />
+        </button>
+      </div>
+    </header>
+
+    <div class="overflow-auto px-6 py-7 min-[860px]:px-[150px]">
+      <div
+        class="mx-auto mb-7 w-max rounded-full border border-[#e8e8e8] bg-white px-3 py-1 text-[12px] text-[#a3a3a3]"
+      >
+        Hoje
+      </div>
+
+      <div class="grid gap-2">
+        <MessageBubble
+          v-for="message in conversation.messages"
+          :key="`${message.time}-${message.text}`"
+          :side="message.side"
+          :text="message.text"
+          :time="message.time"
+          :wide="message.wide"
+          :author="conversation.type === 'group' ? message.author : undefined"
+        />
+      </div>
+    </div>
+
+    <form
+      class="grid grid-cols-[minmax(0,1fr)_44px] gap-3 border-t border-[#e8e8e8] bg-white px-5 py-4"
+      @submit.prevent
+    >
+      <label class="sr-only" for="message">Mensagem</label>
+      <textarea
+        id="message"
+        :value="messageDraft"
+        class="min-h-12 resize-none rounded-lg border border-[#e8e8e8] bg-white px-4 py-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
+        placeholder="Escreva uma mensagem..."
+        rows="1"
+        @input="$emit('update:messageDraft', ($event.target as HTMLTextAreaElement).value)"
+        @keydown.ctrl.enter.prevent="$emit('sendMessage')"
+      />
+      <button
+        class="grid h-12 w-11 place-items-center rounded-lg border border-black bg-black text-white hover:bg-[#222222]"
+        type="button"
+        aria-label="Enviar mensagem"
+        @click="$emit('sendMessage')"
+      >
+        <Navigation fill="currentColor" :size="18" :stroke-width="2" aria-hidden="true" />
+      </button>
+    </form>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { ChevronDown, ChevronUp, Navigation, Search, X } from '@lucide/vue'
+
+import MessageBubble from '@/components/MessageBubble.vue'
+import type { Conversation } from '@/features/conversations/conversations.mock'
+
+defineProps<{
+  conversation: Conversation
+  isSearching: boolean
+  searchTerm: string
+  messageDraft: string
+}>()
+
+defineEmits<{
+  closeSearch: []
+  openSearch: []
+  searchFocusout: [event: FocusEvent]
+  sendMessage: []
+  'update:searchTerm': [searchTerm: string]
+  'update:messageDraft': [messageDraft: string]
+}>()
+</script>
