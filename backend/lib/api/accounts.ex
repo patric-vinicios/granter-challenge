@@ -12,6 +12,7 @@ defmodule Api.Accounts do
   import Ecto.Query, warn: false
 
   alias Api.Accounts.User
+  alias Api.Helpers.Validators
   alias Api.Repo
 
   @doc """
@@ -58,9 +59,9 @@ defmodule Api.Accounts do
   malformed id has to be an absent user rather than a cast exception.
   """
   def get_user(id) when is_binary(id) do
-    case Ecto.UUID.cast(id) do
+    case Validators.cast_uuid(id) do
       {:ok, uuid} -> Repo.get(User, uuid)
-      :error -> nil
+      {:error, _} -> nil
     end
   end
 
@@ -71,9 +72,8 @@ defmodule Api.Accounts do
   accepted. The `citext` column makes the comparison index-backed without a
   `lower()` wrapper.
   """
-  def get_user_by_username(username) when is_binary(username) do
-    Repo.get_by(User, username: User.normalize_username(username))
-  end
+  def get_user_by_username(username) when is_binary(username),
+    do: Repo.get_by(User, username: User.normalize_username(username))
 
   def get_user_by_username(_username), do: nil
 end

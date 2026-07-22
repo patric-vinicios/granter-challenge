@@ -7,9 +7,20 @@
 # General application configuration
 import Config
 
+alias Api.Providers.Hash.Argon2, as: Argon2Provider
+alias Api.Repo
+
 config :api,
-  ecto_repos: [Api.Repo],
+  ecto_repos: [Repo],
   generators: [timestamp_type: :utc_datetime_usec, binary_id: true]
+
+config :api, Repo,
+  migration_primary_key: [type: :binary_id],
+  migration_foreign_key: [type: :binary_id],
+  migration_timestamps: [type: :utc_datetime_usec]
+
+# Providers
+config :api, :hash_lib, Argon2Provider
 
 # Configure the endpoint
 config :api, ApiWeb.Endpoint,
