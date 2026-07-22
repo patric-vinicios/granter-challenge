@@ -59,6 +59,10 @@ defmodule Api.MixProject do
       {:bandit, "~> 1.5"},
       {:cors_plug, "~> 3.0"},
 
+      # authentication
+      {:guardian, "~> 2.3"},
+      {:argon2_elixir, "~> 4.0"},
+
       # test tooling
       {:ex_machina, "~> 2.8", only: :test},
       {:excoveralls, "~> 0.18", only: :test},

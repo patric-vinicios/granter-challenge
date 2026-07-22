@@ -31,7 +31,7 @@ if config_env() != :test do
 
   jwt_secret = required_env.("JWT_SECRET", "You can generate one by calling: mix phx.gen.secret")
 
-  config :api, :jwt_secret, jwt_secret
+  config :api, Api.Accounts.Guardian, secret_key: jwt_secret
 
   bind_ip =
     "BIND_IP"

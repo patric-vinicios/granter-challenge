@@ -23,6 +23,12 @@ config :api, ApiWeb.Endpoint,
   # Only LiveDashboard needs this; the API signs nothing with it.
   live_view: [signing_salt: "ee2QZZUQ"]
 
+# Token issuance. The signing secret is deliberately absent here: it comes from
+# JWT_SECRET at runtime, so no environment ships with a compiled-in default.
+config :api, Api.Accounts.Guardian,
+  issuer: "api",
+  ttl: {7, :days}
+
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

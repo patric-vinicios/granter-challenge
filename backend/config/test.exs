@@ -21,6 +21,15 @@ config :api, ApiWeb.Endpoint,
   secret_key_base: "hF9b49Jxfj2BbC3G3/oRZRFyhUtUcUpoVDlWbhAmyhdY0iOKlt8EsMqZ4AMQZwDc",
   server: false
 
+# runtime.exs deliberately skips :test, so the suite needs its own literal
+# signing secret rather than an exported variable.
+config :api, Api.Accounts.Guardian,
+  secret_key: "kx0lHNTBpXcMBmoP4LJ9qWvVSBLpDgLR8Yfr2mS6TnGZOAkcYRSjS5ecvXi7RgLK"
+
+# Argon2 is deliberately slow. At production cost a suite that inserts users
+# per test spends most of its wall clock hashing, so test uses the floor.
+config :argon2_elixir, t_cost: 1, m_cost: 8
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
