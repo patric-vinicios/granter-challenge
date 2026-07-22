@@ -19,7 +19,6 @@ defmodule Api.Contacts do
   alias Api.Accounts
   alias Api.Accounts.User
   alias Api.Contacts.Contact
-  alias Api.Helpers.Validators
   alias Api.Repo
 
   # Bounds the response size and the unindexed sort behind `list_contacts/1`.
@@ -152,9 +151,9 @@ defmodule Api.Contacts do
     do: where(Contact, [c], c.owner_id == ^owner_id and c.contact_user_id == ^contact_user_id)
 
   defp cast_id(id) do
-    case Validators.cast_uuid(id) do
+    case Ecto.UUID.cast(id) do
       {:ok, uuid} -> {:ok, uuid}
-      {:error, _} -> {:error, :invalid_id}
+      :error -> {:error, :invalid_id}
     end
   end
 

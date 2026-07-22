@@ -14,8 +14,6 @@ defmodule Api.Accounts.User do
 
   use Api.Schema
 
-  alias Api.Providers.Hash.Client, as: HashClient
-
   @derive {Inspect, except: [:hashed_password, :password]}
 
   @username_format ~r/^[a-z0-9_]+$/
@@ -81,7 +79,7 @@ defmodule Api.Accounts.User do
 
   defp hash_password(%Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset) do
     changeset
-    |> put_change(:hashed_password, HashClient.hash_password(password))
+    |> put_change(:hashed_password, Argon2.hash_pwd_salt(password))
     |> delete_change(:password)
   end
 

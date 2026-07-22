@@ -12,7 +12,6 @@ defmodule Api.Accounts do
   import Ecto.Query, warn: false
 
   alias Api.Accounts.User
-  alias Api.Helpers.Validators
   alias Api.Repo
 
   @doc """
@@ -59,9 +58,9 @@ defmodule Api.Accounts do
   malformed id has to be an absent user rather than a cast exception.
   """
   def get_user(id) when is_binary(id) do
-    case Validators.cast_uuid(id) do
+    case Ecto.UUID.cast(id) do
       {:ok, uuid} -> Repo.get(User, uuid)
-      {:error, _} -> nil
+      :error -> nil
     end
   end
 
