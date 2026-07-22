@@ -52,7 +52,16 @@ defmodule ApiWeb.FallbackController do
     self_contact: {:unprocessable_entity, "self_contact", "You cannot add yourself as a contact"},
     contact_limit_reached:
       {:unprocessable_entity, "contact_limit_reached",
-       "You have reached the maximum of 500 contacts"}
+       "You have reached the maximum of 500 contacts"},
+    not_a_contact:
+      {:forbidden, "not_a_contact", "You can only add users from your contacts to a group"},
+    not_group_creator:
+      {:forbidden, "not_group_creator", "Only the group creator can manage members"},
+    already_member: {:conflict, "already_member", "This user is already a member of the group"},
+    last_member: {:unprocessable_entity, "last_member", "A group must keep at least one member"},
+    cannot_remove_self:
+      {:unprocessable_entity, "cannot_remove_self",
+       "The creator cannot remove themselves; leave the group instead"}
   }
 
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
