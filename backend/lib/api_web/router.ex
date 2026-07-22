@@ -29,6 +29,9 @@ defmodule ApiWeb.Router do
     post "/contacts", ContactController, :create
     get "/contacts", ContactController, :index
     delete "/contacts/:id", ContactController, :delete
+
+    post "/conversations/private", ConversationController, :create_private
+    get "/conversations/:id", ConversationController, :show
   end
 
   if Application.compile_env(:api, :dev_routes) do

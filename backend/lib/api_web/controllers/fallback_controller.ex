@@ -52,7 +52,12 @@ defmodule ApiWeb.FallbackController do
     self_contact: {:unprocessable_entity, "self_contact", "You cannot add yourself as a contact"},
     contact_limit_reached:
       {:unprocessable_entity, "contact_limit_reached",
-       "You have reached the maximum of 500 contacts"}
+       "You have reached the maximum of 500 contacts"},
+    not_a_contact:
+      {:forbidden, "not_a_contact", "You can only start conversations with your contacts"},
+    self_conversation:
+      {:unprocessable_entity, "self_conversation",
+       "You cannot start a conversation with yourself"}
   }
 
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
