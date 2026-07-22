@@ -27,7 +27,10 @@ config :api, ApiWeb.Endpoint,
 # JWT_SECRET at runtime, so no environment ships with a compiled-in default.
 config :api, Api.Accounts.Guardian,
   issuer: "api",
-  ttl: {7, :days}
+  ttl: {7, :days},
+  # Guardian would default to HS512; HS256 is the published contract and is
+  # what a client library expects from this API.
+  allowed_algos: ["HS256"]
 
 # Configure Elixir's Logger
 config :logger, :default_formatter,

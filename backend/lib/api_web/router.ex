@@ -16,6 +16,15 @@ defmodule ApiWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+
+    post "/auth/register", AuthController, :register
+    post "/auth/login", AuthController, :login
+  end
+
+  scope "/api", ApiWeb do
+    pipe_through :authenticated
+
+    get "/auth/me", AuthController, :me
   end
 
   if Application.compile_env(:api, :dev_routes) do
