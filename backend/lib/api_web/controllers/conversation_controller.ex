@@ -1,12 +1,13 @@
 defmodule ApiWeb.ConversationController do
   @moduledoc """
-  Creating a group and changing its membership over time.
+  Opening a private conversation, creating a group, and changing a group's
+  membership over time.
 
   The caller is always `conn.assigns.current_user` and is never read from the
-  request, so no body or path can act on a conversation as somebody else. Every
-  failure is a tagged tuple the context returns, translated to its status by the
-  fallback controller. The private-conversation feature adds its own
-  `create_private/2` action to this same module.
+  request, so no body or path can act as another user. A repeat open of the same
+  private pair is not an error: a first creation answers 201 and every later call
+  200 with the identical id. Every failure is a tagged tuple the context returns,
+  translated to its status by the fallback controller.
   """
 
   use ApiWeb, :controller
@@ -17,29 +18,44 @@ defmodule ApiWeb.ConversationController do
 
   plug :put_view, json: ApiWeb.ConversationJSON
 
+  @private_types %{user_id: :string}
+
+  def create_private(conn, params) do
+    caller = conn.assigns.current_user
+
+    with {:ok, %{user_id: user_id}} <- validate_private(params),
+         {:ok, outcome, conversation} <-
+           Conversations.create_private_conversation(caller, user_id) do
+      conn
+      |> put_status(status_for(outcome))
+      |> render(:show, conversation: conversation, caller: caller)
+    end
+  end
+
   def create_group(conn, params) do
+    caller = conn.assigns.current_user
+
     with {:ok, conversation} <-
-           Conversations.create_group(
-             conn.assigns.current_user,
-             params["name"],
-             params["member_ids"]
-           ) do
+           Conversations.create_group(caller, params["name"], params["member_ids"]) do
       conn
       |> put_status(:created)
-      |> render(:create, conversation: conversation)
+      |> render(:show, conversation: conversation, caller: caller)
     end
   end
 
   def show(conn, %{"id" => id}) do
-    with {:ok, conversation} <- Conversations.get_for_user(conn.assigns.current_user, id) do
-      render(conn, :show, conversation: conversation)
+    caller = conn.assigns.current_user
+
+    with {:ok, conversation} <- Conversations.get_conversation(caller, id) do
+      render(conn, :show, conversation: conversation, caller: caller)
     end
   end
 
   def add_members(conn, %{"id" => id} = params) do
-    with {:ok, conversation} <-
-           Conversations.add_members(conn.assigns.current_user, id, params["member_ids"]) do
-      render(conn, :show, conversation: conversation)
+    caller = conn.assigns.current_user
+
+    with {:ok, conversation} <- Conversations.add_members(caller, id, params["member_ids"]) do
+      render(conn, :show, conversation: conversation, caller: caller)
     end
   end
 
@@ -53,5 +69,17 @@ defmodule ApiWeb.ConversationController do
     with :ok <- Conversations.leave(conn.assigns.current_user, id) do
       send_resp(conn, :no_content, "")
     end
+  end
+
+  defp status_for(:created), do: :created
+  defp status_for(:existing), do: :ok
+
+  # A missing user_id is a malformed request, not an unknown user: answering
+  # user_not_found there would tell a client its own bug looks like a typo.
+  defp validate_private(params) do
+    {%{}, @private_types}
+    |> Ecto.Changeset.cast(params, Map.keys(@private_types))
+    |> Ecto.Changeset.validate_required([:user_id])
+    |> Ecto.Changeset.apply_action(:insert)
   end
 end

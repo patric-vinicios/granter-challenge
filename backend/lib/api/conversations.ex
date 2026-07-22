@@ -1,32 +1,41 @@
 defmodule Api.Conversations do
   @moduledoc """
-  Private conversations and groups, and the membership that governs them.
+  Every conversation in the product, private or group.
 
-  Both conversation kinds share two tables, so this context is the substrate the
-  message, inbox, search, presence and channel features all read. It owns the
-  rules that outlive a single request: a group's membership is a timeline of
-  join/leave timestamps rather than a set, its `creator_id` is immutable, and a
-  member removed or departed stops being "active" the instant `left_at` is set.
+  A private conversation is not a table of its own: it is a `conversations` row
+  of `type: :private` with exactly two participant rows. A group is a row of
+  `type: :group` carrying a name and a creator, with one participant row per
+  member. Modelling both kinds on the same tables is what lets the later
+  features write one message foreign key, join one channel topic and answer one
+  inbox query rather than branching on a kind they would have to detect.
 
-  Every function is scoped to a user, and the caller's identity is always a
-  `%User{}` argument — never a value read from params — so no request body can
-  act as somebody it is not. `active_participant?/2` is the membership predicate
-  later features consume; it is evaluated at request time, so a membership change
-  takes effect on the very next call.
+  `participant?/2` is the context's real deliverable to the rest of the system,
+  the same way `contact?/2` is the contacts context's: the history read, the
+  channel join and the send path are three code paths that must answer one
+  question — may this user see this conversation? — and answering it here keeps
+  the rule from diverging across them. It ships as an active-membership check
+  and deliberately stops there; the departed-member visibility bound belongs to
+  the feature that owns messages, not to this one.
+
+  Membership is a timeline, not a set. A participant is a row with a `joined_at`
+  and a nullable `left_at`, and leaving sets `left_at` rather than deleting the
+  row. That soft record is what lets a departed member keep read access to what
+  they saw, a re-added member reuse their row with a fresh `joined_at`, and a
+  group keep functioning after its immutable `creator_id` has left.
   """
 
-  use Boundary,
-    deps: [Api, Api.Accounts, Api.Contacts],
-    exports: [Conversation, ConversationParticipant]
+  use Boundary, deps: [Api, Api.Accounts, Api.Contacts], exports: [Conversation, Participant]
 
-  import Ecto.Query
+  import Ecto.Query, warn: false
 
+  alias Api.Accounts
   alias Api.Accounts.User
   alias Api.Contacts
   alias Api.Conversations.Conversation
-  alias Api.Conversations.ConversationParticipant
+  alias Api.Conversations.Participant
   alias Api.Repo
   alias Ecto.Changeset
+  alias Ecto.Multi
 
   # Creator plus at least one other member, up to a hard ceiling. The lower
   # bound is structural — a one-person group is a private conversation — and the
@@ -35,6 +44,34 @@ defmodule Api.Conversations do
 
   @create_types %{name: :string, member_ids: {:array, Ecto.UUID}}
   @member_ids_types %{member_ids: {:array, Ecto.UUID}}
+
+  @doc """
+  Opens the private conversation between `caller` and the user named by
+  `target_id`, or returns the existing one.
+
+  The guards run in a fixed order — self, existence, contact — so the error a
+  caller sees when more than one condition holds is the contract, not an
+  accident: passing one's own id is `self_conversation`, not `not_a_contact`,
+  and an unknown id is a 404, not a 403 that would confuse a typo for a
+  permission problem.
+
+  Idempotency has two layers. The pre-check returns the existing conversation
+  for the ordinary double-click or reload; the `participant_key` unique index is
+  the backstop that turns two genuinely concurrent creates into one winner and
+  one caught error re-read as the existing row, never a duplicate or a 500.
+  """
+  def create_private_conversation(%User{} = caller, target_id) do
+    with :ok <- refute_self(caller, target_id),
+         {:ok, target} <- resolve_target(target_id),
+         :ok <- refute_non_contact(caller, target) do
+      key = participant_key(caller, target)
+
+      case Repo.get_by(Conversation, participant_key: key, type: :private) do
+        %Conversation{} = existing -> {:ok, :existing, load(existing)}
+        nil -> insert_pair(caller, target, key)
+      end
+    end
+  end
 
   @doc """
   Creates a group, seating the creator and the given members in one transaction.
@@ -53,19 +90,20 @@ defmodule Api.Conversations do
   end
 
   @doc """
-  Loads a conversation the caller actively participates in, or `:not_found`.
+  Reads a conversation the caller actively participates in, with its members
+  loaded.
 
-  A non-member — an outsider or a departed member — is answered exactly as a
-  missing conversation is, so a group's existence is never disclosed. The active
-  members are preloaded through their user, ordered accent-insensitively like the
-  contact list, and the creator is preloaded so the view can render its id.
+  The read is gated on active participation, never on contact, which is what
+  lets the recipient of a private conversation read it without having added the
+  initiator. A malformed id is rejected before any query; a well-formed id that
+  names no conversation, or one the caller is not an active member of — an
+  outsider or a departed group member — gets one indistinguishable `:not_found`,
+  so a conversation's existence is never disclosed.
   """
-  def get_for_user(%User{} = user, id) do
-    with {:ok, uuid} <- cast_id(id) do
-      case load_for_member(user, uuid) do
-        %Conversation{} = conversation -> {:ok, conversation}
-        nil -> {:error, :not_found}
-      end
+  def get_conversation(%User{} = caller, id) do
+    with {:ok, uuid} <- cast_id(id),
+         %Conversation{} = conversation <- Repo.get(Conversation, uuid) || {:error, :not_found} do
+      authorize_read(load(conversation), caller)
     end
   end
 
@@ -85,7 +123,7 @@ defmodule Api.Conversations do
          :ok <- refute_already_members(conversation, ids),
          :ok <- refute_over_capacity(conversation, ids),
          {:ok, _} <- seat_or_reactivate(conversation, ids) do
-      get_for_user(creator, uuid)
+      get_conversation(creator, uuid)
     end
   end
 
@@ -119,45 +157,82 @@ defmodule Api.Conversations do
     end
   end
 
-  defp commit_leave(uuid, user) do
-    case Repo.transaction(fn -> resolve_leave(uuid, user) end) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp resolve_leave(uuid, user) do
-    active = active_participants_locked(uuid)
-
-    cond do
-      not Enum.any?(active, &(&1.user_id == user.id)) -> Repo.rollback(:not_found)
-      match?([_], active) -> Repo.rollback(:last_member)
-      true -> deactivate!(uuid, user.id)
-    end
-  end
-
   @doc """
-  Whether the given user is an active member of the given conversation.
+  Whether `user` is an active member of `conversation`, taking a record or an id
+  on either side.
 
-  Takes a `%Conversation{}` or its id and a `%User{}` or its id, so callers pass
-  whichever they hold. A malformed id is simply not an active member rather than
-  an error.
+  Active means a participant row with `left_at` null. Evaluated at request time
+  by every caller, so a leave or removal takes effect on the very next call.
   """
-  def active_participant?(%Conversation{id: id}, user), do: active_participant?(id, user)
-  def active_participant?(id, %User{id: user_id}), do: active_participant?(id, user_id)
+  def participant?(%Conversation{id: id}, user), do: participant?(id, user)
+  def participant?(conversation_id, %User{id: id}), do: participant?(conversation_id, id)
 
-  def active_participant?(id, user_id) do
-    with {:ok, conversation_id} <- cast_id(id),
-         {:ok, uuid} <- cast_id(user_id) do
-      Repo.exists?(
-        from p in ConversationParticipant,
-          where:
-            p.conversation_id == ^conversation_id and p.user_id == ^uuid and is_nil(p.left_at)
-      )
+  def participant?(conversation_id, user_id) do
+    with {:ok, cid} <- cast_id(conversation_id),
+         {:ok, uid} <- cast_id(user_id) do
+      Repo.exists?(active_member_row(cid, uid))
     else
       {:error, :invalid_id} -> false
     end
   end
+
+  # --- Private conversation internals -------------------------------------
+
+  # Sorting the pair before joining is what makes the key symmetric, so
+  # A-opens-B and B-opens-A collapse onto one conversation.
+  defp participant_key(%User{id: a}, %User{id: b}), do: Enum.join(Enum.sort([a, b]), ":")
+
+  defp refute_self(%User{id: id}, id), do: {:error, :self_conversation}
+  defp refute_self(_caller, _target_id), do: :ok
+
+  defp resolve_target(target_id) do
+    case Accounts.get_user(target_id) do
+      %User{} = target -> {:ok, target}
+      nil -> {:error, :user_not_found}
+    end
+  end
+
+  defp refute_non_contact(caller, target) do
+    if Contacts.contact?(caller, target), do: :ok, else: {:error, :not_a_contact}
+  end
+
+  # The pre-check already answered the common repeat, so a unique violation here
+  # means two requests raced past it. That is a 200 returning the winner's row,
+  # never a 500 — the same constraint-as-backstop shape the contacts context
+  # uses for a duplicate contact, now guarding a three-row transaction.
+  defp insert_pair(caller, target, key) do
+    now = DateTime.utc_now()
+
+    multi =
+      Multi.new()
+      |> Multi.insert(:conversation, Conversation.private_changeset(%Conversation{}, key))
+      |> Multi.insert(:caller, &member_changeset(&1.conversation, caller, now))
+      |> Multi.insert(:target, &member_changeset(&1.conversation, target, now))
+
+    case Repo.transaction(multi) do
+      {:ok, %{conversation: conversation}} ->
+        {:ok, :created, load(conversation)}
+
+      {:error, :conversation, %Ecto.Changeset{}, _changes} ->
+        existing = Repo.get_by!(Conversation, participant_key: key, type: :private)
+        {:ok, :existing, load(existing)}
+    end
+  end
+
+  defp member_changeset(conversation, %User{} = user, joined_at) do
+    %Participant{conversation_id: conversation.id, user_id: user.id}
+    |> Participant.changeset(%{joined_at: joined_at})
+  end
+
+  defp authorize_read(%Conversation{} = conversation, caller) do
+    if Enum.any?(conversation.participants, &(&1.user_id == caller.id)) do
+      {:ok, conversation}
+    else
+      {:error, :not_found}
+    end
+  end
+
+  # --- Group internals ----------------------------------------------------
 
   defp validate_create(creator, name, member_ids) do
     changeset =
@@ -196,9 +271,12 @@ defmodule Api.Conversations do
         |> Repo.insert!()
 
       seat!(conversation.id, [creator.id | members])
-
-      load_for_member(creator, conversation.id)
+      conversation
     end)
+    |> case do
+      {:ok, conversation} -> {:ok, load(conversation)}
+      other -> other
+    end
   end
 
   defp validate_member_ids(member_ids) do
@@ -225,10 +303,7 @@ defmodule Api.Conversations do
     current = Repo.aggregate(active_members_query(conversation.id), :count)
 
     if current + length(ids) > @max_members do
-      changeset =
-        {%{}, @member_ids_types}
-        |> Changeset.cast(%{member_ids: []}, [])
-
+      changeset = Changeset.cast({%{}, @member_ids_types}, %{member_ids: []}, [])
       {:error, member_error(changeset, "a group cannot have more than #{@max_members} members")}
     else
       :ok
@@ -241,38 +316,65 @@ defmodule Api.Conversations do
 
   # Insert one row per user, or reactivate a departed one in place: the unique
   # (conversation_id, user_id) index turns a returning member into an update
-  # rather than a duplicate. `id` and the timestamps are set by the database
-  # default and the constant below.
+  # rather than a duplicate. `id` is filled by the database default; the
+  # timestamps are set here since `insert_all` runs no autogeneration.
   defp seat!(conversation_id, user_ids) do
     now = DateTime.utc_now()
 
     entries =
-      Enum.map(
-        user_ids,
-        &%{conversation_id: conversation_id, user_id: &1, joined_at: now, last_read_at: nil}
-      )
+      Enum.map(user_ids, fn user_id ->
+        %{
+          conversation_id: conversation_id,
+          user_id: user_id,
+          joined_at: now,
+          last_read_at: nil,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
 
-    Repo.insert_all(ConversationParticipant, entries,
-      on_conflict: [set: [joined_at: now, left_at: nil]],
+    Repo.insert_all(Participant, entries,
+      on_conflict: [set: [joined_at: now, left_at: nil, updated_at: now]],
       conflict_target: [:conversation_id, :user_id]
     )
   end
 
   defp deactivate(conversation_id, user_id) do
     {count, _} =
-      active_member_row(conversation_id, user_id)
-      |> Repo.update_all(set: [left_at: DateTime.utc_now()])
+      conversation_id
+      |> active_member_row(user_id)
+      |> Repo.update_all(set: [left_at: DateTime.utc_now(), updated_at: DateTime.utc_now()])
 
     if count == 0, do: {:error, :not_found}, else: :ok
   end
 
   defp deactivate!(conversation_id, user_id) do
-    active_member_row(conversation_id, user_id)
-    |> Repo.update_all(set: [left_at: DateTime.utc_now()])
+    now = DateTime.utc_now()
+
+    conversation_id
+    |> active_member_row(user_id)
+    |> Repo.update_all(set: [left_at: now, updated_at: now])
   end
 
   defp refute_self_removal(%User{id: id}, id), do: {:error, :cannot_remove_self}
   defp refute_self_removal(_creator, _target_id), do: :ok
+
+  defp commit_leave(uuid, user) do
+    case Repo.transaction(fn -> resolve_leave(uuid, user) end) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp resolve_leave(uuid, user) do
+    active = active_participants_locked(uuid)
+
+    cond do
+      not Enum.any?(active, &(&1.user_id == user.id)) -> Repo.rollback(:not_found)
+      match?([_], active) -> Repo.rollback(:last_member)
+      true -> deactivate!(uuid, user.id)
+    end
+  end
 
   # Loads the conversation only if the caller is an active member of it, then
   # gates management on being its creator: an outsider or departed member is
@@ -291,25 +393,21 @@ defmodule Api.Conversations do
 
   defp load_active(user, uuid) do
     Conversation
-    |> join(:inner, [c], p in ConversationParticipant,
+    |> join(:inner, [c], p in Participant,
       on: p.conversation_id == c.id and p.user_id == ^user.id and is_nil(p.left_at)
     )
     |> where([c], c.id == ^uuid)
     |> Repo.one()
   end
 
-  defp load_for_member(user, uuid) do
-    case load_active(user, uuid) do
-      nil ->
-        nil
+  # --- Shared query shapes ------------------------------------------------
 
-      conversation ->
-        Repo.preload(conversation, [:creator, participants: active_members_preload()])
-    end
+  defp load(%Conversation{} = conversation) do
+    Repo.preload(conversation, [:creator, participants: active_members_preload()])
   end
 
   defp active_members_preload do
-    from p in ConversationParticipant,
+    from p in Participant,
       where: is_nil(p.left_at),
       join: u in assoc(p, :user),
       order_by: [asc: fragment("lower(unaccent(?))", u.name), asc: u.id],
@@ -317,7 +415,7 @@ defmodule Api.Conversations do
   end
 
   defp active_members_query(conversation_id) do
-    from p in ConversationParticipant,
+    from p in Participant,
       where: p.conversation_id == ^conversation_id and is_nil(p.left_at)
   end
 
@@ -326,7 +424,7 @@ defmodule Api.Conversations do
   end
 
   defp active_member_row(conversation_id, user_id) do
-    from p in ConversationParticipant,
+    from p in Participant,
       where: p.conversation_id == ^conversation_id and p.user_id == ^user_id and is_nil(p.left_at)
   end
 

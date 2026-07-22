@@ -54,16 +54,38 @@ defmodule Api.Factory do
   end
 
   @doc """
-  An unsaved group conversation with a creator but no seated members, for a
-  test that only needs the row shape. `insert(:group)` is the persisted, valid
-  variant.
+  A private conversation, its pair key left for `private_conversation/2` to fill
+  once the two members are known. A bare `insert(:conversation)` is a valid
+  parent row for a participant factory that overrides it.
   """
   def conversation_factory do
-    %Api.Conversations.Conversation{
-      type: :group,
-      name: sequence(:group_name, &"Group #{&1}"),
-      creator: build(:user)
+    %Api.Conversations.Conversation{type: :private}
+  end
+
+  @doc """
+  One membership row. Both the conversation and the user are built by default,
+  so a bare `insert(:participant)` is valid, and either takes an override.
+  """
+  def participant_factory do
+    %Api.Conversations.Participant{
+      conversation: build(:conversation),
+      user: build(:user),
+      joined_at: DateTime.utc_now()
     }
+  end
+
+  @doc """
+  Inserts a live private conversation between `a` and `b` — the parent row with
+  the computed `participant_key` and both active participant rows — so a test
+  that needs a real pair writes one line instead of restating the membership.
+  """
+  def private_conversation(%Api.Accounts.User{} = a, %Api.Accounts.User{} = b) do
+    key = Enum.join(Enum.sort([a.id, b.id]), ":")
+    conversation = insert(:conversation, participant_key: key)
+    insert(:participant, conversation: conversation, user: a)
+    insert(:participant, conversation: conversation, user: b)
+
+    conversation
   end
 
   @doc """
@@ -78,21 +100,7 @@ defmodule Api.Factory do
       type: :group,
       name: sequence(:group_name, &"Group #{&1}"),
       creator: creator,
-      participants: [build(:conversation_participant, user: creator, conversation: nil)]
-    }
-  end
-
-  @doc """
-  A single active participant row. Both the conversation and the user are built
-  by default, so a bare `insert(:conversation_participant)` is valid; override
-  either inline. `left_at` is nil, i.e. an active membership.
-  """
-  def conversation_participant_factory do
-    %Api.Conversations.ConversationParticipant{
-      conversation: build(:conversation),
-      user: build(:user),
-      joined_at: DateTime.utc_now(),
-      left_at: nil
+      participants: [build(:participant, user: creator, conversation: nil)]
     }
   end
 end

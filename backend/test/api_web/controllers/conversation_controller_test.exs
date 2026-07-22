@@ -4,260 +4,191 @@ defmodule ApiWeb.ConversationControllerTest do
   alias Api.Accounts.Guardian
   alias Api.Conversations.Conversation
   alias Api.Repo
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     ana = insert(:user, username: "anabeatriz", name: "Ana Beatriz")
-    carlos = insert(:user, username: "carlosedu", name: "Carlos Eduardo")
-    joao = insert(:user, username: "joaopedro", name: "João Pedro")
+    carlos = insert(:user, username: "carlos", name: "Carlos Silva")
+    insert(:contact, owner: ana, user: carlos)
 
-    for u <- [carlos, joao], do: insert(:contact, owner: ana, user: u)
-
-    {:ok, conn: authenticate(json_conn(), ana), ana: ana, carlos: carlos, joao: joao}
+    {:ok, conn: authenticate(json_conn(), ana), ana: ana, carlos: carlos}
   end
 
-  # Creates a group owned by `ana` with the given contacts seated, returning its id.
-  defp create_group(conn, name, member_ids) do
-    conn
-    |> post(~p"/api/conversations/groups", %{"name" => name, "member_ids" => member_ids})
-    |> json_response(201)
-    |> get_in(["conversation", "id"])
-  end
+  describe "POST /api/conversations/private" do
+    test "returns 201 with the conversation and its counterpart", %{conn: conn, carlos: carlos} do
+      conn = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
 
-  describe "POST /api/conversations/groups" do
-    test "returns 201 with 3 members including the creator", %{
-      conn: conn,
-      ana: ana,
-      carlos: carlos,
-      joao: joao
-    } do
-      conn =
-        post(conn, ~p"/api/conversations/groups", %{
-          "name" => "Time de Produto",
-          "member_ids" => [carlos.id, joao.id]
-        })
+      assert %{"conversation" => conversation} = json_response(conn, 201)
+      assert conversation["id"]
+      assert conversation["type"] == "private"
+      assert conversation["last_read_at"] == nil
 
-      assert %{"conversation" => group} = json_response(conn, 201)
-      assert group["id"]
-      assert group["type"] == "group"
-      assert group["name"] == "Time de Produto"
-      assert group["creator_id"] == ana.id
-      assert group["member_count"] == 3
-
-      member_ids = Enum.map(group["members"], & &1["id"])
-      assert Enum.sort(member_ids) == Enum.sort([ana.id, carlos.id, joao.id])
-      assert Enum.all?(group["members"], &Map.has_key?(&1, "username"))
+      assert conversation["counterpart"] == %{
+               "id" => carlos.id,
+               "username" => "carlos",
+               "name" => "Carlos Silva",
+               "last_seen_at" => nil
+             }
     end
 
-    test "seats the creator without them in member_ids", %{conn: conn, ana: ana, carlos: carlos} do
-      conn =
-        post(conn, ~p"/api/conversations/groups", %{
-          "name" => "Time",
-          "member_ids" => [carlos.id]
-        })
+    test "returns 200 and the same id on the second call", %{conn: conn, carlos: carlos} do
+      first = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+      id = json_response(first, 201)["conversation"]["id"]
 
-      member_ids = json_response(conn, 201)["conversation"]["members"] |> Enum.map(& &1["id"])
-      assert ana.id in member_ids
+      second = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+
+      assert json_response(second, 200)["conversation"]["id"] == id
+      assert Repo.aggregate(Conversation, :count) == 1
     end
 
-    test "returns 403 not_a_contact naming offenders, creating nothing", %{
-      conn: conn,
-      carlos: carlos
-    } do
-      stranger = insert(:user, username: "estranho")
+    test "two concurrent creates yield one conversation and no 500", %{ana: ana, carlos: carlos} do
+      parent = self()
 
-      conn =
-        post(conn, ~p"/api/conversations/groups", %{
-          "name" => "Time",
-          "member_ids" => [carlos.id, stranger.id]
-        })
+      tasks =
+        for _ <- 1..2 do
+          Task.async(fn ->
+            Sandbox.allow(Repo, parent, self())
 
-      assert %{"code" => "not_a_contact", "detail" => detail} = json_response(conn, 403)["errors"]
-      assert detail =~ "@estranho"
+            post(authenticate(json_conn(), ana), ~p"/api/conversations/private", %{
+              "user_id" => carlos.id
+            })
+          end)
+        end
+
+      responses = Task.await_many(tasks)
+
+      assert Enum.all?(responses, &(&1.status in [200, 201]))
+      ids = Enum.map(responses, &json_response(&1, &1.status)["conversation"]["id"])
+      assert [_single] = Enum.uniq(ids)
+      assert Repo.aggregate(Conversation, :count) == 1
+    end
+
+    test "returns 403 not_a_contact for a non-contact", %{conn: conn} do
+      stranger = insert(:user)
+
+      conn = post(conn, ~p"/api/conversations/private", %{"user_id" => stranger.id})
+
+      assert json_response(conn, 403)["errors"]["code"] == "not_a_contact"
       assert Repo.aggregate(Conversation, :count) == 0
     end
 
-    test "returns 422 for empty member_ids", %{conn: conn} do
-      conn =
-        post(conn, ~p"/api/conversations/groups", %{"name" => "Time", "member_ids" => []})
+    test "returns 404 user_not_found for an unknown id", %{conn: conn} do
+      conn = post(conn, ~p"/api/conversations/private", %{"user_id" => Ecto.UUID.generate()})
 
-      assert json_response(conn, 422)["errors"]["code"] == "validation_error"
+      assert json_response(conn, 404)["errors"]["code"] == "user_not_found"
+    end
+
+    test "returns 422 self_conversation for one's own id", %{conn: conn, ana: ana} do
+      conn = post(conn, ~p"/api/conversations/private", %{"user_id" => ana.id})
+
+      assert %{"code" => "self_conversation"} = errors = json_response(conn, 422)["errors"]
+      refute Map.has_key?(errors, "fields")
       assert Repo.aggregate(Conversation, :count) == 0
     end
 
-    test "returns 422 for a name outside 1..60", %{conn: conn, carlos: carlos} do
-      for name <- ["", String.duplicate("a", 61)] do
-        conn =
-          post(conn, ~p"/api/conversations/groups", %{
-            "name" => name,
-            "member_ids" => [carlos.id]
-          })
+    test "returns 422 validation_error when user_id is absent", %{conn: conn} do
+      conn = post(conn, ~p"/api/conversations/private", %{})
 
-        assert %{"code" => "validation_error", "fields" => fields} =
-                 json_response(conn, 422)["errors"]
+      assert %{"code" => "validation_error", "fields" => fields} =
+               json_response(conn, 422)["errors"]
 
-        assert fields["name"]
-      end
-
-      assert Repo.aggregate(Conversation, :count) == 0
-    end
-
-    test "no endpoint changes a group's name", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time de Produto", [carlos.id])
-
-      name = get(conn, ~p"/api/conversations/#{id}") |> json_response(200)
-      assert name["conversation"]["name"] == "Time de Produto"
+      assert fields["user_id"]
     end
   end
 
   describe "GET /api/conversations/:id" do
-    test "returns the group to a member with ordered members", %{
+    test "the recipient reads the conversation without the initiator as a contact", %{
       conn: conn,
-      carlos: carlos,
-      joao: joao
+      ana: ana,
+      carlos: carlos
     } do
-      id = create_group(conn, "Time", [carlos.id, joao.id])
+      created = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+      id = json_response(created, 201)["conversation"]["id"]
 
-      conn = get(conn, ~p"/api/conversations/#{id}")
+      # Carlos never added Ana back, yet reads the thread and sees Ana as the counterpart.
+      carlos_conn = get(authenticate(json_conn(), carlos), ~p"/api/conversations/#{id}")
 
-      assert %{"conversation" => group} = json_response(conn, 200)
-      assert group["member_count"] == 3
-      # Ana Beatriz, Carlos Eduardo, João Pedro — accent-folded ascending.
-      assert Enum.map(group["members"], & &1["name"]) ==
-               ["Ana Beatriz", "Carlos Eduardo", "João Pedro"]
+      assert %{"conversation" => conversation} = json_response(carlos_conn, 200)
+      assert conversation["counterpart"]["id"] == ana.id
+      assert conversation["counterpart"]["username"] == "anabeatriz"
     end
 
-    test "returns 404 to a non-member", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
-      outsider = insert(:user, username: "outsider")
+    test "returns 404 for a non-participant", %{conn: conn, carlos: carlos} do
+      created = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+      id = json_response(created, 201)["conversation"]["id"]
 
-      conn = get(authenticate(json_conn(), outsider), ~p"/api/conversations/#{id}")
+      outsider = insert(:user)
+      outsider_conn = get(authenticate(json_conn(), outsider), ~p"/api/conversations/#{id}")
 
-      assert json_response(conn, 404)["errors"]["code"] == "not_found"
+      assert json_response(outsider_conn, 404)["errors"]["code"] == "not_found"
+      refute outsider_conn.resp_body =~ "counterpart"
     end
 
-    test "returns 400 invalid_id for a non-UUID", %{conn: conn} do
-      conn = get(conn, ~p"/api/conversations/nope")
+    test "returns 400 invalid_id for a non-UUID id", %{conn: conn} do
+      conn = get(conn, ~p"/api/conversations/not-a-uuid")
+
       assert json_response(conn, 400)["errors"]["code"] == "invalid_id"
     end
   end
 
-  describe "POST /api/conversations/:id/members" do
-    test "lets the creator add a contact", %{conn: conn, carlos: carlos, joao: joao} do
-      id = create_group(conn, "Time", [carlos.id])
+  describe "contact lifecycle across conversations" do
+    test "stays readable after the contact is removed, but a new create is refused", %{ana: ana} do
+      ana_conn = authenticate(json_conn(), ana)
 
-      conn = post(conn, ~p"/api/conversations/#{id}/members", %{"member_ids" => [joao.id]})
-
-      member_ids = json_response(conn, 200)["conversation"]["members"] |> Enum.map(& &1["id"])
-      assert joao.id in member_ids
-    end
-
-    test "returns 403 not_group_creator for a member", %{conn: conn, carlos: carlos, joao: joao} do
-      id = create_group(conn, "Time", [carlos.id])
-      insert(:contact, owner: carlos, user: joao)
-
-      conn =
-        post(authenticate(json_conn(), carlos), ~p"/api/conversations/#{id}/members", %{
-          "member_ids" => [joao.id]
+      registration =
+        post(json_conn(), ~p"/api/auth/register", %{
+          "username" => "diego",
+          "name" => "Diego Ramos",
+          "password" => "senha123456"
         })
 
-      assert json_response(conn, 403)["errors"]["code"] == "not_group_creator"
-    end
+      diego = json_response(registration, 201)["user"]
 
-    test "returns 409 already_member", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
+      added = post(ana_conn, ~p"/api/contacts", %{"username" => diego["username"]})
+      assert json_response(added, 201)
 
-      conn = post(conn, ~p"/api/conversations/#{id}/members", %{"member_ids" => [carlos.id]})
+      created = post(ana_conn, ~p"/api/conversations/private", %{"user_id" => diego["id"]})
+      conversation_id = json_response(created, 201)["conversation"]["id"]
 
-      assert json_response(conn, 409)["errors"]["code"] == "already_member"
-    end
+      contact_id = json_response(added, 201)["contact"]["id"]
+      assert response(delete(ana_conn, ~p"/api/contacts/#{contact_id}"), 204)
 
-    test "re-adds a departed member with a cleared left_at", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
-      assert response(delete(conn, ~p"/api/conversations/#{id}/members/#{carlos.id}"), 204)
+      # The existing thread still reads...
+      still_readable = get(ana_conn, ~p"/api/conversations/#{conversation_id}")
+      assert json_response(still_readable, 200)["conversation"]["id"] == conversation_id
 
-      conn = post(conn, ~p"/api/conversations/#{id}/members", %{"member_ids" => [carlos.id]})
-
-      member_ids = json_response(conn, 200)["conversation"]["members"] |> Enum.map(& &1["id"])
-      assert carlos.id in member_ids
-    end
-  end
-
-  describe "DELETE /api/conversations/:id/members/:user_id" do
-    test "removes a member", %{conn: conn, carlos: carlos, joao: joao} do
-      id = create_group(conn, "Time", [carlos.id, joao.id])
-
-      assert response(delete(conn, ~p"/api/conversations/#{id}/members/#{joao.id}"), 204) == ""
-
-      members = get(conn, ~p"/api/conversations/#{id}") |> json_response(200)
-      member_ids = Enum.map(members["conversation"]["members"], & &1["id"])
-      refute joao.id in member_ids
-    end
-
-    test "rejects a non-creator", %{conn: conn, carlos: carlos, joao: joao} do
-      id = create_group(conn, "Time", [carlos.id, joao.id])
-
-      conn =
-        delete(authenticate(json_conn(), carlos), ~p"/api/conversations/#{id}/members/#{joao.id}")
-
-      assert json_response(conn, 403)["errors"]["code"] == "not_group_creator"
-    end
-
-    test "rejects the creator's own id", %{conn: conn, ana: ana, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
-
-      conn = delete(conn, ~p"/api/conversations/#{id}/members/#{ana.id}")
-
-      assert json_response(conn, 422)["errors"]["code"] == "cannot_remove_self"
+      # ...but a fresh create is now refused.
+      refused = post(ana_conn, ~p"/api/conversations/private", %{"user_id" => diego["id"]})
+      assert json_response(refused, 403)["errors"]["code"] == "not_a_contact"
+      assert Repo.aggregate(Conversation, :count) == 1
     end
   end
 
-  describe "DELETE /api/conversations/:id/members/me" do
-    test "lets a member leave", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
+  describe "authentication and leakage" do
+    test "both routes require authentication", %{ana: ana, carlos: carlos} do
+      no_token = json_conn()
+      forged = put_req_header(json_conn(), "authorization", "Bearer not-a-real-token")
 
-      carlos_conn = authenticate(json_conn(), carlos)
-      assert response(delete(carlos_conn, ~p"/api/conversations/#{id}/members/me"), 204) == ""
+      for conn <- [no_token, forged] do
+        create = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+        assert json_response(create, 401)["errors"]["code"] == "unauthenticated"
 
-      assert json_response(get(carlos_conn, ~p"/api/conversations/#{id}"), 404)
+        show = get(conn, ~p"/api/conversations/#{Ecto.UUID.generate()}")
+        assert json_response(show, 401)["errors"]["code"] == "unauthenticated"
+      end
+
+      assert Repo.aggregate(Conversation, :count) == 0
+      # A well-formed token for a real user proves the fixtures are otherwise valid.
+      assert {:ok, _token, _} = Guardian.issue_token(ana)
     end
 
-    test "returns 422 last_member for the sole member", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
-
-      assert response(
-               delete(authenticate(json_conn(), carlos), ~p"/api/conversations/#{id}/members/me"),
-               204
-             )
-
-      conn = delete(conn, ~p"/api/conversations/#{id}/members/me")
-
-      assert json_response(conn, 422)["errors"]["code"] == "last_member"
-    end
-  end
-
-  describe "authentication" do
-    test "every conversation route requires a valid token", %{conn: conn, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
-      anon = json_conn()
-
-      assert json_response(post(anon, ~p"/api/conversations/groups", %{}), 401)
-      assert json_response(get(anon, ~p"/api/conversations/#{id}"), 401)
-      assert json_response(post(anon, ~p"/api/conversations/#{id}/members", %{}), 401)
-      assert json_response(delete(anon, ~p"/api/conversations/#{id}/members/me"), 401)
-      assert json_response(delete(anon, ~p"/api/conversations/#{id}/members/#{carlos.id}"), 401)
-    end
-  end
-
-  describe "credential leakage" do
-    test "no group response exposes a password hash", %{conn: conn, ana: ana, carlos: carlos} do
-      id = create_group(conn, "Time", [carlos.id])
-
-      created =
-        post(conn, ~p"/api/conversations/groups", %{
-          "name" => "Outro",
-          "member_ids" => [carlos.id]
-        })
-
+    test "no conversation response exposes a password hash", %{
+      conn: conn,
+      ana: ana,
+      carlos: carlos
+    } do
+      created = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+      id = json_response(created, 201)["conversation"]["id"]
       shown = get(conn, ~p"/api/conversations/#{id}")
 
       for response <- [created, shown] do
@@ -269,44 +200,9 @@ defmodule ApiWeb.ConversationControllerTest do
     end
   end
 
-  describe "cross-feature integration with contacts" do
-    test "a contact added through the contacts endpoint is accepted while a non-contact fails" do
-      caller = insert(:user, username: "caller", name: "Caller")
-      contact = insert(:user, username: "aceito", name: "Aceito")
-      stranger = insert(:user, username: "recusado", name: "Recusado")
-
-      conn = authenticate(json_conn(), caller)
-
-      assert json_response(post(conn, ~p"/api/contacts", %{"username" => "aceito"}), 201)
-
-      # A non-contact in the same array fails the whole creation.
-      rejected =
-        post(conn, ~p"/api/conversations/groups", %{
-          "name" => "Time",
-          "member_ids" => [contact.id, stranger.id]
-        })
-
-      assert %{"code" => "not_a_contact", "detail" => detail} =
-               json_response(rejected, 403)["errors"]
-
-      assert detail =~ "@recusado"
-      assert Repo.aggregate(Conversation, :count) == 0
-
-      # The contact alone succeeds.
-      accepted =
-        post(conn, ~p"/api/conversations/groups", %{
-          "name" => "Time",
-          "member_ids" => [contact.id]
-        })
-
-      assert %{"conversation" => group} = json_response(accepted, 201)
-      member_ids = Enum.map(group["members"], & &1["id"])
-      assert Enum.sort(member_ids) == Enum.sort([caller.id, contact.id])
-    end
-  end
-
   defp authenticate(conn, user) do
     {:ok, token, _expires_at} = Guardian.issue_token(user)
+
     put_req_header(conn, "authorization", "Bearer #{token}")
   end
 end

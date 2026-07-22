@@ -30,6 +30,7 @@ defmodule ApiWeb.Router do
     get "/contacts", ContactController, :index
     delete "/contacts/:id", ContactController, :delete
 
+    post "/conversations/private", ConversationController, :create_private
     post "/conversations/groups", ConversationController, :create_group
     get "/conversations/:id", ConversationController, :show
     post "/conversations/:id/members", ConversationController, :add_members

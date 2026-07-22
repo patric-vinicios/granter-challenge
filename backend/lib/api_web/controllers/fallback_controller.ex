@@ -54,7 +54,10 @@ defmodule ApiWeb.FallbackController do
       {:unprocessable_entity, "contact_limit_reached",
        "You have reached the maximum of 500 contacts"},
     not_a_contact:
-      {:forbidden, "not_a_contact", "You can only add users from your contacts to a group"},
+      {:forbidden, "not_a_contact", "You can only start conversations with your contacts"},
+    self_conversation:
+      {:unprocessable_entity, "self_conversation",
+       "You cannot start a conversation with yourself"},
     not_group_creator:
       {:forbidden, "not_group_creator", "Only the group creator can manage members"},
     already_member: {:conflict, "already_member", "This user is already a member of the group"},

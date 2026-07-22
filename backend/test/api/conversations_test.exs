@@ -3,11 +3,216 @@ defmodule Api.ConversationsTest do
 
   import Ecto.Query
 
+  alias Api.Contacts
+  alias Api.Contacts.Contact
   alias Api.Conversations
   alias Api.Conversations.Conversation
-  alias Api.Conversations.ConversationParticipant
+  alias Api.Conversations.Participant
 
-  # A creator with two contacts, the common starting point for a group.
+  describe "create_private_conversation/2" do
+    setup do
+      caller = insert(:user, username: "anabeatriz", name: "Ana Beatriz")
+      target = insert(:user, username: "carlos", name: "Carlos Silva")
+      insert(:contact, owner: caller, user: target)
+
+      %{caller: caller, target: target}
+    end
+
+    test "creates a conversation and two participants", %{caller: caller, target: target} do
+      assert {:ok, :created, conversation} =
+               Conversations.create_private_conversation(caller, target.id)
+
+      assert conversation.type == :private
+      assert conversation.participant_key == Enum.join(Enum.sort([caller.id, target.id]), ":")
+      assert [_, _] = conversation.participants
+      assert Enum.all?(conversation.participants, &match?(%{user: %{id: _}}, &1))
+      assert Repo.aggregate(Conversation, :count) == 1
+      assert Repo.aggregate(Participant, :count) == 2
+    end
+
+    test "returns the existing conversation on a second call", %{caller: caller, target: target} do
+      assert {:ok, :created, first} = Conversations.create_private_conversation(caller, target.id)
+
+      assert {:ok, :existing, second} =
+               Conversations.create_private_conversation(caller, target.id)
+
+      assert second.id == first.id
+      assert Repo.aggregate(Conversation, :count) == 1
+      assert Repo.aggregate(Participant, :count) == 2
+    end
+
+    test "is symmetric across the pair", %{caller: caller, target: target} do
+      # The target must have the initiator as a contact to open it from their side.
+      insert(:contact, owner: target, user: caller)
+
+      assert {:ok, :created, opened} =
+               Conversations.create_private_conversation(caller, target.id)
+
+      assert {:ok, :existing, reopened} =
+               Conversations.create_private_conversation(target, caller.id)
+
+      assert reopened.id == opened.id
+      assert Repo.aggregate(Conversation, :count) == 1
+    end
+
+    test "rejects a non-contact", %{caller: caller} do
+      stranger = insert(:user)
+
+      assert {:error, :not_a_contact} =
+               Conversations.create_private_conversation(caller, stranger.id)
+
+      assert Repo.aggregate(Conversation, :count) == 0
+      assert Repo.aggregate(Participant, :count) == 0
+    end
+
+    test "rejects self before the contact rule", %{caller: caller} do
+      assert {:error, :self_conversation} =
+               Conversations.create_private_conversation(caller, caller.id)
+
+      assert Repo.aggregate(Conversation, :count) == 0
+    end
+
+    test "returns :user_not_found for an unknown or non-UUID id", %{caller: caller} do
+      for id <- [Ecto.UUID.generate(), "not-a-uuid"] do
+        assert {:error, :user_not_found} =
+                 Conversations.create_private_conversation(caller, id)
+      end
+
+      assert Repo.aggregate(Conversation, :count) == 0
+    end
+
+    test "a concurrent duplicate raced past the pre-check is a caught error", %{
+      caller: caller,
+      target: target
+    } do
+      key = Enum.join(Enum.sort([caller.id, target.id]), ":")
+
+      assert {:ok, _} = %Conversation{} |> Conversation.private_changeset(key) |> Repo.insert()
+
+      assert {:error, %Ecto.Changeset{}} =
+               %Conversation{} |> Conversation.private_changeset(key) |> Repo.insert()
+    end
+
+    test "creation is transactional", %{caller: caller, target: target} do
+      # Replicate the context's multi but force the second participant insert to
+      # collide on (conversation_id, user_id), so the whole write must roll back.
+      key = Enum.join(Enum.sort([caller.id, target.id]), ":")
+      now = DateTime.utc_now()
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.insert(:conversation, Conversation.private_changeset(%Conversation{}, key))
+        |> Ecto.Multi.insert(:first, &member(&1.conversation, caller, now))
+        |> Ecto.Multi.insert(:second, &member(&1.conversation, caller, now))
+
+      assert {:error, :second, %Ecto.Changeset{}, _} = Repo.transaction(multi)
+      assert Repo.aggregate(Conversation, :count) == 0
+      assert Repo.aggregate(Participant, :count) == 0
+    end
+
+    test "returns :not_a_contact after the contact is removed", %{
+      caller: caller,
+      target: target
+    } do
+      assert {:ok, :created, _} = Conversations.create_private_conversation(caller, target.id)
+
+      pair = Repo.get_by!(Contact, owner_id: caller.id, contact_user_id: target.id)
+      Repo.delete!(pair)
+
+      assert {:error, :not_a_contact} =
+               Conversations.create_private_conversation(caller, target.id)
+
+      assert Repo.aggregate(Conversation, :count) == 1
+    end
+  end
+
+  describe "get_conversation/2" do
+    setup do
+      caller = insert(:user)
+      target = insert(:user)
+      insert(:contact, owner: caller, user: target)
+      {:ok, :created, conversation} = Conversations.create_private_conversation(caller, target.id)
+
+      %{caller: caller, target: target, conversation: conversation}
+    end
+
+    test "returns the conversation with both participants for a participant", %{
+      caller: caller,
+      target: target,
+      conversation: conversation
+    } do
+      assert {:ok, read} = Conversations.get_conversation(caller, conversation.id)
+
+      assert read.id == conversation.id
+
+      participant_ids = Enum.map(read.participants, & &1.user_id)
+      assert Enum.sort(participant_ids) == Enum.sort([caller.id, target.id])
+      assert Enum.all?(read.participants, &match?(%{user: %{id: _}}, &1))
+    end
+
+    test "the target participates without adding the initiator back", %{
+      caller: caller,
+      target: target,
+      conversation: conversation
+    } do
+      refute Contacts.contact?(target, caller)
+      assert Conversations.participant?(conversation, target)
+      assert {:ok, _} = Conversations.get_conversation(target, conversation.id)
+    end
+
+    test "returns :not_found for a non-participant", %{conversation: conversation} do
+      outsider = insert(:user)
+
+      assert {:error, :not_found} = Conversations.get_conversation(outsider, conversation.id)
+    end
+
+    test "returns :not_found for a well-formed but unknown id", %{caller: caller} do
+      assert {:error, :not_found} =
+               Conversations.get_conversation(caller, Ecto.UUID.generate())
+    end
+
+    test "returns :invalid_id for a non-UUID id", %{caller: caller} do
+      for id <- ["not-a-uuid", ""] do
+        assert {:error, :invalid_id} = Conversations.get_conversation(caller, id)
+      end
+    end
+
+    test "still returns after the initiator removes the contact", %{
+      caller: caller,
+      target: target,
+      conversation: conversation
+    } do
+      pair = Repo.get_by!(Api.Contacts.Contact, owner_id: caller.id, contact_user_id: target.id)
+      Repo.delete!(pair)
+
+      assert {:ok, read} = Conversations.get_conversation(caller, conversation.id)
+      assert read.id == conversation.id
+    end
+  end
+
+  describe "participant?/2" do
+    test "is true only for an active member" do
+      caller = insert(:user)
+      target = insert(:user)
+      conversation = private_conversation(caller, target)
+      outsider = insert(:user)
+
+      departed = insert(:user)
+
+      insert(:participant,
+        conversation: conversation,
+        user: departed,
+        left_at: DateTime.utc_now()
+      )
+
+      assert Conversations.participant?(conversation, caller)
+      assert Conversations.participant?(conversation.id, target.id)
+      refute Conversations.participant?(conversation, outsider)
+      refute Conversations.participant?(conversation, departed)
+    end
+  end
+
+  # A creator with a number of contacts, the common starting point for a group.
   defp creator_with_contacts(count \\ 2) do
     creator = insert(:user, username: "creator", name: "Creator")
 
@@ -22,7 +227,7 @@ defmodule Api.ConversationsTest do
   end
 
   defp active_ids(conversation_id) do
-    ConversationParticipant
+    Participant
     |> where([p], p.conversation_id == ^conversation_id and is_nil(p.left_at))
     |> select([p], p.user_id)
     |> Repo.all()
@@ -56,7 +261,7 @@ defmodule Api.ConversationsTest do
       assert MapSet.equal?(active_ids(group.id), MapSet.new([creator.id, c1.id]))
 
       assert Repo.aggregate(
-               from(p in ConversationParticipant, where: p.user_id == ^creator.id),
+               from(p in Participant, where: p.user_id == ^creator.id),
                :count
              ) == 1
     end
@@ -67,7 +272,7 @@ defmodule Api.ConversationsTest do
       assert {:ok, group} = Conversations.create_group(creator, "Time", [c1.id, c1.id])
 
       assert Repo.aggregate(
-               from(p in ConversationParticipant,
+               from(p in Participant,
                  where: p.conversation_id == ^group.id and p.user_id == ^c1.id
                ),
                :count
@@ -83,15 +288,14 @@ defmodule Api.ConversationsTest do
 
       assert detail =~ "@stranger"
       refute detail =~ "@contact1"
-      assert Repo.aggregate(Conversation, :count) == 0
-      assert Repo.aggregate(ConversationParticipant, :count) == 0
+      assert Repo.aggregate(from(c in Conversation, where: c.type == :group), :count) == 0
     end
 
     test "rejects an empty member set" do
       {creator, _} = creator_with_contacts()
 
       assert {:error, %Ecto.Changeset{}} = Conversations.create_group(creator, "Time", [])
-      assert Repo.aggregate(Conversation, :count) == 0
+      assert Repo.aggregate(from(c in Conversation, where: c.type == :group), :count) == 0
     end
 
     test "rejects a member set that is empty after stripping the creator" do
@@ -101,7 +305,7 @@ defmodule Api.ConversationsTest do
                Conversations.create_group(creator, "Time", [creator.id])
 
       assert %{member_ids: [_ | _]} = errors_on(changeset)
-      assert Repo.aggregate(Conversation, :count) == 0
+      assert Repo.aggregate(from(c in Conversation, where: c.type == :group), :count) == 0
     end
 
     test "rejects a name outside 1..60" do
@@ -114,7 +318,7 @@ defmodule Api.ConversationsTest do
         assert %{name: [_ | _]} = errors_on(changeset)
       end
 
-      assert Repo.aggregate(Conversation, :count) == 0
+      assert Repo.aggregate(from(c in Conversation, where: c.type == :group), :count) == 0
     end
 
     test "trims the name before validating it" do
@@ -138,7 +342,7 @@ defmodule Api.ConversationsTest do
                Conversations.create_group(creator, "Huge", ids)
 
       assert %{member_ids: [_ | _]} = errors_on(changeset)
-      assert Repo.aggregate(Conversation, :count) == 0
+      assert Repo.aggregate(from(c in Conversation, where: c.type == :group), :count) == 0
     end
 
     test "rejects a non-UUID member id as a validation error" do
@@ -151,7 +355,7 @@ defmodule Api.ConversationsTest do
     end
   end
 
-  describe "get_for_user/2" do
+  describe "get_conversation/2 for a group" do
     test "returns a group to an active member with members preloaded and ordered" do
       creator = insert(:user, username: "creator", name: "Ana")
       zoe = insert(:user, username: "zoe", name: "Zoe")
@@ -160,7 +364,7 @@ defmodule Api.ConversationsTest do
 
       {:ok, group} = Conversations.create_group(creator, "Time", [zoe.id, alvaro.id])
 
-      assert {:ok, loaded} = Conversations.get_for_user(creator, group.id)
+      assert {:ok, loaded} = Conversations.get_conversation(creator, group.id)
       assert loaded.creator.id == creator.id
       assert Enum.map(loaded.participants, & &1.user.name) == ["Álvaro", "Ana", "Zoe"]
     end
@@ -169,7 +373,7 @@ defmodule Api.ConversationsTest do
       group = insert(:group)
       outsider = insert(:user, username: "outsider")
 
-      assert {:error, :not_found} = Conversations.get_for_user(outsider, group.id)
+      assert {:error, :not_found} = Conversations.get_conversation(outsider, group.id)
     end
 
     test "returns :not_found to a departed member" do
@@ -178,12 +382,7 @@ defmodule Api.ConversationsTest do
 
       :ok = Conversations.remove_member(creator, group.id, c1.id)
 
-      assert {:error, :not_found} = Conversations.get_for_user(c1, group.id)
-    end
-
-    test "returns :invalid_id for a non-UUID id" do
-      user = insert(:user)
-      assert {:error, :invalid_id} = Conversations.get_for_user(user, "nope")
+      assert {:error, :not_found} = Conversations.get_conversation(c1, group.id)
     end
   end
 
@@ -201,14 +400,12 @@ defmodule Api.ConversationsTest do
       {creator, [c1, _c2]} = creator_with_contacts()
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id])
 
-      original = Repo.get_by!(ConversationParticipant, conversation_id: group.id, user_id: c1.id)
+      original = Repo.get_by!(Participant, conversation_id: group.id, user_id: c1.id)
       :ok = Conversations.remove_member(creator, group.id, c1.id)
 
       assert {:ok, _} = Conversations.add_members(creator, group.id, [c1.id])
 
-      reactivated =
-        Repo.get_by!(ConversationParticipant, conversation_id: group.id, user_id: c1.id)
-
+      reactivated = Repo.get_by!(Participant, conversation_id: group.id, user_id: c1.id)
       assert reactivated.id == original.id
       assert is_nil(reactivated.left_at)
       assert DateTime.compare(reactivated.joined_at, original.joined_at) in [:gt, :eq]
@@ -253,7 +450,7 @@ defmodule Api.ConversationsTest do
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id, c2.id])
 
       assert :ok = Conversations.remove_member(creator, group.id, c2.id)
-      refute Conversations.active_participant?(group.id, c2.id)
+      refute Conversations.participant?(group.id, c2.id)
       assert MapSet.equal?(active_ids(group.id), MapSet.new([creator.id, c1.id]))
     end
 
@@ -262,7 +459,7 @@ defmodule Api.ConversationsTest do
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id, c2.id])
 
       assert {:error, :not_group_creator} = Conversations.remove_member(c1, group.id, c2.id)
-      assert Conversations.active_participant?(group.id, c2.id)
+      assert Conversations.participant?(group.id, c2.id)
     end
 
     test "rejects the creator targeting themselves" do
@@ -272,7 +469,7 @@ defmodule Api.ConversationsTest do
       assert {:error, :cannot_remove_self} =
                Conversations.remove_member(creator, group.id, creator.id)
 
-      assert Conversations.active_participant?(group.id, creator.id)
+      assert Conversations.participant?(group.id, creator.id)
     end
 
     test "returns :not_found for a non-member target" do
@@ -297,7 +494,7 @@ defmodule Api.ConversationsTest do
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id])
 
       assert :ok = Conversations.leave(c1, group.id)
-      refute Conversations.active_participant?(group.id, c1.id)
+      refute Conversations.participant?(group.id, c1.id)
     end
 
     test "lets the creator leave while others remain, keeping creator_id" do
@@ -319,7 +516,7 @@ defmodule Api.ConversationsTest do
       :ok = Conversations.leave(c1, group.id)
 
       assert {:error, :last_member} = Conversations.leave(creator, group.id)
-      assert Conversations.active_participant?(group.id, creator.id)
+      assert Conversations.participant?(group.id, creator.id)
     end
 
     test "rejects a non-member" do
@@ -330,24 +527,29 @@ defmodule Api.ConversationsTest do
     end
   end
 
-  describe "active_participant?/2" do
-    test "is true only for an active member" do
+  describe "participant?/2 in a group" do
+    test "is true only for an active group member" do
       {creator, [c1, c2]} = creator_with_contacts()
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id, c2.id])
       :ok = Conversations.remove_member(creator, group.id, c2.id)
       outsider = insert(:user, username: "outsider")
 
-      assert Conversations.active_participant?(group.id, c1.id)
-      refute Conversations.active_participant?(group.id, c2.id)
-      refute Conversations.active_participant?(group.id, outsider.id)
+      assert Conversations.participant?(group.id, c1.id)
+      refute Conversations.participant?(group.id, c2.id)
+      refute Conversations.participant?(group.id, outsider.id)
     end
 
     test "accepts records as well as ids, and a bad id is simply not a member" do
       {creator, [c1, _c2]} = creator_with_contacts()
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id])
 
-      assert Conversations.active_participant?(group, creator)
-      refute Conversations.active_participant?(group.id, "nope")
+      assert Conversations.participant?(group, creator)
+      refute Conversations.participant?(group.id, "nope")
     end
+  end
+
+  defp member(conversation, user, joined_at) do
+    %Participant{conversation_id: conversation.id, user_id: user.id}
+    |> Participant.changeset(%{joined_at: joined_at})
   end
 end
