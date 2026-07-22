@@ -89,6 +89,19 @@ defmodule Api.Factory do
   end
 
   @doc """
+  One message. The conversation and the sender are built by default, so a bare
+  `insert(:message)` is valid, and either takes an override:
+  `insert(:message, conversation: thread, sender: ana)`.
+  """
+  def message_factory do
+    %Api.Messages.Message{
+      conversation: build(:conversation),
+      sender: build(:user),
+      body: sequence(:body, &"message #{&1}")
+    }
+  end
+
+  @doc """
   A persisted group with its creator seated as an active member, so a bare
   `insert(:group)` is immediately valid. Override the name or creator inline:
   `insert(:group, creator: ana)`.
