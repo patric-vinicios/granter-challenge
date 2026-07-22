@@ -25,9 +25,8 @@ defmodule ApiWeb.ContactController do
     end
   end
 
-  def index(conn, _params) do
-    render(conn, :index, contacts: Contacts.list_contacts(conn.assigns.current_user))
-  end
+  def index(conn, _params),
+    do: render(conn, :index, contacts: Contacts.list_contacts(conn.assigns.current_user))
 
   def delete(conn, %{"id" => id}) do
     with :ok <- Contacts.delete_contact(conn.assigns.current_user, id) do

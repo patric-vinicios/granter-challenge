@@ -24,7 +24,6 @@ defmodule Api.Health do
       {:error, reason} -> {:error, reason}
     end
   rescue
-    # A probe that raises would turn an unavailable database into a bare 500.
     error -> {:error, error}
   catch
     :exit, reason -> {:error, reason}

@@ -32,8 +32,6 @@ defmodule Api.Accounts.Guardian do
 
   @impl Guardian
   def resource_from_claims(%{"sub" => id}) do
-    # A token outliving its user is a valid signature over a subject that no
-    # longer exists; refusing it here keeps a nil resource out of the assign.
     case Accounts.get_user(id) do
       nil -> {:error, :resource_not_found}
       user -> {:ok, user}

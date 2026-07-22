@@ -36,9 +36,7 @@ defmodule ApiWeb.AuthController do
     end
   end
 
-  def me(conn, _params) do
-    render(conn, :show, user: conn.assigns.current_user)
-  end
+  def me(conn, _params), do: render(conn, :show, user: conn.assigns.current_user)
 
   # A missing field is a malformed request, not a failed login: answering
   # invalid_credentials there would tell a client its own bug looks like a

@@ -259,8 +259,6 @@ defmodule Api.ContactsTest do
     |> Repo.insert()
   end
 
-  # One statement rather than 500 inserts: the boundary is what the test is
-  # about, and reaching it through the context would pay 500 round trips.
   defp fill_contact_list(owner, count) do
     now = DateTime.utc_now()
 

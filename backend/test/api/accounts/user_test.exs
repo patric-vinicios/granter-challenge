@@ -9,9 +9,8 @@ defmodule Api.Accounts.UserTest do
     "password" => "senha123456"
   }
 
-  defp changeset(overrides \\ %{}) do
-    User.registration_changeset(%User{}, Map.merge(@valid_attrs, overrides))
-  end
+  defp changeset(overrides \\ %{}),
+    do: User.registration_changeset(%User{}, Map.merge(@valid_attrs, overrides))
 
   describe "registration_changeset/2" do
     test "accepts a valid username, name and password" do

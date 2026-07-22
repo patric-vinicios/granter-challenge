@@ -10,7 +10,6 @@ defmodule Api.Repo.Migrations.CreateUsers do
       add :username, :citext, null: false
       add :name, :string, size: 60, null: false
       add :hashed_password, :string, null: false
-      # Written by presence tracking; null until the user's first disconnect.
       add :last_seen_at, :utc_datetime_usec
 
       timestamps(type: :utc_datetime_usec)

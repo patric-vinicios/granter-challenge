@@ -21,8 +21,6 @@ defmodule Api.AccountsTest do
     end
 
     test "rejects a duplicate username case-insensitively" do
-      # Inserted around the changeset so the stored value differs in case from
-      # the one registered below: uniqueness is the citext column's job.
       insert(:user, username: "AnaBeatriz")
 
       assert {:error, changeset} = Accounts.register_user(@valid_attrs)

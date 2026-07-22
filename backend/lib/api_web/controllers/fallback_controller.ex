@@ -67,13 +67,10 @@ defmodule ApiWeb.FallbackController do
   overrides the default message for a failure that needs to say something
   specific.
   """
-  def call(conn, {:error, reason}) when is_atom(reason) do
-    render_error(conn, reason, nil)
-  end
+  def call(conn, {:error, reason}) when is_atom(reason), do: render_error(conn, reason, nil)
 
-  def call(conn, {:error, reason, detail}) when is_atom(reason) and is_binary(detail) do
-    render_error(conn, reason, detail)
-  end
+  def call(conn, {:error, reason, detail}) when is_atom(reason) and is_binary(detail),
+    do: render_error(conn, reason, detail)
 
   defp render_error(conn, reason, detail) do
     {status, code, default_detail} = error_for(reason)
