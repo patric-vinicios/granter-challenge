@@ -5,6 +5,13 @@ defmodule ApiWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Everything from the contacts feature onward runs through here, so the
+  # actions behind it can read conn.assigns.current_user unconditionally.
+  pipeline :authenticated do
+    plug :accepts, ["json"]
+    plug ApiWeb.AuthPipeline
+  end
+
   scope "/api", ApiWeb do
     pipe_through :api
 

@@ -6,6 +6,10 @@ defmodule ApiWeb.FallbackController do
   end an action with `{:error, :not_found}` and carry no rendering logic of
   its own. Statuses render back through `ApiWeb.ErrorJSON`, which keeps one
   status-to-code table for the whole API.
+
+  Domain reasons that need their own machine code at a status that already has
+  a generic one are registered in the reason table below, which is where every
+  such code in the API is declared.
   """
 
   use ApiWeb, :controller
@@ -24,6 +28,18 @@ defmodule ApiWeb.FallbackController do
     token_expired: :unauthorized
   }
 
+  # Reasons that need a code of their own at a status that already has a
+  # generic one. An expired token and a missing header are both 401, yet the
+  # client prompts for re-login on the first and treats the second as a bug.
+  # Consulted before @statuses; anything absent still renders by status.
+  @reasons %{
+    invalid_credentials: {:unauthorized, "invalid_credentials", "Invalid username or password"},
+    unauthenticated:
+      {:unauthorized, "unauthenticated", "Missing or invalid authentication token"},
+    token_expired:
+      {:unauthorized, "token_expired", "Your session has expired, please log in again"}
+  }
+
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)
@@ -37,21 +53,30 @@ defmodule ApiWeb.FallbackController do
   specific.
   """
   def call(conn, {:error, reason}) when is_atom(reason) do
-    render_error(conn, status_for(reason), nil)
+    render_error(conn, reason, nil)
   end
 
   def call(conn, {:error, reason, detail}) when is_atom(reason) and is_binary(detail) do
-    render_error(conn, status_for(reason), detail)
+    render_error(conn, reason, detail)
   end
 
-  defp status_for(reason), do: Map.get(@statuses, reason, :internal_server_error)
-
-  defp render_error(conn, status, detail) do
-    code = Status.code(status)
-    {error_code, default_detail} = ApiWeb.ErrorJSON.error_for(code)
+  defp render_error(conn, reason, detail) do
+    {status, code, default_detail} = error_for(reason)
 
     conn
     |> put_status(status)
-    |> json(%{errors: %{code: error_code, detail: detail || default_detail}})
+    |> json(%{errors: %{code: code, detail: detail || default_detail}})
+  end
+
+  defp error_for(reason) do
+    case Map.fetch(@reasons, reason) do
+      {:ok, entry} ->
+        entry
+
+      :error ->
+        status = Map.get(@statuses, reason, :internal_server_error)
+        {code, detail} = status |> Status.code() |> ApiWeb.ErrorJSON.error_for()
+        {status, code, detail}
+    end
   end
 end

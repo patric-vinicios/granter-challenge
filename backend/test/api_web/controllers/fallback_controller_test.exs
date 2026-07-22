@@ -41,13 +41,24 @@ defmodule ApiWeb.FallbackControllerTest do
       assert body(conn)["errors"]["code"] == "conflict"
     end
 
-    test "translates the authentication reasons to 401" do
-      for reason <- [:unauthenticated, :token_expired] do
+    test "translates the authentication reasons to 401, each with its own code" do
+      for {reason, code} <- [unauthenticated: "unauthenticated", token_expired: "token_expired"] do
         conn = FallbackController.call(conn_for_fallback(), {:error, reason})
 
         assert conn.status == 401
-        assert body(conn)["errors"]["code"] == "unauthenticated"
+        assert body(conn)["errors"]["code"] == code
       end
+    end
+
+    test "translates :invalid_credentials to 401 with its own code" do
+      conn = FallbackController.call(conn_for_fallback(), {:error, :invalid_credentials})
+
+      assert conn.status == 401
+
+      assert body(conn)["errors"] == %{
+               "code" => "invalid_credentials",
+               "detail" => "Invalid username or password"
+             }
     end
 
     test "translates :rate_limited to 429" do
@@ -79,6 +90,21 @@ defmodule ApiWeb.FallbackControllerTest do
       assert body(conn)["errors"] == %{
                "code" => "conflict",
                "detail" => "You are already a member of this group"
+             }
+    end
+
+    test "an explicit detail still overrides a reason-table default" do
+      conn =
+        FallbackController.call(
+          conn_for_fallback(),
+          {:error, :invalid_credentials, "That account is disabled"}
+        )
+
+      assert conn.status == 401
+
+      assert body(conn)["errors"] == %{
+               "code" => "invalid_credentials",
+               "detail" => "That account is disabled"
              }
     end
   end
