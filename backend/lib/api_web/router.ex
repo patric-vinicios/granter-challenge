@@ -25,6 +25,10 @@ defmodule ApiWeb.Router do
     pipe_through :authenticated
 
     get "/auth/me", AuthController, :me
+
+    post "/contacts", ContactController, :create
+    get "/contacts", ContactController, :index
+    delete "/contacts/:id", ContactController, :delete
   end
 
   if Application.compile_env(:api, :dev_routes) do

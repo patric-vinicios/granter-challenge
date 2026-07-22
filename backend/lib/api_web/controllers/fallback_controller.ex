@@ -32,12 +32,27 @@ defmodule ApiWeb.FallbackController do
   # generic one. An expired token and a missing header are both 401, yet the
   # client prompts for re-login on the first and treats the second as a bug.
   # Consulted before @statuses; anything absent still renders by status.
+  #
+  # The 422 entries carry no `fields` key on purpose: they are not field
+  # validation failures, and a client branches on `code`, never on the shape of
+  # the body. `invalid_id` is the API-wide answer to a path segment that fails a
+  # UUID cast — a value that cannot name a row, so 400 reports a malformed
+  # request and discloses nothing a 404 would have hidden.
   @reasons %{
     invalid_credentials: {:unauthorized, "invalid_credentials", "Invalid username or password"},
     unauthenticated:
       {:unauthorized, "unauthenticated", "Missing or invalid authentication token"},
     token_expired:
-      {:unauthorized, "token_expired", "Your session has expired, please log in again"}
+      {:unauthorized, "token_expired", "Your session has expired, please log in again"},
+    invalid_id: {:bad_request, "invalid_id", "The provided id is not a valid identifier"},
+    user_not_found:
+      {:not_found, "user_not_found", "No user with that @username exists in the system"},
+    contact_already_exists:
+      {:conflict, "contact_already_exists", "This user is already in your contacts"},
+    self_contact: {:unprocessable_entity, "self_contact", "You cannot add yourself as a contact"},
+    contact_limit_reached:
+      {:unprocessable_entity, "contact_limit_reached",
+       "You have reached the maximum of 500 contacts"}
   }
 
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
