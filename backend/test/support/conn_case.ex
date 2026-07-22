@@ -1,38 +1,44 @@
 defmodule ApiWeb.ConnCase do
   @moduledoc """
-  This module defines the test case to be used by
-  tests that require setting up a connection.
+  Case template for controller tests.
 
-  Such tests rely on `Phoenix.ConnTest` and also
-  import other functionality to make it easier
-  to build common data structures and query the data layer.
-
-  Finally, if the test case interacts with the database,
-  we enable the SQL sandbox, so changes done to the database
-  are reverted at the end of every test. If you are using
-  PostgreSQL, you can even run database tests asynchronously
-  by setting `use ApiWeb.ConnCase, async: true`, although
-  this option is not recommended for other databases.
+  Builds a `Plug.Conn` and checks out the same SQL sandbox connection as
+  `Api.DataCase`, so a request handled by the endpoint sees the data the test
+  inserted and rolls it back on exit.
   """
 
   use ExUnit.CaseTemplate
+  use Boundary, top_level?: true, check: [in: false, out: false]
 
   using do
     quote do
-      # The default endpoint for testing
       @endpoint ApiWeb.Endpoint
 
       use ApiWeb, :verified_routes
 
-      # Import conveniences for testing with connections
-      import Plug.Conn
-      import Phoenix.ConnTest
+      import Api.Factory
       import ApiWeb.ConnCase
+      import Phoenix.ConnTest
+      import Plug.Conn
     end
   end
 
   setup tags do
-    Api.DataCase.setup_sandbox(tags)
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    owner = Api.DataCase.setup_sandbox(tags)
+
+    {:ok, conn: Phoenix.ConnTest.build_conn(), sandbox_owner: owner}
+  end
+
+  @doc """
+  A connection that negotiates JSON both ways.
+
+  `build_conn/0` sends no `accept` header, which is enough for the router's
+  `:accepts` step but leaves a request body unparsed. Controller tests that
+  post a payload need this one.
+  """
+  def json_conn do
+    Phoenix.ConnTest.build_conn()
+    |> Plug.Conn.put_req_header("accept", "application/json")
+    |> Plug.Conn.put_req_header("content-type", "application/json")
   end
 end

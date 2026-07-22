@@ -15,9 +15,12 @@ defmodule ApiWeb do
   Do NOT define functions inside the quoted expressions
   below. Instead, define additional modules and import
   those modules here.
+
+  Root of the `ApiWeb` boundary, which may depend on `Api` and never the
+  reverse.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  use Boundary, deps: [Api], exports: [Endpoint, Telemetry]
 
   def router do
     quote do
@@ -37,9 +40,7 @@ defmodule ApiWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller, formats: [:html, :json]
-
-      use Gettext, backend: ApiWeb.Gettext
+      use Phoenix.Controller, formats: [:json]
 
       import Plug.Conn
 
@@ -51,8 +52,7 @@ defmodule ApiWeb do
     quote do
       use Phoenix.VerifiedRoutes,
         endpoint: ApiWeb.Endpoint,
-        router: ApiWeb.Router,
-        statics: ApiWeb.static_paths()
+        router: ApiWeb.Router
     end
   end
 

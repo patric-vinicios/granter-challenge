@@ -1,0 +1,19 @@
+defmodule ApiWeb.Plugs.AssignCurrentUser do
+  @moduledoc """
+  Copies the resource Guardian loaded into `conn.assigns.current_user`.
+
+  Every authenticated controller reads that one assign and never mentions
+  Guardian, so replacing the token library later touches this pipeline instead
+  of every action in the API.
+  """
+
+  @behaviour Plug
+
+  @impl Plug
+  def init(opts), do: opts
+
+  @impl Plug
+  def call(conn, _opts) do
+    Plug.Conn.assign(conn, :current_user, Guardian.Plug.current_resource(conn))
+  end
+end

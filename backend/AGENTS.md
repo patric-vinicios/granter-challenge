@@ -3,7 +3,8 @@ This is a web application written using the Phoenix web framework.
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
-- Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
+- This project makes no outbound HTTP calls, so `:req` was removed from the dependency list along with the other unused generator artefacts (`:swoosh`, `:gettext`, `:dns_cluster`). If an outbound HTTP call ever becomes necessary, add `:req` back and use it — **avoid** `:httpoison`, `:tesla`, and `:httpc`
+- This is a JSON API with no HTML layer: there are no HEEx templates, no `core_components.ex` and no LiveViews. The Phoenix v1.8 guidance below about `<Layouts.app>`, `<.icon>`, `<.input>` and `current_scope` does not apply here — LiveDashboard at `/dev/dashboard` is the only LiveView in the project and it is dev-only
 
 ### Phoenix v1.8 guidelines
 

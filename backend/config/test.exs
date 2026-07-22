@@ -9,6 +9,7 @@ config :api, Api.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
+  port: 54_321,
   database: "api_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
@@ -20,11 +21,14 @@ config :api, ApiWeb.Endpoint,
   secret_key_base: "hF9b49Jxfj2BbC3G3/oRZRFyhUtUcUpoVDlWbhAmyhdY0iOKlt8EsMqZ4AMQZwDc",
   server: false
 
-# In test we don't send emails
-config :api, Api.Mailer, adapter: Swoosh.Adapters.Test
+# runtime.exs deliberately skips :test, so the suite needs its own literal
+# signing secret rather than an exported variable.
+config :api, Api.Accounts.Guardian,
+  secret_key: "kx0lHNTBpXcMBmoP4LJ9qWvVSBLpDgLR8Yfr2mS6TnGZOAkcYRSjS5ecvXi7RgLK"
 
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
+# Argon2 is deliberately slow. At production cost a suite that inserts users
+# per test spends most of its wall clock hashing, so test uses the floor.
+config :argon2_elixir, t_cost: 1, m_cost: 8
 
 # Print only warnings and errors during test
 config :logger, level: :warning

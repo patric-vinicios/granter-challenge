@@ -5,24 +5,48 @@ defmodule ApiWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/api", ApiWeb do
-    pipe_through :api
+  # Everything from the contacts feature onward runs through here, so the
+  # actions behind it can read conn.assigns.current_user unconditionally.
+  pipeline :authenticated do
+    plug :accepts, ["json"]
+    plug ApiWeb.AuthPipeline
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
+  scope "/api", ApiWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :show
+
+    post "/auth/register", AuthController, :register
+    post "/auth/login", AuthController, :login
+  end
+
+  scope "/api", ApiWeb do
+    pipe_through :authenticated
+
+    get "/auth/me", AuthController, :me
+
+    post "/contacts", ContactController, :create
+    get "/contacts", ContactController, :index
+    delete "/contacts/:id", ContactController, :delete
+
+    post "/conversations/private", ConversationController, :create_private
+    get "/conversations/:id", ConversationController, :show
+  end
+
   if Application.compile_env(:api, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
       pipe_through [:fetch_session, :protect_from_forgery]
 
       live_dashboard "/dashboard", metrics: ApiWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+  end
+
+  # Must stay last, and runs through no pipeline so a miss still answers JSON
+  # when the client sent an Accept header this API does not negotiate.
+  scope "/", ApiWeb do
+    match :*, "/*path", ErrorController, :not_found
   end
 end

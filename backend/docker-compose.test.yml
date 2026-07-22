@@ -1,0 +1,15 @@
+services:
+  db-test:
+    image: postgres:16-alpine
+    container_name: postgres-test
+    ports:
+      - 54321:5432
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data/
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: api_test
+
+volumes:
+  postgres_test_data:
