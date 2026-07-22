@@ -68,6 +68,45 @@ defmodule ApiWeb.FallbackControllerTest do
       assert body(conn)["errors"]["code"] == "rate_limited"
     end
 
+    test "translates the contact reasons to their codes and statuses" do
+      reasons = [
+        {:invalid_id, 400, "invalid_id"},
+        {:user_not_found, 404, "user_not_found"},
+        {:contact_already_exists, 409, "contact_already_exists"},
+        {:self_contact, 422, "self_contact"},
+        {:contact_limit_reached, 422, "contact_limit_reached"}
+      ]
+
+      for {reason, status, code} <- reasons do
+        conn = FallbackController.call(conn_for_fallback(), {:error, reason})
+
+        assert conn.status == status, "expected #{reason} at #{status}"
+        assert body(conn)["errors"]["code"] == code
+        assert body(conn)["errors"]["detail"] != ""
+      end
+    end
+
+    test "invalid_id does not collide with the endpoint-level 400" do
+      conn = FallbackController.call(conn_for_fallback(), {:error, :invalid_id})
+
+      # The endpoint answers an unparseable body at the same status through
+      # ErrorJSON, so a client can only tell a bad path param from a bad body
+      # if the two carry different codes.
+      {malformed_request, _detail} = ApiWeb.ErrorJSON.error_for(400)
+
+      assert conn.status == 400
+      assert body(conn)["errors"]["code"] == "invalid_id"
+      refute body(conn)["errors"]["code"] == malformed_request
+    end
+
+    test "a contact reason at 422 carries no fields key" do
+      conn = FallbackController.call(conn_for_fallback(), {:error, :self_contact})
+
+      assert conn.status == 422
+      assert %{"code" => "self_contact", "detail" => _detail} = body(conn)["errors"]
+      refute Map.has_key?(body(conn)["errors"], "fields")
+    end
+
     test "an unmapped reason becomes a 500 rather than leaking the atom" do
       conn = FallbackController.call(conn_for_fallback(), {:error, :something_unexpected})
 
@@ -90,6 +129,21 @@ defmodule ApiWeb.FallbackControllerTest do
       assert body(conn)["errors"] == %{
                "code" => "conflict",
                "detail" => "You are already a member of this group"
+             }
+    end
+
+    test "an explicit detail still overrides a contact reason's default" do
+      conn =
+        FallbackController.call(
+          conn_for_fallback(),
+          {:error, :user_not_found, "No user with @fulano123 exists in the system"}
+        )
+
+      assert conn.status == 404
+
+      assert body(conn)["errors"] == %{
+               "code" => "user_not_found",
+               "detail" => "No user with @fulano123 exists in the system"
              }
     end
 
