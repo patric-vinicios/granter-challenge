@@ -52,4 +52,47 @@ defmodule Api.Factory do
       user: build(:user)
     }
   end
+
+  @doc """
+  An unsaved group conversation with a creator but no seated members, for a
+  test that only needs the row shape. `insert(:group)` is the persisted, valid
+  variant.
+  """
+  def conversation_factory do
+    %Api.Conversations.Conversation{
+      type: :group,
+      name: sequence(:group_name, &"Group #{&1}"),
+      creator: build(:user)
+    }
+  end
+
+  @doc """
+  A persisted group with its creator seated as an active member, so a bare
+  `insert(:group)` is immediately valid. Override the name or creator inline:
+  `insert(:group, creator: ana)`.
+  """
+  def group_factory do
+    creator = insert(:user)
+
+    %Api.Conversations.Conversation{
+      type: :group,
+      name: sequence(:group_name, &"Group #{&1}"),
+      creator: creator,
+      participants: [build(:conversation_participant, user: creator, conversation: nil)]
+    }
+  end
+
+  @doc """
+  A single active participant row. Both the conversation and the user are built
+  by default, so a bare `insert(:conversation_participant)` is valid; override
+  either inline. `left_at` is nil, i.e. an active membership.
+  """
+  def conversation_participant_factory do
+    %Api.Conversations.ConversationParticipant{
+      conversation: build(:conversation),
+      user: build(:user),
+      joined_at: DateTime.utc_now(),
+      left_at: nil
+    }
+  end
 end
