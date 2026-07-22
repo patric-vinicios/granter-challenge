@@ -201,49 +201,6 @@ defmodule ApiWeb.FallbackControllerTest do
     end
   end
 
-  describe "call/2 with the group reasons" do
-    test "translates each group reason to its code and status" do
-      cases = [
-        {:not_a_contact, 403, "not_a_contact"},
-        {:not_group_creator, 403, "not_group_creator"},
-        {:already_member, 409, "already_member"},
-        {:last_member, 422, "last_member"},
-        {:cannot_remove_self, 422, "cannot_remove_self"}
-      ]
-
-      for {reason, status, code} <- cases do
-        conn = FallbackController.call(conn_for_fallback(), {:error, reason})
-
-        assert conn.status == status
-        assert body(conn)["errors"]["code"] == code
-      end
-    end
-
-    test "a group reason at 422 carries no fields key" do
-      conn = FallbackController.call(conn_for_fallback(), {:error, :last_member})
-
-      errors = body(conn)["errors"]
-      assert Map.has_key?(errors, "code")
-      assert Map.has_key?(errors, "detail")
-      refute Map.has_key?(errors, "fields")
-    end
-
-    test "an interpolated detail overrides not_a_contact's default" do
-      conn =
-        FallbackController.call(
-          conn_for_fallback(),
-          {:error, :not_a_contact, "These users are not in your contacts: @joaopedro"}
-        )
-
-      assert conn.status == 403
-
-      assert body(conn)["errors"] == %{
-               "code" => "not_a_contact",
-               "detail" => "These users are not in your contacts: @joaopedro"
-             }
-    end
-  end
-
   describe "call/2 with a changeset" do
     test "renders 422 with the per-field messages" do
       changeset =

@@ -100,49 +100,6 @@ defmodule Api.Contacts do
     end
   end
 
-  @doc """
-  Answers *which of these ids are not in `owner`'s list*, naming the offenders.
-
-  `contact?/2` decides one id at a time, which cannot express "seat all of
-  these or none of them": a group creation must either accept every member or
-  reject the whole request naming the ones that failed, so a member removed from
-  contacts between opening a dialog and submitting fails the call rather than
-  silently dropping out of the group. This is that set check — one query
-  subtracting the owner's contacts from the requested set — and it returns the
-  offenders' `@username`s so the 403 can list them. `id`s are assumed already
-  cast to UUIDs by the caller.
-  """
-  def reject_non_contacts(%User{} = owner, ids) when is_list(ids) do
-    requested = MapSet.new(ids)
-
-    present =
-      pair_query(owner.id)
-      |> where([c], c.contact_user_id in ^ids)
-      |> select([c], c.contact_user_id)
-      |> Repo.all()
-      |> MapSet.new()
-
-    case MapSet.to_list(MapSet.difference(requested, present)) do
-      [] -> :ok
-      offenders -> {:error, :not_a_contact, offenders_detail(offenders)}
-    end
-  end
-
-  # Only offenders that resolve to a user contribute a name; an id that is not a
-  # user at all still failed the contact check and keeps the call rejected, it
-  # simply has no `@username` to show. Ordered so the message is deterministic.
-  defp offenders_detail(offender_ids) do
-    usernames =
-      User
-      |> where([u], u.id in ^offender_ids)
-      |> order_by([u], asc: u.username)
-      |> select([u], u.username)
-      |> Repo.all()
-      |> Enum.map_join(", ", &"@#{&1}")
-
-    "These users are not in your contacts: #{usernames}"
-  end
-
   defp resolve_target(username) do
     case Accounts.get_user_by_username(username) do
       %User{} = target ->
@@ -190,10 +147,8 @@ defmodule Api.Contacts do
   defp duplicate_error(target),
     do: {:error, :contact_already_exists, "@#{target.username} is already in your contacts"}
 
-  defp pair_query(owner_id), do: where(Contact, [c], c.owner_id == ^owner_id)
-
   defp pair_query(owner_id, contact_user_id),
-    do: where(pair_query(owner_id), [c], c.contact_user_id == ^contact_user_id)
+    do: where(Contact, [c], c.owner_id == ^owner_id and c.contact_user_id == ^contact_user_id)
 
   defp cast_id(id) do
     case Ecto.UUID.cast(id) do

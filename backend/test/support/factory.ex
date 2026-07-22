@@ -87,20 +87,4 @@ defmodule Api.Factory do
 
     conversation
   end
-
-  @doc """
-  A persisted group with its creator seated as an active member, so a bare
-  `insert(:group)` is immediately valid. Override the name or creator inline:
-  `insert(:group, creator: ana)`.
-  """
-  def group_factory do
-    creator = insert(:user)
-
-    %Api.Conversations.Conversation{
-      type: :group,
-      name: sequence(:group_name, &"Group #{&1}"),
-      creator: creator,
-      participants: [build(:participant, user: creator, conversation: nil)]
-    }
-  end
 end
