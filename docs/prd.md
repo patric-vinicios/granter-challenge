@@ -644,19 +644,19 @@ graph TD
 - [x] After the initiator removes the counterpart from contacts, the existing conversation is still readable but a new creation call returns 403
 
 ### F05. Group Management
-- [ ] Creating a group with a name and 2 contact member ids returns 201 with the group id, name, creator id, and 3 active members including the creator
-- [ ] The creator is added automatically and does not need to appear in `member_ids`
-- [ ] Creating a group including a user id that is not a contact returns 403 with `code: "not_a_contact"` listing the offending usernames, and no group row is created
-- [ ] Creating a group with an empty `member_ids` array or a name outside 1–60 characters returns 422 and creates nothing
-- [ ] No endpoint exists that changes a group's name; the name returned after creation is identical on every subsequent read
-- [ ] The creator can add a contact as a new member, and that member immediately appears in the member list
-- [ ] A non-creator attempting to add or remove a member returns 403 with `code: "not_group_creator"`
-- [ ] Adding an already-active member returns 409 with `code: "already_member"`
-- [ ] The creator removing a member sets `left_at`; the removed user no longer appears in the member list and no longer sees the group in their conversation list
-- [ ] Any member can leave via `DELETE /api/conversations/:id/members/me` and stops receiving the group's messages
-- [ ] The last active member attempting to leave returns 422 with `code: "last_member"`
-- [ ] A removed member re-added by the creator receives a new `joined_at` and a cleared `left_at`
-- [ ] `GET /api/conversations/:id` for a group from a non-member returns 404
+- [x] Creating a group with a name and 2 contact member ids returns 201 with the group id, name, creator id, and 3 active members including the creator
+- [x] The creator is added automatically and does not need to appear in `member_ids`
+- [x] Creating a group including a user id that is not a contact returns 403 with `code: "not_a_contact"` listing the offending usernames, and no group row is created
+- [x] Creating a group with an empty `member_ids` array or a name outside 1–60 characters returns 422 and creates nothing
+- [x] No endpoint exists that changes a group's name; the name returned after creation is identical on every subsequent read
+- [x] The creator can add a contact as a new member, and that member immediately appears in the member list
+- [x] A non-creator attempting to add or remove a member returns 403 with `code: "not_group_creator"`
+- [x] Adding an already-active member returns 409 with `code: "already_member"`
+- [x] The creator removing a member sets `left_at`; the removed user no longer appears in the member list and no longer sees the group in their conversation list
+- [x] Any member can leave via `DELETE /api/conversations/:id/members/me` and stops receiving the group's messages
+- [x] The last active member attempting to leave returns 422 with `code: "last_member"`
+- [x] A removed member re-added by the creator receives a new `joined_at` and a cleared `left_at`
+- [x] `GET /api/conversations/:id` for a group from a non-member returns 404
 
 ### F06. Message Persistence and History
 - [ ] A message created through the domain context is retrievable via the history endpoint after an application restart
