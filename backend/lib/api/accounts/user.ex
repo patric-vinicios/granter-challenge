@@ -40,7 +40,7 @@ defmodule Api.Accounts.User do
   def registration_changeset(user, attrs) do
     user
     |> cast(attrs, [:username, :name, :password])
-    |> update_change(:username, &normalize_username/1)
+    |> update_change(:username, &strip_display_prefix/1)
     |> update_change(:name, &String.trim/1)
     |> validate_required([:username, :name, :password])
     |> validate_length(:username, @username_length)
@@ -54,18 +54,28 @@ defmodule Api.Accounts.User do
   end
 
   @doc """
-  Strips the display `@` and downcases, so `"@AnaBeatriz"` and `"anabeatriz"`
-  are the same identity. Shared with the login and contact lookups, which have
-  to resolve a username the user typed with whatever decoration they used.
+  Normalises a username for *lookup*: strips the display `@` and downcases, so
+  logging in as `"@AnaBeatriz"` finds `anabeatriz`.
+
+  Registration deliberately does not downcase — an uppercase letter there is a
+  rejected format, not a value to be silently rewritten — but every later
+  resolution has to accept whatever decoration the user typed.
   """
   def normalize_username(username) when is_binary(username) do
     username
-    |> String.trim()
-    |> String.trim_leading("@")
+    |> strip_display_prefix()
     |> String.downcase()
   end
 
   def normalize_username(username), do: username
+
+  defp strip_display_prefix(username) when is_binary(username) do
+    username
+    |> String.trim()
+    |> String.trim_leading("@")
+  end
+
+  defp strip_display_prefix(username), do: username
 
   defp hash_password(%Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset) do
     changeset
