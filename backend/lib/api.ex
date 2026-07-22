@@ -11,5 +11,7 @@ defmodule Api do
   the reverse. Each new context exports its public interface here.
   """
 
-  use Boundary, deps: [], exports: [{Accounts, []}, {Contacts, []}, Health, Repo, Schema]
+  use Boundary,
+    deps: [],
+    exports: [{Accounts, []}, {Contacts, []}, {Conversations, []}, Health, Repo, Schema]
 end

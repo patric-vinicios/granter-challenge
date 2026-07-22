@@ -52,4 +52,39 @@ defmodule Api.Factory do
       user: build(:user)
     }
   end
+
+  @doc """
+  A private conversation, its pair key left for `private_conversation/2` to fill
+  once the two members are known. A bare `insert(:conversation)` is a valid
+  parent row for a participant factory that overrides it.
+  """
+  def conversation_factory do
+    %Api.Conversations.Conversation{type: :private}
+  end
+
+  @doc """
+  One membership row. Both the conversation and the user are built by default,
+  so a bare `insert(:participant)` is valid, and either takes an override.
+  """
+  def participant_factory do
+    %Api.Conversations.Participant{
+      conversation: build(:conversation),
+      user: build(:user),
+      joined_at: DateTime.utc_now()
+    }
+  end
+
+  @doc """
+  Inserts a live private conversation between `a` and `b` — the parent row with
+  the computed `participant_key` and both active participant rows — so a test
+  that needs a real pair writes one line instead of restating the membership.
+  """
+  def private_conversation(%Api.Accounts.User{} = a, %Api.Accounts.User{} = b) do
+    key = Enum.join(Enum.sort([a.id, b.id]), ":")
+    conversation = insert(:conversation, participant_key: key)
+    insert(:participant, conversation: conversation, user: a)
+    insert(:participant, conversation: conversation, user: b)
+
+    conversation
+  end
 end
