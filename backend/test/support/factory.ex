@@ -40,4 +40,16 @@ defmodule Api.Factory do
       last_seen_at: nil
     }
   end
+
+  @doc """
+  A contact pair. Both sides are built by default, so a bare `insert(:contact)`
+  is valid and never a self-pair, and either side takes an override:
+  `insert(:contact, owner: ana)`.
+  """
+  def contact_factory do
+    %Api.Contacts.Contact{
+      owner: build(:user),
+      user: build(:user)
+    }
+  end
 end
