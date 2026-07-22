@@ -13,9 +13,9 @@ defmodule Api.Conversations do
   the same way `contact?/2` is the contacts context's: the history read, the
   channel join and the send path are three code paths that must answer one
   question — may this user see this conversation? — and answering it here keeps
-  the rule from diverging across them. It ships as an active-membership check
-  and deliberately stops there; the departed-member visibility bound belongs to
-  the feature that owns messages, not to this one.
+  the rule from diverging across them. `read_access/2` asks the same participant
+  row the other question, the one with three answers: writing is a yes-or-no
+  about the present, reading may be bounded at the moment a member left.
 
   Membership is a timeline, not a set. A participant is a row with a `joined_at`
   and a nullable `left_at`, and leaving sets `left_at` rather than deleting the
@@ -173,6 +173,35 @@ defmodule Api.Conversations do
       Repo.exists?(active_member_row(cid, uid))
     else
       {:error, :invalid_id} -> false
+    end
+  end
+
+  @doc """
+  How much of `conversation` this user may read: all of it, everything up to the
+  moment they left, or nothing at all.
+
+  The read counterpart to `participant?/2`, over the very same participant row.
+  The predicate stays a yes-or-no about the present — may this user write here,
+  or hold a channel open — because that is what its callers ask. Reading has a
+  third answer: a member who left a group keeps the history they saw and gains
+  not one message written afterwards, and that bound is a timestamp, not a
+  boolean. Widening the predicate to carry it would force every existing caller
+  to match a shape it has no use for.
+
+  An outsider and an unknown conversation share one answer, so the existence of
+  a conversation is never disclosed by the difference between them.
+  """
+  def read_access(%Conversation{id: id}, user), do: read_access(id, user)
+  def read_access(conversation_id, %User{id: id}), do: read_access(conversation_id, id)
+
+  def read_access(conversation_id, user_id) do
+    with {:ok, cid} <- cast_id(conversation_id),
+         {:ok, uid} <- cast_id(user_id) do
+      case Repo.one(member_row(cid, uid)) do
+        nil -> {:error, :not_found}
+        %{left_at: nil} -> {:ok, :active}
+        %{left_at: left_at} -> {:ok, {:until, left_at}}
+      end
     end
   end
 
@@ -421,6 +450,15 @@ defmodule Api.Conversations do
 
   defp active_members_query(conversation_id, user_ids) do
     from p in active_members_query(conversation_id), where: p.user_id in ^user_ids
+  end
+
+  # The membership row whether or not it is active: a departed member is a
+  # distinct answer to the read question rather than an absent one, so the
+  # `left_at` filter that `active_member_row/2` applies would erase it.
+  defp member_row(conversation_id, user_id) do
+    from p in Participant,
+      where: p.conversation_id == ^conversation_id and p.user_id == ^user_id,
+      select: %{left_at: p.left_at}
   end
 
   defp active_member_row(conversation_id, user_id) do

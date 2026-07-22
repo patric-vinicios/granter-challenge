@@ -669,19 +669,19 @@ graph TD
 - [x] `GET /api/conversations/:id` for a group from a non-member returns 404
 
 ### F06. Message Persistence and History
-- [ ] A message created through the domain context is retrievable via the history endpoint after an application restart
-- [ ] `GET /api/conversations/:id/messages` with no cursor returns the newest 30 messages in ascending `(inserted_at, id)` order
-- [ ] Paginating a 250-message conversation to the end yields all 250 messages exactly once, with no duplicates and no gaps
-- [ ] `next_cursor` is null and `has_more` is false exactly on the page containing the oldest message
-- [ ] Inserting new messages between two paginated requests does not cause any message to be duplicated or skipped in the older pages
-- [ ] `limit=100` is accepted; `limit=101` and `limit=abc` return 422 naming the accepted range
-- [ ] A tampered or non-decodable `before` cursor returns 400 with `code: "invalid_cursor"` and does not fall back to the first page
-- [ ] A body of only whitespace, an empty body, and a 4001-character body each return 422 with `fields.body` populated and persist nothing
-- [ ] A 4000-character body is accepted and stored verbatim, byte for byte
-- [ ] `sender_id` supplied in the request body is ignored; the persisted sender is always the authenticated caller
-- [ ] Each message in the response carries its sender's id, `@username` and display name
-- [ ] History requested by a non-participant returns 404 with no message content in the body
-- [ ] A departed group member receives only messages with `inserted_at <= left_at`
+- [x] A message created through the domain context is retrievable via the history endpoint after an application restart
+- [x] `GET /api/conversations/:id/messages` with no cursor returns the newest 30 messages in ascending `(inserted_at, id)` order
+- [x] Paginating a 250-message conversation to the end yields all 250 messages exactly once, with no duplicates and no gaps
+- [x] `next_cursor` is null and `has_more` is false exactly on the page containing the oldest message
+- [x] Inserting new messages between two paginated requests does not cause any message to be duplicated or skipped in the older pages
+- [x] `limit=100` is accepted; `limit=101` and `limit=abc` return 422 naming the accepted range
+- [x] A tampered or non-decodable `before` cursor returns 400 with `code: "invalid_cursor"` and does not fall back to the first page
+- [x] A body of only whitespace, an empty body, and a 4001-character body each return 422 with `fields.body` populated and persist nothing
+- [x] A 4000-character body is accepted and stored verbatim, byte for byte
+- [x] `sender_id` supplied in the request body is ignored; the persisted sender is always the authenticated caller
+- [x] Each message in the response carries its sender's id, `@username` and display name
+- [x] History requested by a non-participant returns 404 with no message content in the body
+- [x] A departed group member receives only messages with `inserted_at <= left_at`
 
 ### F07. Real-Time Message Channel
 - [ ] A socket connect with a valid token succeeds; connects with a missing, malformed or expired token are rejected and no channel can be joined
@@ -760,8 +760,8 @@ graph TD
 - [x] A user record created by registration (F02) is resolvable by `@username` in the add-contact flow (F03), and the returned contact carries that user's id and display name
 - [x] A contact added in F03 is accepted as the target of a private conversation (F04), and a user removed from contacts is rejected on the next creation attempt
 - [ ] A contact added in F03 is accepted in `member_ids` when creating a group (F05), and a non-contact id in the same array causes the whole creation to fail
-- [ ] A private conversation created in F04 accepts messages from both of its participants in F06, and rejects history reads from any third user
-- [ ] A group created in F05 accepts messages from every active member in F06, and a member removed in F05 is rejected on their next send and sees no messages after `left_at`
+- [x] A private conversation created in F04 accepts messages from both of its participants in F06, and rejects history reads from any third user
+- [x] A group created in F05 accepts messages from every active member in F06, and a member removed in F05 is rejected on their next send and sees no messages after `left_at`
 - [ ] A message persisted by F06 is the exact record broadcast as `message:new` by F07, including id, sender identity, body and `inserted_at`
 - [ ] Private conversations from F04 appear in the inbox list (F08) with the counterpart's display name as the title and the counterpart user id present
 - [ ] Group conversations from F05 appear in the inbox list (F08) with the group name as the title and the active member count, and disappear once the caller leaves

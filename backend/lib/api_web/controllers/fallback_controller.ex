@@ -45,6 +45,7 @@ defmodule ApiWeb.FallbackController do
     token_expired:
       {:unauthorized, "token_expired", "Your session has expired, please log in again"},
     invalid_id: {:bad_request, "invalid_id", "The provided id is not a valid identifier"},
+    invalid_cursor: {:bad_request, "invalid_cursor", "The pagination cursor is invalid"},
     user_not_found:
       {:not_found, "user_not_found", "No user with that @username exists in the system"},
     contact_already_exists:

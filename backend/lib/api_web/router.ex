@@ -38,6 +38,8 @@ defmodule ApiWeb.Router do
     # Phoenix's top-down match sends "I leave" here rather than into the id cast.
     delete "/conversations/:id/members/me", ConversationController, :leave
     delete "/conversations/:id/members/:user_id", ConversationController, :remove_member
+
+    get "/conversations/:id/messages", MessageController, :index
   end
 
   if Application.compile_env(:api, :dev_routes) do

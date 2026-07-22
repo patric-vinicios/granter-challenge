@@ -212,6 +212,55 @@ defmodule Api.ConversationsTest do
     end
   end
 
+  describe "read_access/2" do
+    setup do
+      caller = insert(:user)
+      target = insert(:user)
+
+      %{caller: caller, target: target, conversation: private_conversation(caller, target)}
+    end
+
+    test "returns active for a current participant", %{caller: caller, conversation: thread} do
+      assert Conversations.read_access(thread, caller) == {:ok, :active}
+      assert Conversations.read_access(thread.id, caller.id) == {:ok, :active}
+    end
+
+    test "returns the bound for a departed member", %{conversation: thread} do
+      left_at = DateTime.utc_now()
+      departed = insert(:user)
+      insert(:participant, conversation: thread, user: departed, left_at: left_at)
+
+      assert {:ok, {:until, ^left_at}} = Conversations.read_access(thread, departed)
+    end
+
+    test "returns not_found for an outsider", %{conversation: thread} do
+      assert Conversations.read_access(thread, insert(:user)) == {:error, :not_found}
+    end
+
+    test "returns not_found for an unknown conversation", %{caller: caller} do
+      assert Conversations.read_access(Ecto.UUID.generate(), caller) == {:error, :not_found}
+    end
+
+    test "rejects a malformed id", %{caller: caller, conversation: thread} do
+      assert Conversations.read_access("nope", caller) == {:error, :invalid_id}
+      assert Conversations.read_access(thread.id, "nope") == {:error, :invalid_id}
+    end
+
+    test "returns active again after a re-add" do
+      {creator, [contact]} = creator_with_contacts(1)
+      {:ok, group} = Conversations.create_group(creator, "Time", [contact.id])
+
+      assert :ok = Conversations.remove_member(creator, group.id, contact.id)
+      assert {:ok, {:until, %DateTime{}}} = Conversations.read_access(group, contact)
+      # The predicate keeps its own answer: a departed member may read, not write.
+      refute Conversations.participant?(group, contact)
+
+      assert {:ok, _} = Conversations.add_members(creator, group.id, [contact.id])
+      assert Conversations.read_access(group, contact) == {:ok, :active}
+      assert Conversations.participant?(group, contact)
+    end
+  end
+
   # A creator with a number of contacts, the common starting point for a group.
   defp creator_with_contacts(count \\ 2) do
     creator = insert(:user, username: "creator", name: "Creator")

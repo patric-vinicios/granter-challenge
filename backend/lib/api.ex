@@ -13,5 +13,13 @@ defmodule Api do
 
   use Boundary,
     deps: [],
-    exports: [{Accounts, []}, {Contacts, []}, {Conversations, []}, Health, Repo, Schema]
+    exports: [
+      {Accounts, []},
+      {Contacts, []},
+      {Conversations, []},
+      {Messages, []},
+      Health,
+      Repo,
+      Schema
+    ]
 end
