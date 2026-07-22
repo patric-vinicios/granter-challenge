@@ -57,7 +57,14 @@ defmodule ApiWeb.FallbackController do
       {:forbidden, "not_a_contact", "You can only start conversations with your contacts"},
     self_conversation:
       {:unprocessable_entity, "self_conversation",
-       "You cannot start a conversation with yourself"}
+       "You cannot start a conversation with yourself"},
+    not_group_creator:
+      {:forbidden, "not_group_creator", "Only the group creator can manage members"},
+    already_member: {:conflict, "already_member", "This user is already a member of the group"},
+    last_member: {:unprocessable_entity, "last_member", "A group must keep at least one member"},
+    cannot_remove_self:
+      {:unprocessable_entity, "cannot_remove_self",
+       "The creator cannot remove themselves; leave the group instead"}
   }
 
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
