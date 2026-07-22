@@ -6,9 +6,9 @@ defmodule Api.MessagesTest do
   alias Api.Messages.Message
 
   setup do
-    ana = insert(:user, username: "anabeatriz", name: "Ana Beatriz")
-    carlos = insert(:user, username: "carlosedu", name: "Carlos Eduardo")
-    outsider = insert(:user, username: "joaopedro", name: "João Pedro")
+    ana = insert(:user, name: "Ana Beatriz")
+    carlos = insert(:user, name: "Carlos Eduardo")
+    outsider = insert(:user, name: "João Pedro")
     conversation = private_conversation(ana, carlos)
 
     %{ana: ana, carlos: carlos, outsider: outsider, conversation: conversation}
@@ -48,7 +48,8 @@ defmodule Api.MessagesTest do
       assert stored.body == "bom dia"
       assert stored.conversation_id == thread.id
       assert stored.sender_id == ana.id
-      assert %{username: "anabeatriz"} = message.sender
+      assert message.sender.id == ana.id
+      assert message.sender.username == ana.username
     end
 
     test "takes the sender from the argument and never from attrs", %{
@@ -141,7 +142,7 @@ defmodule Api.MessagesTest do
       seeded = seed(thread, ana, 50)
 
       assert {:ok, page} = Messages.list_messages(carlos, thread.id)
-      assert length(page.messages) == 30
+      assert Enum.count(page.messages) == 30
       assert page.has_more
       assert page.next_cursor
 
@@ -164,7 +165,7 @@ defmodule Api.MessagesTest do
 
       collected = walk(ana, thread, nil, [])
 
-      assert length(collected) == 250
+      assert Enum.count(collected) == 250
       assert Enum.sort(collected) == Enum.sort(expected)
       assert collected == expected
     end
@@ -184,7 +185,7 @@ defmodule Api.MessagesTest do
       seed(thread, ana, 30)
 
       assert {:ok, page} = Messages.list_messages(ana, thread.id)
-      assert length(page.messages) == 30
+      assert Enum.count(page.messages) == 30
       refute page.has_more
       refute page.next_cursor
     end
@@ -214,9 +215,9 @@ defmodule Api.MessagesTest do
       assert {:ok, %{messages: one}} = Messages.list_messages(ana, thread.id, %{limit: 1})
       assert {:ok, %{messages: hundred}} = Messages.list_messages(ana, thread.id, %{limit: 100})
 
-      assert length(default) == 30
-      assert length(one) == 1
-      assert length(hundred) == 100
+      assert Enum.count(default) == 30
+      assert Enum.count(one) == 1
+      assert Enum.count(hundred) == 100
     end
 
     test "rejects a malformed cursor", %{ana: ana, conversation: thread} do
@@ -257,7 +258,7 @@ defmodule Api.MessagesTest do
         end
 
       assert {:ok, page} = Messages.list_messages(carlos, group.id, %{limit: 2})
-      assert length(page.messages) == 2
+      assert Enum.count(page.messages) == 2
       assert page.has_more
 
       assert {:ok, older} =

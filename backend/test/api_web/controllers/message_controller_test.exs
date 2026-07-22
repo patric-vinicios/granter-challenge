@@ -6,9 +6,9 @@ defmodule ApiWeb.MessageControllerTest do
   alias Api.Messages
 
   setup do
-    ana = insert(:user, username: "anabeatriz", name: "Ana Beatriz")
-    carlos = insert(:user, username: "carlosedu", name: "Carlos Eduardo")
-    outsider = insert(:user, username: "joaopedro", name: "João Pedro")
+    ana = insert(:user, name: "Ana Beatriz")
+    carlos = insert(:user, name: "Carlos Eduardo")
+    outsider = insert(:user, name: "João Pedro")
     thread = private_conversation(ana, carlos)
 
     {:ok,
@@ -65,7 +65,7 @@ defmodule ApiWeb.MessageControllerTest do
       assert %{"messages" => messages, "has_more" => true, "next_cursor" => cursor} =
                history(conn, thread.id)
 
-      assert length(messages) == 30
+      assert Enum.count(messages) == 30
       assert Enum.map(messages, & &1["body"]) == Enum.map(21..50, &"message #{&1}")
       assert is_binary(cursor)
 
@@ -125,7 +125,7 @@ defmodule ApiWeb.MessageControllerTest do
       seed(thread, ana, 120)
 
       assert %{"messages" => messages} = history(conn, thread.id, %{"limit" => "100"})
-      assert length(messages) == 100
+      assert Enum.count(messages) == 100
     end
 
     test "rejects limit=101", %{conn: conn, thread: thread} do
@@ -215,12 +215,12 @@ defmodule ApiWeb.MessageControllerTest do
       seed(thread, carlos, 2)
 
       assert %{"messages" => messages} = history(conn, thread.id)
-      assert length(messages) == 4
+      assert Enum.count(messages) == 4
 
       for message <- messages do
         assert %{"id" => id, "username" => username, "name" => name} = message["sender"]
         assert id in [ana.id, carlos.id]
-        assert username in ["anabeatriz", "carlosedu"]
+        assert username in [ana.username, carlos.username]
         assert name in ["Ana Beatriz", "Carlos Eduardo"]
         assert Map.has_key?(message["sender"], "last_seen_at")
       end
