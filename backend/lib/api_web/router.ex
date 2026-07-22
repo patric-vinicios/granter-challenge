@@ -7,6 +7,8 @@ defmodule ApiWeb.Router do
 
   scope "/api", ApiWeb do
     pipe_through :api
+
+    get "/health", HealthController, :show
   end
 
   # Enable LiveDashboard in development
@@ -23,5 +25,12 @@ defmodule ApiWeb.Router do
 
       live_dashboard "/dashboard", metrics: ApiWeb.Telemetry
     end
+  end
+
+  # Must stay last: it matches everything the routes above did not. It runs
+  # through no pipeline on purpose, so a miss answers with the JSON envelope
+  # even when the client sent an Accept header this API does not negotiate.
+  scope "/", ApiWeb do
+    match :*, "/*path", ErrorController, :not_found
   end
 end

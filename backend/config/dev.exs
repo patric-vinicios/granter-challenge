@@ -23,7 +23,10 @@ config :api, ApiWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}],
   check_origin: false,
   code_reloader: true,
-  debug_errors: true,
+  # Off on purpose: the debug page is HTML, and a JSON API that answers an
+  # unparseable body with a stack-trace page in dev and an envelope everywhere
+  # else is a difference the SPA would trip over exactly once.
+  debug_errors: false,
   secret_key_base: "PhyQI0K8BP4PeBx8OpcCYJHe8u0i/800kYjXSm95k9TKGQyZaScu+oh78jFcqeU2",
   watchers: []
 

@@ -12,5 +12,5 @@ defmodule Api do
   added by a later feature exports its public interface here.
   """
 
-  use Boundary, deps: [], exports: [Repo]
+  use Boundary, deps: [], exports: [Health, Repo]
 end
