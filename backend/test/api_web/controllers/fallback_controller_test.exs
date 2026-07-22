@@ -107,6 +107,44 @@ defmodule ApiWeb.FallbackControllerTest do
       refute Map.has_key?(body(conn)["errors"], "fields")
     end
 
+    test "translates the conversation reasons to their codes and statuses" do
+      reasons = [
+        {:not_a_contact, 403, "not_a_contact"},
+        {:self_conversation, 422, "self_conversation"}
+      ]
+
+      for {reason, status, code} <- reasons do
+        conn = FallbackController.call(conn_for_fallback(), {:error, reason})
+
+        assert conn.status == status, "expected #{reason} at #{status}"
+        assert body(conn)["errors"]["code"] == code
+        assert body(conn)["errors"]["detail"] != ""
+      end
+    end
+
+    test "self_conversation at 422 carries no fields key" do
+      conn = FallbackController.call(conn_for_fallback(), {:error, :self_conversation})
+
+      assert conn.status == 422
+      assert %{"code" => "self_conversation", "detail" => _detail} = body(conn)["errors"]
+      refute Map.has_key?(body(conn)["errors"], "fields")
+    end
+
+    test "not_a_contact accepts an overriding detail" do
+      conn =
+        FallbackController.call(
+          conn_for_fallback(),
+          {:error, :not_a_contact, "These users are not in your contacts: @carlosedu"}
+        )
+
+      assert conn.status == 403
+
+      assert body(conn)["errors"] == %{
+               "code" => "not_a_contact",
+               "detail" => "These users are not in your contacts: @carlosedu"
+             }
+    end
+
     test "an unmapped reason becomes a 500 rather than leaking the atom" do
       conn = FallbackController.call(conn_for_fallback(), {:error, :something_unexpected})
 

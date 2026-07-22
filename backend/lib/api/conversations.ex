@@ -75,20 +75,9 @@ defmodule Api.Conversations do
   disclosed to an outsider.
   """
   def get_conversation(%User{} = caller, id) do
-    with {:ok, uuid} <- cast_id(id) do
-      case Repo.get(Conversation, uuid) do
-        nil ->
-          {:error, :not_found}
-
-        %Conversation{} = conversation ->
-          conversation = load(conversation)
-
-          if Enum.any?(conversation.participants, &(&1.user_id == caller.id)) do
-            {:ok, conversation}
-          else
-            {:error, :not_found}
-          end
-      end
+    with {:ok, uuid} <- cast_id(id),
+         %Conversation{} = conversation <- Repo.get(Conversation, uuid) || {:error, :not_found} do
+      authorize_read(load(conversation), caller)
     end
   end
 
@@ -157,6 +146,14 @@ defmodule Api.Conversations do
   defp member_changeset(conversation, %User{} = user, joined_at) do
     %Participant{conversation_id: conversation.id, user_id: user.id}
     |> Participant.changeset(%{joined_at: joined_at})
+  end
+
+  defp authorize_read(%Conversation{} = conversation, caller) do
+    if Enum.any?(conversation.participants, &(&1.user_id == caller.id)) do
+      {:ok, conversation}
+    else
+      {:error, :not_found}
+    end
   end
 
   defp load(%Conversation{} = conversation), do: Repo.preload(conversation, participants: :user)
