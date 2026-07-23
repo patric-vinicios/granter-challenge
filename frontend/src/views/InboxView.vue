@@ -57,8 +57,10 @@
       <ChatPanel
         v-model:message-draft="messageDraft"
         v-model:search-term="searchTerm"
+        :can-send-message="canSendMessage"
         :conversation="selectedConversation"
         :is-searching="isSearching"
+        :realtime-error="realtimeError"
         @close-search="isSearching = false"
         @open-group-details="openGroupDetails"
         @open-search="openSearch"
@@ -94,6 +96,8 @@ import type { ConversationRecord, GroupConversation } from '@/features/conversat
 import { conversations } from '@/features/conversations/conversations.mock'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
+import { useMessagingStore } from '@/features/messaging/messaging.store'
+import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -102,6 +106,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const contactsStore = useContactsStore()
 const conversationsStore = useConversationsStore()
+const messagingStore = useMessagingStore()
 const { token } = storeToRefs(authStore)
 const { user } = storeToRefs(authStore)
 const { contactGroups, contacts, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
@@ -118,19 +123,29 @@ const groupError = ref<string | null>(null)
 const selectedGroupContactIds = ref<Set<string>>(new Set())
 const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
+const currentUserId = computed(() => user.value?.id ?? null)
+const selectedConversationIdRef = computed(() => selectedConversationId.value)
+const {
+  canSend: canSendMessage,
+  error: realtimeError,
+  sendMessage: sendRealtimeMessage,
+} = useRealtimeMessaging({
+  token,
+  userId: currentUserId,
+  selectedConversationId: selectedConversationIdRef,
+})
 
 const selectedConversation = computed(
   () => conversationItems.value.find((conversation) => conversation.id === selectedConversationId.value) ?? conversationItems.value[0],
 )
 
 const conversationItems = computed(() => [
-  ...openedConversations.value.map(toConversationItem),
+  ...messagingStore.sortByActivity(openedConversations.value.map(toConversationItem).map(messagingStore.decorate)),
   ...conversations.filter(
     (conversation) => !openedConversations.value.some((opened) => opened.id === conversation.id),
-  ),
+  ).map(messagingStore.decorate),
 ])
 
-const currentUserId = computed(() => user.value?.id ?? null)
 const selectedGroupConversation = computed<GroupConversation | null>(() => {
   const conversation = openedConversations.value.find(
     (item) => item.id === selectedConversationId.value && item.type === 'group',
@@ -173,12 +188,23 @@ function closeSearchOnFocusOut(event: FocusEvent) {
 }
 
 function sendMessage() {
+  const body = messageDraft.value.trim()
+
+  if (!body) {
+    return
+  }
+
+  if (!sendRealtimeMessage(body)) {
+    return
+  }
+
   messageDraft.value = ''
 }
 
 function logout() {
   contactsStore.reset()
   conversationsStore.reset()
+  messagingStore.reset()
   authStore.logout()
   router.push('/')
 }
