@@ -1,4 +1,5 @@
 export type Message = {
+  id?: string
   side: 'in' | 'out'
   text: string
   time: string

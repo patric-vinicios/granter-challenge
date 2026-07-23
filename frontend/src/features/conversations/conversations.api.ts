@@ -9,12 +9,27 @@ import {
   decodeMarkReadResult,
 } from './conversations.contracts'
 
-export function listInboxConversations(token: string, signal?: AbortSignal): Promise<InboxConversationSummary[]> {
-  return requestJson('/conversations', {
+export function listInboxConversations(
+  token: string,
+  options: { query?: string; signal?: AbortSignal } = {},
+): Promise<InboxConversationSummary[]> {
+  return requestJson('/conversations' + inboxQueryString(options.query), {
     token,
-    signal,
+    signal: options.signal,
     decode: decodeInboxConversations,
   })
+}
+
+function inboxQueryString(query: string | undefined): string {
+  const trimmed = query?.trim()
+
+  if (!trimmed) {
+    return ''
+  }
+
+  const params = new URLSearchParams({ q: trimmed })
+
+  return `?${params.toString()}`
 }
 
 export function markConversationRead(
