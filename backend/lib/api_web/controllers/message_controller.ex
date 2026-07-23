@@ -26,10 +26,25 @@ defmodule ApiWeb.MessageController do
   @default_limit 30
   @max_limit 100
 
+  @search_types %{q: :string}
+  @query_min 2
+  @query_max 100
+
   def index(conn, %{"id" => id} = params) do
     with {:ok, page_params} <- validate_page(params),
          {:ok, page} <- Messages.list_messages(conn.assigns.current_user, id, page_params) do
       render(conn, :index, page)
+    end
+  end
+
+  # `q` is validated before the domain call, so a too-short term is a 422 naming
+  # the field rather than a query the database is asked to run — the "no scan on
+  # a rejected query" guarantee. The check runs even for a non-participant, so a
+  # bad term is 422 before access is ever consulted.
+  def search(conn, %{"id" => id} = params) do
+    with {:ok, %{q: q}} <- validate_query(params),
+         {:ok, result} <- Messages.search_messages(conn.assigns.current_user, id, q) do
+      render(conn, :search, result)
     end
   end
 
@@ -51,4 +66,22 @@ defmodule ApiWeb.MessageController do
 
   defp cast_message(:limit, _meta), do: @limit_message
   defp cast_message(_field, _meta), do: nil
+
+  @query_message "must be between #{@query_min} and #{@query_max} characters"
+
+  # `q` is trimmed before it is measured, so trailing spaces neither pad a short
+  # term to length nor overflow a full one. A blank or absent `q` fails the
+  # required check; both failures render under `fields.q`.
+  defp validate_query(params) do
+    {%{}, @search_types}
+    |> Ecto.Changeset.cast(params, [:q])
+    |> Ecto.Changeset.update_change(:q, &String.trim/1)
+    |> Ecto.Changeset.validate_required([:q], message: @query_message)
+    |> Ecto.Changeset.validate_length(:q,
+      min: @query_min,
+      max: @query_max,
+      message: @query_message
+    )
+    |> Ecto.Changeset.apply_action(:insert)
+  end
 end

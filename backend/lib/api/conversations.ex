@@ -251,10 +251,19 @@ defmodule Api.Conversations do
   `Api.Messages.Message`, because that boundary already depends on this one and
   the reverse edge would close a cycle the compiler rejects; every column read
   from it is wrapped in `type/2` to recover the Ecto type a schema would carry.
+
+  `opts` may carry a `:query`: a non-blank term narrows the list to conversations
+  whose display title matches accent- and case-insensitively — a group by its
+  name, a private conversation by its counterpart's display name or `@username`.
+  The set is already bounded to #{@list_limit}, so a substring `ILIKE` needs no
+  index, and the returned entry shape is unchanged so the client renders a
+  filtered list with the component it already has. A blank or absent term is no
+  filter at all.
   """
-  def list_conversations(%User{} = caller) do
+  def list_conversations(%User{} = caller, opts \\ %{}) do
     caller
     |> inbox_query()
+    |> apply_title_filter(Map.new(opts)[:query])
     |> Repo.all()
     |> Enum.map(&to_summary/1)
   end
@@ -351,6 +360,39 @@ defmodule Api.Conversations do
       }
     )
   end
+
+  # Applied after the joins so the counterpart's name and username are in scope;
+  # the title a private conversation shows is the counterpart's, never a column
+  # on the conversation itself, so both are matched. `unaccent` on each side is
+  # what makes `familia` find `Família`, and `ILIKE` what makes it case-blind.
+  # A blank term is dropped upstream of the query — there is nothing to narrow.
+  defp apply_title_filter(query, term) when is_binary(term) do
+    case String.trim(term) do
+      "" ->
+        query
+
+      trimmed ->
+        like = "%" <> trimmed <> "%"
+
+        where(
+          query,
+          [conversation: c, counterpart: cp],
+          fragment(
+            "((? = 'group' AND unaccent(?) ILIKE unaccent(?)) OR (? = 'private' AND (unaccent(?) ILIKE unaccent(?) OR unaccent(?::text) ILIKE unaccent(?))))",
+            c.type,
+            c.name,
+            ^like,
+            c.type,
+            cp.name,
+            ^like,
+            cp.username,
+            ^like
+          )
+        )
+    end
+  end
+
+  defp apply_title_filter(query, _term), do: query
 
   defp counterpart_query(caller_id) do
     from o in Participant,
