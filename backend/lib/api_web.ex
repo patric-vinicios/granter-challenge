@@ -20,7 +20,7 @@ defmodule ApiWeb do
   reverse.
   """
 
-  use Boundary, deps: [Api], exports: [Endpoint, RateLimiter, Telemetry]
+  use Boundary, deps: [Api], exports: [Endpoint, Presence, RateLimiter, Telemetry]
 
   def router do
     quote do

@@ -106,4 +106,32 @@ defmodule Api.AccountsTest do
       assert Accounts.get_user_by_username(nil) == nil
     end
   end
+
+  describe "update_last_seen/2" do
+    test "writes the one column and leaves updated_at untouched" do
+      user = insert(:user)
+      at = DateTime.utc_now()
+
+      assert :ok = Accounts.update_last_seen(user.id, at)
+
+      reloaded = Repo.reload(user)
+      assert DateTime.compare(reloaded.last_seen_at, at) == :eq
+      assert reloaded.updated_at == user.updated_at
+    end
+
+    test "is a harmless no-op for an unknown but well-formed id" do
+      assert :ok = Accounts.update_last_seen(Ecto.UUID.generate(), DateTime.utc_now())
+    end
+
+    test "is a harmless no-op for a non-UUID id" do
+      assert :ok = Accounts.update_last_seen("nope", DateTime.utc_now())
+      assert :ok = Accounts.update_last_seen(42, DateTime.utc_now())
+    end
+
+    test "the column is never accepted from registration params" do
+      attrs = Map.put(@valid_attrs, "last_seen_at", DateTime.utc_now())
+
+      assert {:ok, %User{last_seen_at: nil}} = Accounts.register_user(attrs)
+    end
+  end
 end
