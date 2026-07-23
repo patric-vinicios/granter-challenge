@@ -21,6 +21,7 @@ describe('contacts api', () => {
           username: 'anabeatriz',
           name: 'Ana Beatriz',
           lastSeenAt: null,
+          online: false,
         },
       },
     ])

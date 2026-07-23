@@ -45,6 +45,7 @@ describe('conversations.api', () => {
         username: 'anabeatriz',
         name: 'Ana Beatriz',
         lastSeenAt: null,
+        online: false,
       },
     })
   })
@@ -106,6 +107,7 @@ describe('conversations.api', () => {
           username: 'anabeatriz',
           name: 'Ana Beatriz',
           lastSeenAt: null,
+          online: false,
         },
         memberCount: null,
         lastMessage: {

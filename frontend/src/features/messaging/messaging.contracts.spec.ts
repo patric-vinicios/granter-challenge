@@ -20,6 +20,7 @@ describe('messaging contracts', () => {
         username: 'ana',
         name: 'Ana Beatriz',
         lastSeenAt: null,
+        online: false,
       },
     })
   })

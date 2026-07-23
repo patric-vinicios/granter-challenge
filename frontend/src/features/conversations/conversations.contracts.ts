@@ -113,6 +113,7 @@ function decodeUser(payload: unknown): ContactUser {
     username: requireString(data.username),
     name: requireString(data.name),
     lastSeenAt: requireNullableString(data.last_seen_at),
+    online: requireOptionalBoolean(data.online),
   }
 }
 
@@ -194,6 +195,14 @@ function requireBoolean(value: unknown): boolean {
   }
 
   return value
+}
+
+function requireOptionalBoolean(value: unknown): boolean {
+  if (value === undefined) {
+    return false
+  }
+
+  return requireBoolean(value)
 }
 
 function requireZero(value: unknown): 0 {
