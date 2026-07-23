@@ -12,6 +12,7 @@ defmodule ApiWeb.ConversationJSON do
 
   alias Api.Conversations.Conversation
   alias Api.Messages.Message
+  alias ApiWeb.Presence
   alias ApiWeb.UserJSON
 
   # The `conversation:updated` preview is a plain leading slice, not the
@@ -94,12 +95,12 @@ defmodule ApiWeb.ConversationJSON do
       id: conversation.id,
       type: conversation.type,
       last_read_at: mine && mine.last_read_at,
-      counterpart: UserJSON.data(counterpart.user)
+      counterpart: with_online(counterpart.user)
     }
   end
 
   def data(%Conversation{type: :group} = conversation, _caller) do
-    members = Enum.map(conversation.participants, &UserJSON.data(&1.user))
+    members = Enum.map(conversation.participants, &with_online(&1.user))
 
     %{
       id: conversation.id,
@@ -110,4 +111,11 @@ defmodule ApiWeb.ConversationJSON do
       members: members
     }
   end
+
+  # `online` lives only in the conversation detail, not the shared user object: a
+  # message sender or contact entry has no online status to answer, and scoping
+  # it to conversation members keeps presence where a shared conversation lets
+  # the caller see it. The value is an O(1) presence lookup, no database.
+  defp with_online(user),
+    do: Map.put(UserJSON.data(user), :online, Presence.online?(user.id))
 end
