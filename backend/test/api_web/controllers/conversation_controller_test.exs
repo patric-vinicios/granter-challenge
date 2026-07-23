@@ -27,7 +27,8 @@ defmodule ApiWeb.ConversationControllerTest do
                "id" => carlos.id,
                "username" => "carlos",
                "name" => "Carlos Silva",
-               "last_seen_at" => nil
+               "last_seen_at" => nil,
+               "online" => false
              }
     end
 
@@ -111,6 +112,37 @@ defmodule ApiWeb.ConversationControllerTest do
       assert %{"conversation" => conversation} = json_response(carlos_conn, 200)
       assert conversation["counterpart"]["id"] == ana.id
       assert conversation["counterpart"]["username"] == "anabeatriz"
+    end
+
+    test "reports an offline counterpart as online:false with its last_seen_at", %{
+      conn: conn,
+      carlos: carlos
+    } do
+      created = post(conn, ~p"/api/conversations/private", %{"user_id" => carlos.id})
+      id = json_response(created, 201)["conversation"]["id"]
+
+      conn = get(conn, ~p"/api/conversations/#{id}")
+
+      assert %{"conversation" => conversation} = json_response(conn, 200)
+      assert conversation["counterpart"]["online"] == false
+      assert conversation["counterpart"]["last_seen_at"] == nil
+    end
+
+    test "carries a per-member online flag in a group detail", %{
+      conn: conn,
+      ana: ana,
+      carlos: carlos
+    } do
+      {:ok, group} = Api.Conversations.create_group(ana, "Time", [carlos.id])
+
+      conn = get(conn, ~p"/api/conversations/#{group.id}")
+
+      assert %{"conversation" => %{"type" => "group", "members" => members}} =
+               json_response(conn, 200)
+
+      assert [_, _] = members
+      assert Enum.all?(members, &(&1["online"] == false))
+      assert Enum.all?(members, &Map.has_key?(&1, "last_seen_at"))
     end
 
     test "returns 404 for a non-participant", %{conn: conn, carlos: carlos} do

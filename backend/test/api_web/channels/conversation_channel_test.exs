@@ -522,4 +522,26 @@ defmodule ApiWeb.ConversationChannelTest do
 
     assert_receive {:DOWN, ^ref, :process, _pid, _reason}
   end
+
+  test "the conversation detail reports online and returns the presence-written last_seen_at" do
+    {ana, carlos, thread} = private_pair()
+    carlos_socket = track_user(carlos)
+
+    online = get(bearer(ana), "/api/conversations/#{thread.id}")
+    assert %{"conversation" => %{"counterpart" => counterpart}} = json_response(online, 200)
+    assert counterpart["online"] == true
+
+    :ok = close_and_await_leave(carlos_socket, carlos.id)
+    written = Repo.reload(carlos).last_seen_at
+    assert %DateTime{} = written
+
+    offline = get(bearer(ana), "/api/conversations/#{thread.id}")
+    assert %{"conversation" => %{"counterpart" => seen}} = json_response(offline, 200)
+    assert seen["online"] == false
+    # F02 -> F10: the value presence wrote is exactly what the detail returns,
+    # rendered as absolute ISO 8601 UTC with no relative phrasing.
+    assert seen["last_seen_at"] == DateTime.to_iso8601(written)
+    assert {:ok, _dt, 0} = DateTime.from_iso8601(seen["last_seen_at"])
+    refute seen["last_seen_at"] =~ ~r/ago|atrás/
+  end
 end
