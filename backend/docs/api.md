@@ -796,3 +796,237 @@ A search with no matches returns `200` with an empty `messages` array and
   }
 }
 ```
+
+---
+
+## WebSocket contract
+
+Real-time delivery runs over Phoenix Channels. Channel topics and events are not
+discoverable from the router; this section is their contract.
+
+### Socket
+
+- **URL:** `ws://localhost:4000/socket/websocket`
+- **Connect param:** `token` — the **same JWT** used for HTTP requests, passed as
+  a URL/connect parameter (a browser `WebSocket` cannot set an `Authorization`
+  header).
+- **Handshake:** a missing, malformed, expired or revoked token fails the
+  handshake (the socket returns `:error`, surfaced to the client as a `403`); no
+  channel can be joined.
+- **Socket id:** `user_socket:<user_id>`, so all of a user's sockets can be
+  disconnected together (used by presence and membership revocation).
+
+Example (Phoenix JS client):
+
+```js
+import { Socket } from "phoenix"
+
+const socket = new Socket("/socket", { params: { token: jwt } })
+socket.connect()
+```
+
+### Topics and join rules
+
+| Topic | Purpose | Join rule |
+|-------|---------|-----------|
+| `conversation:<conversation_id>` | Message traffic and presence for one conversation | Join calls the same participant predicate as REST. A non-participant, a departed group member, an unknown id and a malformed id all receive the identical `{ "reason": "unauthorized" }` — the socket is never an oracle for ids REST refuses to confirm. |
+| `user:<user_id>` | The caller's personal notification topic | The topic id must equal the authenticated user's own id. Joining any other `user:` id (well-formed or not) is rejected with `{ "reason": "unauthorized" }`. |
+
+A rejected join is delivered as the channel `join` error reply:
+
+```json
+{ "reason": "unauthorized" }
+```
+
+### Inbound events
+
+Sent by the client with `channel.push(event, payload)`.
+
+#### `new_message` — on `conversation:<id>`
+
+Persist a message and broadcast it to the conversation. Persist-then-broadcast:
+the insert commits before anything is broadcast, so no client ever sees a message
+a history read cannot return.
+
+**Payload**
+
+```json
+{ "body": "Bom dia, tudo certo com o cronograma?", "client_ref": "c-42" }
+```
+
+`client_ref` is optional and client-generated; it is echoed back on every reply
+(success and error) so the client can reconcile the right optimistic bubble.
+
+**Success reply** — `{:ok, ...}`. The sender receives the persisted record here,
+exactly once; it is excluded from the `message:new` broadcast for the sending
+channel process.
+
+```json
+{
+  "message": {
+    "id": "c1d2e3f4-5061-7283-94a5-b6c7d8e9f0a1",
+    "conversation_id": "7f8e9d0c-1b2a-3948-5766-8594a3b2c1d0",
+    "body": "Bom dia, tudo certo com o cronograma?",
+    "inserted_at": "2026-07-23T13:59:02.104553Z",
+    "sender": {
+      "id": "9a1f2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
+      "username": "anabeatriz",
+      "name": "Ana Beatriz",
+      "last_seen_at": "2026-07-23T14:02:11.482301Z"
+    }
+  },
+  "client_ref": "c-42"
+}
+```
+
+**Error replies** — `{:error, ...}`, no broadcast emitted:
+
+```json
+{ "reason": "validation_error", "fields": { "body": ["can't be blank"] }, "client_ref": "c-42" }
+```
+
+```json
+{ "reason": "rate_limited", "retry_after_ms": 4200, "client_ref": "c-42" }
+```
+
+```json
+{ "reason": "unauthorized", "client_ref": "c-42" }
+```
+
+The send rate limit is 20 messages per 10 seconds per user across all
+conversations; `unauthorized` here covers a conversation that vanished under the
+sender. Any event name other than `new_message` replies
+`{ "reason": "unknown_event", "client_ref": ... }`. The `user:<id>` topic accepts
+no inbound events and answers any push with `{ "reason": "unknown_event" }`.
+
+### Outbound events
+
+Pushed by the server; the client handles them with `channel.on(event, cb)`.
+
+#### `message:new` — on `conversation:<id>`
+
+The persisted message record (the [Message](#common-objects) object), delivered
+to every participant with the topic joined **except** the sender.
+
+```json
+{
+  "id": "c1d2e3f4-5061-7283-94a5-b6c7d8e9f0a1",
+  "conversation_id": "7f8e9d0c-1b2a-3948-5766-8594a3b2c1d0",
+  "body": "Bom dia, tudo certo com o cronograma?",
+  "inserted_at": "2026-07-23T13:59:02.104553Z",
+  "sender": {
+    "id": "9a1f2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
+    "username": "anabeatriz",
+    "name": "Ana Beatriz",
+    "last_seen_at": "2026-07-23T14:02:11.482301Z"
+  }
+}
+```
+
+#### `conversation:updated` — on `user:<id>`
+
+Pushed to **each** participant's personal topic on every new message, so the
+conversation list reorders and badges without joining every conversation topic.
+`unread` is simply "someone other than you sent it".
+
+```json
+{
+  "conversation_id": "7f8e9d0c-1b2a-3948-5766-8594a3b2c1d0",
+  "last_message": {
+    "preview": "Bom dia, tudo certo com o cronograma?",
+    "sender_id": "9a1f2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
+    "inserted_at": "2026-07-23T13:59:02.104553Z"
+  },
+  "unread": true
+}
+```
+
+The `preview` is a leading slice of up to 120 characters.
+
+#### `presence:state` — on `conversation:<id>`
+
+Pushed once on join: the current presence snapshot of exactly this
+conversation's participants, keyed by user id. Presence is never exposed for
+users the caller shares no conversation with.
+
+```json
+{
+  "9a1f2b3c-4d5e-6f70-8192-a3b4c5d6e7f8": {
+    "metas": [{ "phx_ref": "F9x1...", "online_at": "2026-07-23T14:02:11.482301Z" }]
+  }
+}
+```
+
+#### `presence:diff` — on `conversation:<id>`
+
+Pushed when a participant of this conversation connects or disconnects. Standard
+`Phoenix.Presence` diff of joins and leaves.
+
+```json
+{
+  "joins": {
+    "1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809": {
+      "metas": [{ "phx_ref": "G2a4...", "online_at": "2026-07-23T14:06:00.000000Z" }]
+    }
+  },
+  "leaves": {}
+}
+```
+
+#### `conversation:membership_revoked` — on `conversation:<id>`
+
+Pushed to a member the moment they are removed from a group, immediately before
+their channel process is stopped; a subsequent rejoin is rejected.
+
+```json
+{ "conversation_id": "3c2b1a09-8f7e-6d5c-4b3a-291807f6e5d4" }
+```
+
+---
+
+## Error codes
+
+Every `errors.code` the API emits, with its HTTP status and meaning. Endpoint-
+level codes are owned by `ApiWeb.ErrorJSON`; domain codes by
+`ApiWeb.FallbackController`. A client can branch exhaustively on this table.
+
+| Code | Status | Meaning |
+|------|--------|---------|
+| `malformed_request` | 400 | Request body is not valid JSON. |
+| `invalid_id` | 400 | A path segment is not a valid UUID. |
+| `invalid_cursor` | 400 | The pagination `before` cursor is tampered or non-decodable. |
+| `unauthenticated` | 401 | Missing or malformed `Authorization` header. |
+| `invalid_credentials` | 401 | Login username/password did not match (identical for unknown user and wrong password). |
+| `token_expired` | 401 | The bearer token is past its `exp`; prompt for re-login. |
+| `forbidden` | 403 | Authenticated but not permitted to perform this action. |
+| `not_a_contact` | 403 | The target user (or a listed group member) is not in the caller's contacts. |
+| `not_group_creator` | 403 | Only the group creator can manage members. |
+| `not_a_participant` | 403 | The caller has left this conversation. |
+| `not_found` | 404 | Resource absent or not visible to the caller. |
+| `user_not_found` | 404 | No user with the given `@username` or id exists. |
+| `method_not_allowed` | 405 | HTTP method not supported for this path. |
+| `conflict` | 409 | The request conflicts with the current state. |
+| `contact_already_exists` | 409 | The user is already in the caller's contacts. |
+| `already_member` | 409 | The user is already an active member of the group. |
+| `unsupported_media_type` | 415 | The request content-type must be `application/json`. |
+| `validation_error` | 422 | A changeset validation failed; `fields` carries per-field messages. |
+| `self_contact` | 422 | A user cannot add themselves as a contact. |
+| `contact_limit_reached` | 422 | The 500-contact limit has been reached. |
+| `self_conversation` | 422 | A user cannot start a private conversation with themselves. |
+| `last_member` | 422 | A group must keep at least one member. |
+| `cannot_remove_self` | 422 | The creator cannot remove themselves; they must leave instead. |
+| `rate_limited` | 429 | Too many requests; retry later (a `Retry-After` header may accompany it). |
+| `internal_error` | 500 | An unexpected server error; the stacktrace is logged, never returned. |
+| `database_unavailable` | 503 | The database connection is not available (health probe). |
+
+### Channel reply reasons
+
+The WebSocket surface uses a parallel set of `reason` values in its error
+replies (not HTTP statuses):
+
+| Reason | Meaning |
+|--------|---------|
+| `unauthorized` | Join rejected, or a `new_message` targeting a conversation the sender may no longer post to. |
+| `rate_limited` | Send rate limit exceeded; the reply carries `retry_after_ms`. |
+| `validation_error` | The message changeset failed; the reply carries `fields`. |
+| `unknown_event` | An inbound event the channel does not handle. |
