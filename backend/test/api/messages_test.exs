@@ -286,6 +286,123 @@ defmodule Api.MessagesTest do
     end
   end
 
+  describe "search_messages/3" do
+    test "returns matching messages newest-first with total_matches", %{
+      ana: ana,
+      conversation: thread
+    } do
+      write(thread, ana, "primeiro cronograma", ago(30))
+      write(thread, ana, "assunto qualquer", ago(20))
+      write(thread, ana, "cronograma revisado", ago(10))
+      write(thread, ana, "cronograma final", ago(5))
+
+      assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma")
+      assert result.total_matches == 3
+      refute result.truncated
+
+      bodies = Enum.map(result.messages, & &1.message.body)
+      assert bodies == ["cronograma final", "cronograma revisado", "primeiro cronograma"]
+    end
+
+    test "assigns 1-based positions with 1 as the newest", %{ana: ana, conversation: thread} do
+      write(thread, ana, "cronograma a", ago(30))
+      write(thread, ana, "cronograma b", ago(20))
+      write(thread, ana, "cronograma c", ago(10))
+
+      assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma")
+      assert Enum.map(result.messages, & &1.position) == [1, 2, 3]
+      assert hd(result.messages).message.body == "cronograma c"
+    end
+
+    test "attaches match offsets for the term", %{ana: ana, conversation: thread} do
+      write(thread, ana, "O cronograma novo", ago(10))
+
+      assert {:ok, %{messages: [hit]}} = Messages.search_messages(ana, thread.id, "cronograma")
+      assert hit.match_offsets == [%{start: 2, length: 10}]
+    end
+
+    test "caps at 100 with truncated true", %{ana: ana, conversation: thread} do
+      bulk(thread, ana, "cronograma", 101)
+
+      assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma")
+      assert length(result.messages) == 100
+      assert result.total_matches == 100
+      assert result.truncated
+    end
+
+    test "is accent- and case-insensitive", %{ana: ana, conversation: thread} do
+      write(thread, ana, "Reunião da Família", ago(10))
+
+      assert {:ok, %{messages: [hit]}} = Messages.search_messages(ana, thread.id, "familia")
+      assert hit.message.body == "Reunião da Família"
+    end
+
+    test "returns empty with total_matches 0 for no match", %{ana: ana, conversation: thread} do
+      write(thread, ana, "nada relevante aqui", ago(10))
+
+      assert {:ok, %{messages: [], total_matches: 0, truncated: false}} =
+               Messages.search_messages(ana, thread.id, "cronograma")
+    end
+
+    test "rejects a non-participant with not_found", %{
+      ana: ana,
+      outsider: outsider,
+      conversation: thread
+    } do
+      write(thread, ana, "cronograma secreto", ago(10))
+
+      assert Messages.search_messages(outsider, thread.id, "cronograma") == {:error, :not_found}
+    end
+
+    test "bounds a departed group member at left_at", %{ana: ana, carlos: carlos} do
+      group = group_with(ana, [carlos])
+
+      before_removal = write(group, ana, "cronograma antigo", ago(30))
+      assert :ok = Conversations.remove_member(ana, group.id, carlos.id)
+      {:ok, _after} = Messages.create_message(ana, group.id, %{body: "cronograma novo"})
+
+      assert {:ok, result} = Messages.search_messages(carlos, group.id, "cronograma")
+      assert Enum.map(result.messages, & &1.message.id) == [before_removal.id]
+    end
+
+    test "rejects a malformed conversation id", %{ana: ana} do
+      assert Messages.search_messages(ana, "nope", "cronograma") == {:error, :invalid_id}
+    end
+  end
+
+  # A single message with an explicit body and time, so a search test controls
+  # both what matches and the order it comes back in.
+  defp write(conversation, sender, body, inserted_at) do
+    {:ok, message} =
+      Messages.create_message(sender, conversation.id, %{body: body, inserted_at: inserted_at})
+
+    message
+  end
+
+  # `count` messages all carrying `term`, one second apart, written straight
+  # through the DB so the cap test is not paced by per-row context inserts.
+  defp bulk(conversation, sender, term, count) do
+    base = DateTime.utc_now() |> DateTime.add(-count - 1, :second)
+
+    entries =
+      for i <- 1..count do
+        at = DateTime.add(base, i, :second)
+
+        %{
+          id: Ecto.UUID.generate(),
+          conversation_id: conversation.id,
+          sender_id: sender.id,
+          body: "#{term} #{i}",
+          inserted_at: at,
+          updated_at: at
+        }
+      end
+
+    Repo.insert_all(Message, entries)
+  end
+
+  defp ago(seconds), do: DateTime.add(DateTime.utc_now(), -seconds, :second)
+
   # Follows `next_cursor` to exhaustion, accumulating ids in chronological order.
   defp walk(user, thread, cursor, acc) do
     opts = if cursor, do: %{before: cursor}, else: %{}

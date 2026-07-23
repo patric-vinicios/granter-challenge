@@ -42,6 +42,9 @@ defmodule ApiWeb.Router do
     delete "/conversations/:id/members/:user_id", ConversationController, :remove_member
 
     get "/conversations/:id/messages", MessageController, :index
+    # A distinct segment count from `/messages`, so top-down matching has no
+    # ordering hazard between the two.
+    get "/conversations/:id/messages/search", MessageController, :search
   end
 
   if Application.compile_env(:api, :dev_routes) do

@@ -27,6 +27,7 @@ defmodule Api.Messages do
   alias Api.Accounts.User
   alias Api.Conversations
   alias Api.Messages.Cursor
+  alias Api.Messages.Highlight
   alias Api.Messages.Message
   alias Api.Repo
 
@@ -34,6 +35,10 @@ defmodule Api.Messages do
   # ceiling the endpoint enforces before the query is ever built.
   @default_limit 30
   @max_limit 100
+
+  # The most matches a single search reports. One row beyond it is fetched so a
+  # full result set is told apart from a truncated one without a second count.
+  @search_cap 100
 
   @doc """
   Persists a message from `sender` into the conversation named by
@@ -86,6 +91,76 @@ defmodule Api.Messages do
       |> Repo.all()
       |> assemble_page(limit)
       |> then(&{:ok, &1})
+    end
+  end
+
+  @doc """
+  Full-text search inside one conversation for `query`, newest match first.
+
+  Gated on the same read access history uses, so a non-participant is answered
+  `:not_found` and a departed group member searches only the window up to their
+  `left_at` — never learning the conversation continued. The `@@` filter resolves
+  through the GIN index rather than a sequential scan.
+
+  Returns `{:ok, %{messages: hits, total_matches: count, truncated: bool}}`, where
+  each hit is `%{message: %Message{}, position: pos, match_offsets: spans}`:
+  `position` is 1-based over the returned set (1 = newest), and `match_offsets`
+  are the grapheme spans of the term in the body. Results cap at
+  #{@search_cap}; beyond it `total_matches` reports #{@search_cap} and `truncated`
+  is true.
+  """
+  def search_messages(%User{} = caller, conversation_id, query) when is_binary(query) do
+    with {:ok, cid} <- cast_id(conversation_id),
+         {:ok, access} <- Conversations.read_access(cid, caller) do
+      {matches, total_matches, truncated} =
+        cid
+        |> search_query(access, query)
+        |> Repo.all()
+        |> cap()
+
+      hits =
+        matches
+        |> Enum.with_index(1)
+        |> Enum.map(fn {message, position} ->
+          %{
+            message: message,
+            position: position,
+            match_offsets: Highlight.offsets(message.body, query)
+          }
+        end)
+
+      {:ok, %{messages: hits, total_matches: total_matches, truncated: truncated}}
+    end
+  end
+
+  # --- Search internals ---------------------------------------------------
+
+  # `search_vector` is a database-managed generated column kept off the schema,
+  # so it is reached through a bare-column fragment rather than a schema field —
+  # the same way the inbox reaches `messages` as a bare source. The departed
+  # member's `left_at` bound is applied exactly as history applies it.
+  defp search_query(conversation_id, access, query) do
+    Message
+    |> where([m], m.conversation_id == ^conversation_id)
+    |> apply_bound(access)
+    |> where(
+      [m],
+      fragment("search_vector @@ websearch_to_tsquery('portuguese_unaccent', ?)", ^query)
+    )
+    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> limit(^(@search_cap + 1))
+    |> join(:inner, [m], u in assoc(m, :sender))
+    |> preload([m, u], sender: u)
+  end
+
+  # The row past the cap is what tells a full result set from a truncated one:
+  # more than the cap came back means at least one more exists, so the count is
+  # honestly reported as the cap and the extra row dropped.
+  defp cap(rows) do
+    if length(rows) > @search_cap do
+      {Enum.take(rows, @search_cap), @search_cap, true}
+    else
+      {rows, length(rows), false}
     end
   end
 

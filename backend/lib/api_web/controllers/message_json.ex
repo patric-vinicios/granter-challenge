@@ -29,6 +29,28 @@ defmodule ApiWeb.MessageJSON do
   end
 
   @doc """
+  A page of search hits: the matching messages newest-first, each carrying its
+  1-based `position` and the `match_offsets` of the term, plus the total-match
+  count and whether more than the cap existed.
+
+  Each hit is the canonical message object augmented in place, so a client reads
+  a search result with the same message type it reads everywhere else.
+  """
+  def search(%{messages: messages, total_matches: total_matches, truncated: truncated}) do
+    %{
+      messages: Enum.map(messages, &hit/1),
+      total_matches: total_matches,
+      truncated: truncated
+    }
+  end
+
+  defp hit(%{message: message, position: position, match_offsets: match_offsets}) do
+    message
+    |> data()
+    |> Map.merge(%{position: position, match_offsets: match_offsets})
+  end
+
+  @doc """
   The canonical message object. `body` is rendered verbatim: escaping it is the
   client's obligation, and the bytes returned are the bytes that were sent.
   """
