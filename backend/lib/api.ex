@@ -18,6 +18,7 @@ defmodule Api do
       {Contacts, []},
       {Conversations, []},
       {Messages, []},
+      {Seeds, []},
       Health,
       Repo,
       Schema
