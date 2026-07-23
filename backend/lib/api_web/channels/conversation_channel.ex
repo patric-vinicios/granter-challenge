@@ -21,6 +21,15 @@ defmodule ApiWeb.ConversationChannel do
   already awaiting; a second device of the same user is a plain subscriber and
   receives `message:new` like anyone else, because the exclusion is by the
   sending channel process, not by user.
+
+  Presence is relayed, never tracked here. On join the channel pushes
+  `presence:state` for exactly this conversation's participants and subscribes
+  to each participant's personal topic, then forwards every subsequent
+  `presence:diff`. Because it subscribes to no other user topic, a change for a
+  stranger has no path to the client — the no-leak guarantee is structural, not
+  a filter that could be forgotten. Those same subscriptions also carry each
+  participant's `conversation:updated`, which belongs to the personal topic and
+  is ignored here.
   """
 
   use ApiWeb, :channel
@@ -31,13 +40,16 @@ defmodule ApiWeb.ConversationChannel do
   alias ApiWeb.ConversationJSON
   alias ApiWeb.Endpoint
   alias ApiWeb.MessageJSON
+  alias ApiWeb.Presence
   alias ApiWeb.RateLimiter
+  alias Phoenix.Socket.Broadcast
 
   intercept ["membership_revoked"]
 
   @impl true
   def join("conversation:" <> conversation_id, _payload, socket) do
     if Conversations.participant?(conversation_id, socket.assigns.current_user) do
+      send(self(), :after_join)
       {:ok, assign(socket, :conversation_id, conversation_id)}
     else
       {:error, %{reason: "unauthorized"}}
@@ -74,6 +86,35 @@ defmodule ApiWeb.ConversationChannel do
       {:noreply, socket}
     end
   end
+
+  # Snapshot the participants once and both push their current presence and
+  # subscribe to their personal topics. Snapshotting at join is enough: a
+  # membership change mid-session already forces a rejoin through the revocation
+  # path, so live re-subscription is never needed.
+  @impl true
+  def handle_info(:after_join, socket) do
+    participant_ids = Conversations.participant_ids(socket.assigns.conversation_id)
+
+    state =
+      Enum.reduce(participant_ids, %{}, fn id, acc ->
+        Map.merge(acc, Presence.list("user:#{id}"))
+      end)
+
+    push(socket, "presence:state", state)
+
+    for id <- participant_ids, do: Phoenix.PubSub.subscribe(Api.PubSub, "user:#{id}")
+
+    {:noreply, socket}
+  end
+
+  def handle_info(%Broadcast{event: "presence_diff", payload: diff}, socket) do
+    push(socket, "presence:diff", diff)
+    {:noreply, socket}
+  end
+
+  # Every other message on the subscribed personal topics — `conversation:updated`
+  # in particular — is meant for the user's own channel, not this one.
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   # The insert commits before anything leaves the node, so every event a client
   # receives names a row a history read can return. The fan-out runs after the

@@ -15,6 +15,9 @@ defmodule Api.Application do
       ApiWeb.Telemetry,
       Api.Repo,
       {Phoenix.PubSub, name: Api.PubSub},
+      # After its PubSub and ahead of the endpoint, so the tracker exists before
+      # the first socket can connect and be tracked.
+      ApiWeb.Presence,
       # Ahead of the endpoint so the counter table exists before the first
       # socket can connect and send.
       ApiWeb.RateLimiter,

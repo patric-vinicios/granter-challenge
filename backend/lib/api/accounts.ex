@@ -75,4 +75,27 @@ defmodule Api.Accounts do
     do: Repo.get_by(User, username: User.normalize_username(username))
 
   def get_user_by_username(_username), do: nil
+
+  @doc """
+  Stamps a user's `last_seen_at`, the one write path for the column.
+
+  Presence, not a request, owns this field, so the write bypasses every
+  changeset: a scoped `update_all` sets exactly `last_seen_at` for one id and
+  leaves `updated_at`'s "profile changed" meaning untouched. A malformed or
+  unknown id is a silent no-op — a presence write for a since-deleted account
+  must never raise or block the leave that triggered it — so the answer is
+  always `:ok`.
+  """
+  def update_last_seen(user_id, %DateTime{} = at) when is_binary(user_id) do
+    case Ecto.UUID.cast(user_id) do
+      {:ok, uuid} ->
+        Repo.update_all(from(u in User, where: u.id == ^uuid), set: [last_seen_at: at])
+        :ok
+
+      :error ->
+        :ok
+    end
+  end
+
+  def update_last_seen(_user_id, _at), do: :ok
 end
