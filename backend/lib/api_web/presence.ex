@@ -37,11 +37,23 @@ defmodule ApiWeb.Presence do
   @impl true
   def handle_metas("user:" <> user_id, %{leaves: leaves}, presences, state) do
     if map_size(leaves) > 0 and not Map.has_key?(presences, user_id) do
-      Accounts.update_last_seen(user_id, DateTime.utc_now())
+      stamp_last_seen(user_id)
     end
 
     {:ok, state}
   end
 
   def handle_metas(_topic, _diff, _presences, state), do: {:ok, state}
+
+  # A best-effort stamp must never take the tracker down with it: losing every
+  # user's presence because one `last_seen_at` write hit a transient database
+  # error is a far worse outcome than a slightly stale timestamp, which the next
+  # refresh or clean leave gets another chance to correct.
+  defp stamp_last_seen(user_id) do
+    Accounts.update_last_seen(user_id, DateTime.utc_now())
+  rescue
+    _error -> :ok
+  catch
+    :exit, _reason -> :ok
+  end
 end

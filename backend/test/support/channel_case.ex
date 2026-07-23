@@ -83,7 +83,11 @@ defmodule ApiWeb.ChannelCase do
     ChannelTest.close(socket)
 
     assert_receive {:DOWN, ^ref, :process, _pid, _reason}
-    assert_receive %Broadcast{event: "presence_diff", topic: "user:" <> _}
+
+    # Skip the join diff the track broadcast earlier: only a non-empty `leaves`
+    # marks the disconnect whose write we are waiting on.
+    assert_receive %Broadcast{event: "presence_diff", payload: %{leaves: leaves}}
+                   when map_size(leaves) > 0
 
     sync_presence("user:#{user_id}")
     :ok

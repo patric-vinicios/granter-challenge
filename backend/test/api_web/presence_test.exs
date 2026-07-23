@@ -38,17 +38,22 @@ defmodule ApiWeb.PresenceTest do
     send(pid, :stop)
 
     assert_receive {:DOWN, ^ref, :process, _pid, _reason}
-    assert_receive %Broadcast{event: "presence_diff", topic: "user:" <> _}
+
+    assert_receive %Broadcast{event: "presence_diff", payload: %{leaves: leaves}}
+                   when map_size(leaves) > 0
+
     sync_presence("user:#{user_id}")
     :ok
   end
 
   test "tracks a user as online while a socket is open" do
     user = insert(:user)
-    _pid = open_socket(user.id)
+    pid = open_socket(user.id)
 
     assert Presence.online?(user.id)
     assert %{metas: [%{online_at: %DateTime{}}]} = Presence.list("user:#{user.id}")[user.id]
+
+    :ok = close_socket(pid, user.id)
   end
 
   test "a never-connected user is offline and has no last_seen_at" do
@@ -61,12 +66,14 @@ defmodule ApiWeb.PresenceTest do
   test "closing one of two sockets keeps the user online and writes nothing" do
     user = insert(:user)
     first = open_socket(user.id)
-    _second = open_socket(user.id)
+    second = open_socket(user.id)
 
     :ok = close_socket(first, user.id)
 
     assert Presence.online?(user.id)
     assert Repo.reload(user).last_seen_at == nil
+
+    :ok = close_socket(second, user.id)
   end
 
   test "closing the last socket marks the user offline and writes last_seen_at" do
@@ -93,7 +100,7 @@ defmodule ApiWeb.PresenceTest do
     assert DateTime.diff(DateTime.utc_now(), written) <= 1
   end
 
-  describe "cross-feature: F02 last_seen_at is the value presence writes and reads" do
+  describe "cross-feature: last_seen_at is the value presence writes and reads" do
     test "the leave-written value is exactly what Accounts reads back" do
       user = insert(:user)
       pid = open_socket(user.id)
@@ -101,6 +108,21 @@ defmodule ApiWeb.PresenceTest do
 
       written = Repo.reload(user).last_seen_at
       assert Accounts.get_user(user.id).last_seen_at == written
+    end
+  end
+
+  describe "cross-feature: a real socket connection drives presence" do
+    test "a joined socket is online; closing it goes offline and writes last_seen_at" do
+      user = insert(:user)
+      socket = track_user(user)
+
+      assert Presence.online?(user.id)
+      assert Repo.reload(user).last_seen_at == nil
+
+      :ok = close_and_await_leave(socket, user.id)
+
+      refute Presence.online?(user.id)
+      assert %DateTime{} = Repo.reload(user).last_seen_at
     end
   end
 end

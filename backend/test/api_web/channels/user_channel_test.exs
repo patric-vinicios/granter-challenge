@@ -3,7 +3,9 @@ defmodule ApiWeb.UserChannelTest do
   # sandbox connection non-async setup provides is required.
   use ApiWeb.ChannelCase, async: false
 
+  alias Api.Repo
   alias ApiWeb.ConversationChannel
+  alias ApiWeb.Presence
   alias ApiWeb.UserChannel
 
   defp join_own(user) do
@@ -61,5 +63,32 @@ defmodule ApiWeb.UserChannelTest do
 
     ref = push(socket, "anything", %{"body" => "x"})
     assert_reply ref, :error, %{reason: "unknown_event"}
+  end
+
+  test "tracks the caller as online on join of the personal topic" do
+    user = insert(:user)
+    {:ok, _reply, socket} = join_own(user)
+    # Flush the mailbox so after_join, where the track happens, has run.
+    _ = :sys.get_state(socket.channel_pid)
+
+    assert Presence.online?(user.id)
+    assert %{metas: [%{online_at: %DateTime{}}]} = Presence.list("user:#{user.id}")[user.id]
+  end
+
+  test "refreshes last_seen_at while the socket is still connected" do
+    user = insert(:user)
+    {:ok, _reply, socket} = join_own(user)
+    _ = :sys.get_state(socket.channel_pid)
+
+    # Only a refresh or a final leave writes the column; the open socket has
+    # done neither yet.
+    assert Repo.reload(user).last_seen_at == nil
+
+    send(socket.channel_pid, :refresh_last_seen)
+    _ = :sys.get_state(socket.channel_pid)
+
+    assert %DateTime{} = Repo.reload(user).last_seen_at
+    # Still connected: the refresh did not end the session.
+    assert Presence.online?(user.id)
   end
 end
