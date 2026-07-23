@@ -111,6 +111,80 @@ on validation failures (422).
 }
 ```
 
+## API reference
+
+Every REST endpoint, the full WebSocket contract and the complete error-code
+table are documented in [`docs/api.md`](docs/api.md), with a copy-pasteable
+request and a concrete response body for each. The channel topics and events —
+which the router cannot reveal — are there too.
+
+## Design decisions
+
+**JWT over cookie sessions.** The client is a separate-origin SPA and, more
+importantly, the same credential has to authenticate a `WebSocket`, which cannot
+carry a cookie the way an `XHR` does and cannot participate in CSRF-token
+handshakes. A stateless bearer token is presented identically as an
+`Authorization` header for HTTP and as the `token` connect param for the socket:
+one credential, one verification path, no cross-origin cookie or CSRF machinery.
+
+**Argon2id over bcrypt.** Argon2id is memory-hard, so it resists GPU and ASIC
+cracking that bcrypt's CPU-bound work does not. It also avoids bcrypt's silent
+truncation of passwords past 72 bytes, which turns a longer passphrase into a
+weaker secret than the user believes. The published 8–72 character contract is a
+stable API promise, not a technical limit of the algorithm.
+
+**REST plus Channels, not all-channel and not GraphQL.** Request/response
+resources — register, contacts, history pagination — are a natural fit for REST
+and stay cacheable, debuggable with `curl`, and trivial to document. Real-time
+fan-out is the one thing REST cannot do without polling, so it lives on Phoenix
+Channels over PubSub, where a message is written once and pushed to every
+participant. Routing everything through channels would reinvent HTTP semantics
+over a socket; GraphQL would add a schema layer and resolver N+1 risk with no
+gain for a fixed, small contract.
+
+**A single `conversations` table for private and group.** Both are the same
+thing — a set of participants exchanging messages — distinguished by a `type`
+column, with `name`/`creator_id` null for private conversations. This lets one
+`conversation_participants` table, one `messages` foreign key, one authorization
+predicate (`Conversations.participant?/2`) and one history query serve both
+kinds. Two separate tables would duplicate every one of those and force a union
+at read time.
+
+**Keyset over offset pagination.** History is anchored on `(inserted_at, id)`
+cursors rather than `LIMIT/OFFSET`. In a live chat new messages arrive mid-scroll
+constantly; offset pagination shifts and duplicates rows whenever that happens,
+and its cost grows with the offset. A keyset cursor is stable under concurrent
+inserts and reads the same supporting index in constant time no matter how deep
+the client has scrolled.
+
+**Unidirectional contacts.** Adding a contact affects only the caller's list; the
+target is neither notified nor modified. This keeps the model simple and matches
+the product: you can message someone who added you even if you have not added
+them back (the recipient of a private conversation always sees it), while the
+contact requirement is enforced only on the side that *initiates* a conversation
+or builds a group.
+
+## What I would do differently with more time
+
+- **Token revocation and login rate limiting.** The JWT is stateless and not
+  revocable before `exp`; a logout endpoint backed by an ETS `jti` denylist, plus
+  per-IP and per-username login throttling, are specified but not yet built.
+- **Machine-readable schema.** `docs/api.md` is hand-authored Markdown. An
+  OpenAPI document generated from the response views (or a contract test that
+  fails when a documented example drifts from an assertion) would keep the docs
+  honest automatically instead of by review.
+- **Multi-node readiness.** The deliverable targets a single node; PubSub is
+  configured but untuned and presence is node-local. Distributed Erlang plus a
+  clustered `Phoenix.Presence`, and moving the send rate limiter off a
+  single-process ETS table, would be the first steps toward horizontal scale.
+- **Delivery and read receipts, typing indicators.** Only an aggregate unread
+  count exists today. Per-recipient delivery/read state and typing indicators are
+  the natural next messaging primitives, each a small channel event over the
+  existing socket.
+- **Observability.** Beyond Telemetry and structured logging, request tracing and
+  latency histograms per endpoint and channel event would make the stated
+  performance targets continuously verifiable rather than checked once locally.
+
 ## Development diagnostics
 
 LiveDashboard is available in development only, at
