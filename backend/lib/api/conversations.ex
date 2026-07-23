@@ -33,6 +33,7 @@ defmodule Api.Conversations do
   alias Api.Contacts
   alias Api.Conversations.Conversation
   alias Api.Conversations.Participant
+  alias Api.Conversations.Preview
   alias Api.Repo
   alias Ecto.Changeset
   alias Ecto.Multi
@@ -41,6 +42,11 @@ defmodule Api.Conversations do
   # bound is structural — a one-person group is a private conversation — and the
   # upper bound is the PRD's stated limit.
   @max_members 256
+
+  # The inbox is rendered whole, not paged: a client that pages it cannot show a
+  # global unread state. A caller above the cap loses their least recently
+  # active conversations, which is the correct thing to lose.
+  @list_limit 200
 
   @create_types %{name: :string, member_ids: {:array, Ecto.UUID}}
   @member_ids_types %{member_ids: {:array, Ecto.UUID}}
@@ -202,6 +208,201 @@ defmodule Api.Conversations do
         %{left_at: nil} -> {:ok, :active}
         %{left_at: left_at} -> {:ok, {:until, left_at}}
       end
+    end
+  end
+
+  @doc """
+  The caller's whole inbox in one round trip: every conversation they actively
+  participate in, ordered by last activity, capped at #{@list_limit}.
+
+  The driving scan is the caller's own active participant rows, so the number of
+  rows entering the plan is bounded by their membership before any join runs.
+  Four correlated `LEFT JOIN LATERAL` sub-plans attach the last message, the
+  capped unread count, the private counterpart and the active member count, each
+  yielding at most one row, so one conversation is always one result row and no
+  fact costs a query per conversation.
+
+  The `messages` table is reached as a bare source rather than through
+  `Api.Messages.Message`, because that boundary already depends on this one and
+  the reverse edge would close a cycle the compiler rejects; every column read
+  from it is wrapped in `type/2` to recover the Ecto type a schema would carry.
+  """
+  def list_conversations(%User{} = caller) do
+    caller
+    |> inbox_query()
+    |> Repo.all()
+    |> Enum.map(&to_summary/1)
+  end
+
+  @doc """
+  Moves the caller's own read marker forward, or refuses.
+
+  The write is `GREATEST(last_read_at, now)`, so two devices marking at once both
+  succeed and a cleared badge can never reappear: commit order stops mattering
+  because the marker only ever grows. A departed member is answered
+  `:not_a_participant` rather than the `:not_found` an outsider gets — they
+  already know the conversation exists, so 404 would conceal nothing.
+  """
+  def mark_read(%User{} = caller, id) do
+    with {:ok, uuid} <- cast_id(id) do
+      case read_access(uuid, caller) do
+        {:ok, :active} -> write_marker(uuid, caller.id)
+        {:ok, {:until, _left_at}} -> {:error, :not_a_participant}
+        {:error, :not_found} -> {:error, :not_found}
+      end
+    end
+  end
+
+  # --- Inbox internals ----------------------------------------------------
+
+  defp inbox_query(%User{id: caller_id}) do
+    from(p in Participant,
+      as: :participant,
+      join: c in Conversation,
+      as: :conversation,
+      on: c.id == p.conversation_id,
+      where: p.user_id == ^caller_id and is_nil(p.left_at)
+    )
+    |> join(
+      :left_lateral,
+      [conversation: c],
+      lm in fragment(
+        "SELECT m.id AS id, m.body AS body, m.sender_id AS sender_id, m.inserted_at AS inserted_at FROM messages AS m WHERE m.conversation_id = ? ORDER BY m.inserted_at DESC, m.id DESC LIMIT 1",
+        c.id
+      ),
+      on: true,
+      as: :last_message
+    )
+    |> join(
+      :left_lateral,
+      [participant: p, conversation: c],
+      un in fragment(
+        "SELECT count(*) AS unread FROM (SELECT 1 FROM messages AS m WHERE m.conversation_id = ? AND m.sender_id <> ? AND m.inserted_at > GREATEST(?, ?) LIMIT 100) AS capped",
+        c.id,
+        type(^caller_id, Ecto.UUID),
+        p.last_read_at,
+        p.joined_at
+      ),
+      on: true,
+      as: :unread
+    )
+    |> join(:left_lateral, [], cp in subquery(counterpart_query(caller_id)),
+      on: true,
+      as: :counterpart
+    )
+    |> join(:left_lateral, [], mc in subquery(member_count_query()), on: true, as: :members)
+    |> order_by([conversation: c, last_message: lm],
+      asc: fragment("?.id IS NULL", lm),
+      desc: fragment("?.inserted_at", lm),
+      desc: c.inserted_at,
+      desc: c.id
+    )
+    |> limit(^@list_limit)
+    |> select(
+      [participant: p, conversation: c, last_message: lm, unread: un, counterpart: cp, members: mc],
+      %{
+        id: c.id,
+        type: c.type,
+        name: c.name,
+        inserted_at: c.inserted_at,
+        last_read_at: p.last_read_at,
+        last_message_id: type(fragment("?.id", lm), Ecto.UUID),
+        last_message_body: type(fragment("?.body", lm), :string),
+        last_message_sender_id: type(fragment("?.sender_id", lm), Ecto.UUID),
+        last_message_inserted_at: type(fragment("?.inserted_at", lm), :utc_datetime_usec),
+        unread: fragment("?.unread", un),
+        counterpart_id: cp.id,
+        counterpart_username: cp.username,
+        counterpart_name: cp.name,
+        counterpart_last_seen_at: cp.last_seen_at,
+        member_count: mc.members
+      }
+    )
+  end
+
+  defp counterpart_query(caller_id) do
+    from o in Participant,
+      join: u in User,
+      on: u.id == o.user_id,
+      where:
+        parent_as(:conversation).type == :private and
+          o.conversation_id == parent_as(:conversation).id and
+          o.user_id != ^caller_id and is_nil(o.left_at),
+      select: %{id: u.id, username: u.username, name: u.name, last_seen_at: u.last_seen_at},
+      limit: 1
+  end
+
+  defp member_count_query do
+    from a in Participant,
+      where:
+        parent_as(:conversation).type == :group and
+          a.conversation_id == parent_as(:conversation).id and is_nil(a.left_at),
+      select: %{members: count(a.id)}
+  end
+
+  defp to_summary(row) do
+    %{
+      id: row.id,
+      type: row.type,
+      title: title(row),
+      counterpart: counterpart(row),
+      member_count: member_count(row),
+      last_message: last_message(row),
+      unread_count: min(row.unread, 99),
+      unread_overflow: row.unread > 99,
+      last_read_at: row.last_read_at
+    }
+  end
+
+  defp title(%{type: :group, name: name}), do: name
+  defp title(%{type: :private, counterpart_name: name}), do: name
+
+  defp counterpart(%{type: :private, counterpart_id: id} = row) when not is_nil(id) do
+    %User{
+      id: id,
+      username: row.counterpart_username,
+      name: row.counterpart_name,
+      last_seen_at: row.counterpart_last_seen_at
+    }
+  end
+
+  defp counterpart(_row), do: nil
+
+  defp member_count(%{type: :group, member_count: count}), do: count
+  defp member_count(_row), do: nil
+
+  defp last_message(%{last_message_id: nil}), do: nil
+
+  defp last_message(row) do
+    %{
+      id: row.last_message_id,
+      body: Preview.truncate(row.last_message_body),
+      sender_id: row.last_message_sender_id,
+      inserted_at: row.last_message_inserted_at
+    }
+  end
+
+  defp write_marker(conversation_id, user_id) do
+    now = DateTime.utc_now()
+
+    query =
+      from p in Participant,
+        where:
+          p.conversation_id == ^conversation_id and p.user_id == ^user_id and is_nil(p.left_at),
+        update: [
+          set: [
+            last_read_at: fragment("GREATEST(?, ?)", p.last_read_at, ^now),
+            updated_at: ^now
+          ]
+        ],
+        select: p.last_read_at
+
+    case Repo.update_all(query, []) do
+      {1, [last_read_at]} ->
+        {:ok, %{conversation_id: conversation_id, last_read_at: last_read_at}}
+
+      {0, _} ->
+        {:error, :not_a_participant}
     end
   end
 
