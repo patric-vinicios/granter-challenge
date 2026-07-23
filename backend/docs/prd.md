@@ -684,19 +684,19 @@ graph TD
 - [x] A departed group member receives only messages with `inserted_at <= left_at`
 
 ### F07. Real-Time Message Channel
-- [ ] A socket connect with a valid token succeeds; connects with a missing, malformed or expired token are rejected and no channel can be joined
-- [ ] A client joining `conversation:<id>` as a participant receives `{:ok, _}` and subsequently receives `message:new` for messages sent by others
-- [ ] A client joining `conversation:<id>` as a non-participant, a departed group member, or with an unknown conversation id receives `{:error, %{reason: "unauthorized"}}`
-- [ ] Joining `user:<other_user_id>` is rejected; joining `user:<own_id>` succeeds
-- [ ] Pushing `new_message` replies `{:ok, %{message: ...}}` containing the persisted message with its server-assigned id and `inserted_at`
-- [ ] The `client_ref` sent in the push is echoed unchanged in the reply
-- [ ] The sender receives the persisted record exactly once — via the reply, not as a duplicate `message:new` broadcast
-- [ ] A message rejected by validation produces an error reply and no `message:new` is received by any subscriber
-- [ ] Every participant with the topic joined receives `message:new`, and every participant receives `conversation:updated` on their personal topic with the conversation id, preview and timestamp
-- [ ] 5 concurrent senders pushing 20 messages each into one conversation result in exactly 100 persisted messages and 100 `message:new` events received per other subscriber, with no duplicates
-- [ ] The 21st message within a 10-second window replies `{:error, %{reason: "rate_limited"}}` and persists nothing
-- [ ] A member removed from a group while joined receives `conversation:membership_revoked` and a subsequent rejoin attempt is rejected
-- [ ] Every message present in a `message:new` broadcast is retrievable through the history endpoint (F06), confirming persist-before-broadcast ordering
+- [x] A socket connect with a valid token succeeds; connects with a missing, malformed or expired token are rejected and no channel can be joined
+- [x] A client joining `conversation:<id>` as a participant receives `{:ok, _}` and subsequently receives `message:new` for messages sent by others
+- [x] A client joining `conversation:<id>` as a non-participant, a departed group member, or with an unknown conversation id receives `{:error, %{reason: "unauthorized"}}`
+- [x] Joining `user:<other_user_id>` is rejected; joining `user:<own_id>` succeeds
+- [x] Pushing `new_message` replies `{:ok, %{message: ...}}` containing the persisted message with its server-assigned id and `inserted_at`
+- [x] The `client_ref` sent in the push is echoed unchanged in the reply
+- [x] The sender receives the persisted record exactly once — via the reply, not as a duplicate `message:new` broadcast
+- [x] A message rejected by validation produces an error reply and no `message:new` is received by any subscriber
+- [x] Every participant with the topic joined receives `message:new`, and every participant receives `conversation:updated` on their personal topic with the conversation id, preview and timestamp
+- [x] 5 concurrent senders pushing 20 messages each into one conversation result in exactly 100 persisted messages and 100 `message:new` events received per other subscriber, with no duplicates
+- [x] The 21st message within a 10-second window replies `{:error, %{reason: "rate_limited"}}` and persists nothing
+- [x] A member removed from a group while joined receives `conversation:membership_revoked` and a subsequent rejoin attempt is rejected
+- [x] Every message present in a `message:new` broadcast is retrievable through the history endpoint (F06), confirming persist-before-broadcast ordering
 
 ### F08. Conversation Inbox and Unread Tracking
 - [ ] `GET /api/conversations` returns every conversation the caller actively participates in, private and group, in one response
@@ -762,7 +762,7 @@ graph TD
 - [ ] A contact added in F03 is accepted in `member_ids` when creating a group (F05), and a non-contact id in the same array causes the whole creation to fail
 - [x] A private conversation created in F04 accepts messages from both of its participants in F06, and rejects history reads from any third user
 - [x] A group created in F05 accepts messages from every active member in F06, and a member removed in F05 is rejected on their next send and sees no messages after `left_at`
-- [ ] A message persisted by F06 is the exact record broadcast as `message:new` by F07, including id, sender identity, body and `inserted_at`
+- [x] A message persisted by F06 is the exact record broadcast as `message:new` by F07, including id, sender identity, body and `inserted_at`
 - [ ] Private conversations from F04 appear in the inbox list (F08) with the counterpart's display name as the title and the counterpart user id present
 - [ ] Group conversations from F05 appear in the inbox list (F08) with the group name as the title and the active member count, and disappear once the caller leaves
 - [ ] The last message persisted by F06 is the message previewed in the corresponding F08 inbox entry, with matching sender id and timestamp, and moves that conversation to the top of the ordering
