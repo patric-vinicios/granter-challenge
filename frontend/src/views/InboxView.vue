@@ -6,6 +6,7 @@
       <aside class="border-r border-[#e8e8e8] bg-white max-[859px]:hidden">
         <ConversationListPanel
           v-if="sidebarMode === 'inbox'"
+          v-model:search-query="inboxSearchQuery"
           :conversations="conversationItems"
           :error="inboxLoadError"
           :is-empty="isInboxEmpty"
@@ -68,10 +69,19 @@
         :realtime-error="realtimeError"
         :is-loading-history="selectedHistoryState.isLoadingInitial"
         :is-loading-older="selectedHistoryState.isLoadingOlder"
-        @close-search="isSearching = false"
+        :search-active-match-offsets="searchActiveMatchOffsets"
+        :search-active-message-id="searchActiveMessageId"
+        :search-active-position="searchActivePosition"
+        :search-error="conversationSearchError"
+        :search-status="conversationSearchStatus"
+        :search-total-matches="searchTotalMatches"
+        :search-truncated="searchTruncated"
+        @close-search="closeSearch"
         @load-older-messages="loadOlderMessages"
+        @next-search-result="selectNextSearchResult"
         @open-group-details="openGroupDetails"
         @open-search="openSearch"
+        @previous-search-result="selectPreviousSearchResult"
         @search-focusout="closeSearchOnFocusOut"
         @send-message="sendMessage"
       />
@@ -113,6 +123,7 @@ import { useMessagesStore, useMessagingStore } from '@/features/messaging/messag
 import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { decodePresenceDiff, decodePresenceState, type PresenceStatus } from '@/features/presence/presence.contracts'
 import { formatPresenceLabel } from '@/features/presence/presence.format'
+import { useConversationSearch } from '@/features/search/useConversationSearch'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -141,6 +152,7 @@ const sidebarMode = ref<'inbox' | 'new-group' | 'contacts' | 'group-details'>('i
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
 const isAddingContact = ref(false)
+const inboxSearchQuery = ref('')
 const searchTerm = ref('')
 const messageDraft = ref('')
 const groupName = ref('Squad Lancamento')
@@ -161,6 +173,20 @@ const emptyConversation: Conversation = {
   messages: [],
 }
 const selectedConversationIdRef = computed(() => selectedConversationId.value)
+const activeConversationSearchQuery = computed(() => (isSearching.value ? searchTerm.value : ''))
+const {
+  activeHit: activeSearchHit,
+  error: conversationSearchError,
+  selectNext: selectNextSearchResult,
+  selectPrevious: selectPreviousSearchResult,
+  status: conversationSearchStatus,
+  totalMatches: searchTotalMatches,
+  truncated: searchTruncated,
+} = useConversationSearch({
+  token,
+  conversationId: selectedConversationIdRef,
+  query: activeConversationSearchQuery,
+})
 const {
   canSend: canSendMessage,
   error: realtimeError,
@@ -173,12 +199,18 @@ const {
   onPresenceDiff: applyPresenceDiff,
 })
 
-const selectedConversation = computed(
-  () =>
-    conversationItems.value.find((conversation) => conversation.id === selectedConversationId.value) ??
+const searchActivePosition = computed(() => activeSearchHit.value?.position ?? null)
+const searchActiveMessageId = computed(() => activeSearchHit.value?.message.id ?? null)
+const searchActiveMatchOffsets = computed(() => activeSearchHit.value?.matchOffsets ?? [])
+
+const selectedConversation = computed(() => {
+  const conversation =
+    conversationItems.value.find((item) => item.id === selectedConversationId.value) ??
     conversationItems.value[0] ??
-    emptyConversation,
-)
+    emptyConversation
+
+  return withActiveSearchHit(conversation)
+})
 
 const conversationItems = computed(() => {
   if (!token.value) {
@@ -237,7 +269,20 @@ watch(
 
     const controller = new AbortController()
     contactsStore.load(currentToken, controller.signal)
-    conversationsStore.loadInbox(currentToken, controller.signal)
+    onCleanup(() => controller.abort())
+  },
+  { immediate: true },
+)
+
+watch(
+  [token, inboxSearchQuery],
+  ([currentToken, currentSearchQuery], _previous, onCleanup) => {
+    if (!currentToken) {
+      return
+    }
+
+    const controller = new AbortController()
+    conversationsStore.loadInbox(currentToken, controller.signal, currentSearchQuery)
     onCleanup(() => controller.abort())
   },
   { immediate: true },
@@ -279,6 +324,11 @@ function openSearch() {
   isSearching.value = true
 }
 
+function closeSearch() {
+  isSearching.value = false
+  searchTerm.value = ''
+}
+
 function closeSearchOnFocusOut(event: FocusEvent) {
   const nextTarget = event.relatedTarget
 
@@ -288,7 +338,7 @@ function closeSearchOnFocusOut(event: FocusEvent) {
     }
   }
 
-  isSearching.value = false
+  closeSearch()
 }
 
 function sendMessage() {
@@ -642,11 +692,29 @@ function presenceSubtitle(user: ContactUser): string {
 
 function toMessageItem(message: PersistedMessage): Message {
   return {
+    id: message.id,
     side: message.sender.id === currentUserId.value ? 'out' : 'in',
     author: message.sender.id === currentUserId.value ? undefined : message.sender.name,
     text: message.body,
     time: formatMessageTime(message.insertedAt),
     wide: message.body.length > 44,
+  }
+}
+
+function withActiveSearchHit(conversation: Conversation): Conversation {
+  const hit = activeSearchHit.value
+
+  if (!hit || hit.message.conversationId !== conversation.id) {
+    return conversation
+  }
+
+  if (conversation.messages.some((message) => message.id === hit.message.id)) {
+    return conversation
+  }
+
+  return {
+    ...conversation,
+    messages: [...conversation.messages, toMessageItem(hit.message)],
   }
 }
 

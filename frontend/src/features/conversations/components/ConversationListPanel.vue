@@ -28,7 +28,7 @@
   </div>
 
   <div class="px-3 pb-3">
-      <label class="sr-only" for="conversation-search">Buscar</label>
+      <label class="sr-only" for="conversation-search">Buscar conversa</label>
       <div class="relative">
         <Search
           class="absolute left-3 top-1/2 -translate-y-1/2 text-[#a3a3a3]"
@@ -38,9 +38,11 @@
         />
         <input
           id="conversation-search"
+          :value="searchQuery"
           class="h-9 w-full rounded-lg border border-[#e8e8e8] bg-white pl-9 pr-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
           placeholder="Buscar"
           type="text"
+          @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
         />
       </div>
   </div>
@@ -54,7 +56,7 @@
   </div>
 
   <div v-else-if="isEmpty" class="px-5 py-6 text-[14px] text-[#737373]">
-    Nenhuma conversa.
+    {{ emptyMessage }}
   </div>
 
   <nav v-else class="grid gap-1 px-2">
@@ -95,6 +97,7 @@
 
 <script setup lang="ts">
 import { LogOut, Search, UserRound, UserRoundPlus } from '@lucide/vue'
+import { computed } from 'vue'
 
 import type { Conversation } from '../conversations.mock'
 
@@ -102,12 +105,13 @@ type ConversationListItem = Conversation & {
   unreadLabel?: string
 }
 
-defineProps<{
+const props = defineProps<{
   conversations: ConversationListItem[]
   selectedConversationId: string
   isLoading: boolean
   isEmpty: boolean
   error: string | null
+  searchQuery: string
 }>()
 
 defineEmits<{
@@ -115,5 +119,8 @@ defineEmits<{
   openContacts: []
   logout: []
   selectConversation: [conversationId: string]
+  'update:searchQuery': [searchQuery: string]
 }>()
+
+const emptyMessage = computed(() => (props.searchQuery.trim() ? 'Nenhuma conversa encontrada.' : 'Nenhuma conversa.'))
 </script>

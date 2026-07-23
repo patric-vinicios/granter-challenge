@@ -134,6 +134,40 @@ describe('conversations.api', () => {
     ])
   })
 
+  it('filters inbox summaries with the documented query parameter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        conversations: [
+          {
+            id: 'conversation-ana',
+            type: 'private',
+            title: 'Ana Beatriz',
+            counterpart: userResponse('user-ana', 'anabeatriz', 'Ana Beatriz'),
+            member_count: null,
+            last_message: null,
+            unread_count: 0,
+            unread_overflow: false,
+            last_read_at: null,
+          },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const summaries = await listInboxConversations('jwt-token', { query: ' ana ' })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations?q=ana',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
+    expect(summaries).toHaveLength(1)
+  })
+
   it('marks a conversation as read with the documented path and response shape', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, {

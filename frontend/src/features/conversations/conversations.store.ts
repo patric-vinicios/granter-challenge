@@ -24,12 +24,12 @@ export const useConversationsStore = defineStore('conversations', () => {
   const pendingMemberUserIds = ref<Set<string>>(new Set())
   const pendingReadIds = ref<Set<string>>(new Set())
 
-  async function loadInbox(token: string, signal?: AbortSignal): Promise<void> {
+  async function loadInbox(token: string, signal?: AbortSignal, query?: string): Promise<void> {
     inboxLoadState.value = 'loading'
     inboxLoadError.value = null
 
     try {
-      inboxSummaries.value = await listInboxConversations(token, signal)
+      inboxSummaries.value = await listInboxConversations(token, { query, signal })
       inboxLoadState.value = 'success'
     } catch (error) {
       if (signal?.aborted) {
