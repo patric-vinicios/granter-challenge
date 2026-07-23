@@ -6,7 +6,7 @@
       <aside class="border-r border-[#e8e8e8] bg-white max-[859px]:hidden">
         <ConversationListPanel
           v-if="sidebarMode === 'inbox'"
-          :conversations="conversations"
+          :conversations="conversationItems"
           :selected-conversation-id="selectedConversationId"
           @create-group="sidebarMode = 'new-group'"
           @open-contacts="sidebarMode = 'contacts'"
@@ -20,9 +20,11 @@
           :error="loadError"
           :is-empty="isEmpty"
           :is-loading="isLoading"
+          :pending-conversation-user-ids="pendingPrivateUserIds"
           :pending-removal-ids="pendingRemovalIds"
           @add-contact="openAddContact"
           @close="sidebarMode = 'inbox'"
+          @open-conversation="openPrivateConversation"
           @remove-contact="removeContact"
         />
 
@@ -67,10 +69,12 @@ import AddContactDialog from '@/features/contacts/components/AddContactDialog.vu
 import ContactsPanel from '@/features/contacts/components/ContactsPanel.vue'
 import type { AddContactFeedback } from '@/features/contacts/contacts.contracts'
 import { groupContacts } from '@/features/contacts/contacts.mock'
-import { useContactsStore } from '@/features/contacts/contacts.store'
+import { contactInitials, useContactsStore } from '@/features/contacts/contacts.store'
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
-import { conversations } from '@/features/conversations/conversations.mock'
 import NewGroupPanel from '@/features/conversations/components/NewGroupPanel.vue'
+import type { ConversationRecord } from '@/features/conversations/conversations.contracts'
+import { conversations } from '@/features/conversations/conversations.mock'
+import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
@@ -79,8 +83,10 @@ const selectedConversationId = ref('ana')
 const router = useRouter()
 const authStore = useAuthStore()
 const contactsStore = useContactsStore()
+const conversationsStore = useConversationsStore()
 const { token } = storeToRefs(authStore)
 const { contactGroups, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
+const { conversations: openedConversations, pendingPrivateUserIds } = storeToRefs(conversationsStore)
 const sidebarMode = ref<'inbox' | 'new-group' | 'contacts'>('inbox')
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
@@ -92,8 +98,15 @@ const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
 
 const selectedConversation = computed(
-  () => conversations.find((conversation) => conversation.id === selectedConversationId.value) ?? conversations[0],
+  () => conversationItems.value.find((conversation) => conversation.id === selectedConversationId.value) ?? conversationItems.value[0],
 )
+
+const conversationItems = computed(() => [
+  ...openedConversations.value.map(toConversationItem),
+  ...conversations.filter(
+    (conversation) => !openedConversations.value.some((opened) => opened.id === conversation.id),
+  ),
+])
 
 const selectedGroupContacts = computed(() => groupContacts.filter((contact) => contact.selected))
 
@@ -102,6 +115,7 @@ watch(
   (currentToken, _previousToken, onCleanup) => {
     if (!currentToken) {
       contactsStore.reset()
+      conversationsStore.reset()
       return
     }
 
@@ -135,8 +149,25 @@ function sendMessage() {
 
 function logout() {
   contactsStore.reset()
+  conversationsStore.reset()
   authStore.logout()
   router.push('/')
+}
+
+async function openPrivateConversation(userId: string) {
+  const currentToken = token.value
+
+  if (!currentToken) {
+    return
+  }
+
+  try {
+    const conversation = await conversationsStore.openPrivate(userId, currentToken)
+    selectedConversationId.value = conversation.id
+    sidebarMode.value = 'inbox'
+  } catch (error) {
+    loadError.value = conversationErrorMessage(error)
+  }
 }
 
 function openAddContact() {
@@ -227,6 +258,40 @@ function contactErrorFeedback(error: unknown): AddContactFeedback {
     kind: 'error',
     title: 'Nao foi possivel adicionar',
     message: error instanceof Error ? error.message : 'Tente novamente em instantes.',
+  }
+}
+
+function conversationErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    return error.message
+  }
+
+  return error instanceof Error ? error.message : 'Não foi possível abrir a conversa.'
+}
+
+function toConversationItem(conversation: ConversationRecord) {
+  if (conversation.type === 'private') {
+    return {
+      id: conversation.id,
+      type: conversation.type,
+      initials: contactInitials(conversation.counterpart.name),
+      name: conversation.counterpart.name,
+      subtitle: conversation.counterpart.lastSeenAt ? 'visto recentemente' : 'offline',
+      preview: 'Conversa iniciada',
+      time: '',
+      messages: [],
+    }
+  }
+
+  return {
+    id: conversation.id,
+    type: conversation.type,
+    initials: contactInitials(conversation.name),
+    name: conversation.name,
+    subtitle: `${conversation.memberCount} membros`,
+    preview: 'Grupo criado',
+    time: '',
+    messages: [],
   }
 }
 </script>

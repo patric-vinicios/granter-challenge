@@ -58,7 +58,7 @@
         <div
           v-for="contact in group.contacts"
           :key="contact.id"
-          class="grid min-h-[72px] grid-cols-[44px_minmax(0,1fr)_34px] items-center gap-3"
+          class="grid min-h-[72px] grid-cols-[44px_minmax(0,1fr)_34px_34px] items-center gap-3"
         >
           <span
             class="grid h-10 w-10 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
@@ -71,6 +71,15 @@
               @{{ contact.user.username }}
             </span>
           </span>
+          <button
+            class="grid h-8 w-8 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#737373] hover:bg-[#f5f5f5]"
+            type="button"
+            :aria-label="`Abrir conversa com ${contact.user.name}`"
+            :disabled="pendingConversationUserIds.has(contact.user.id)"
+            @click="$emit('openConversation', contact.user.id)"
+          >
+            <MessageCircle :size="16" :stroke-width="2" aria-hidden="true" />
+          </button>
           <button
             class="grid h-8 w-8 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#737373] hover:bg-[#f5f5f5]"
             type="button"
@@ -87,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, Search, Trash2, X } from '@lucide/vue'
+import { MessageCircle, Plus, Search, Trash2, X } from '@lucide/vue'
 
 import { contactInitials } from '../contacts.store'
 import type { ContactGroup } from '../contacts.contracts'
@@ -97,12 +106,14 @@ defineProps<{
   error: string | null
   isEmpty: boolean
   isLoading: boolean
+  pendingConversationUserIds: Set<string>
   pendingRemovalIds: Set<string>
 }>()
 
 defineEmits<{
   addContact: []
   close: []
+  openConversation: [userId: string]
   removeContact: [contactId: string]
 }>()
 </script>
