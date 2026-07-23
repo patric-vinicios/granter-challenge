@@ -60,9 +60,16 @@
       <ChatPanel
         v-model:message-draft="messageDraft"
         v-model:search-term="searchTerm"
+        :can-send-message="canSendMessage"
+        :can-load-older="selectedHistoryState.hasMore"
         :conversation="selectedConversation"
+        :history-error="selectedHistoryState.error"
         :is-searching="isSearching"
+        :realtime-error="realtimeError"
+        :is-loading-history="selectedHistoryState.isLoadingInitial"
+        :is-loading-older="selectedHistoryState.isLoadingOlder"
         @close-search="isSearching = false"
+        @load-older-messages="loadOlderMessages"
         @open-group-details="openGroupDetails"
         @open-search="openSearch"
         @search-focusout="closeSearchOnFocusOut"
@@ -98,9 +105,12 @@ import type {
   GroupConversation,
   InboxConversationSummary,
 } from '@/features/conversations/conversations.contracts'
-import { type Conversation, conversations } from '@/features/conversations/conversations.mock'
+import { type Conversation, conversations, type Message } from '@/features/conversations/conversations.mock'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
+import type { PersistedMessage } from '@/features/messaging/messaging.contracts'
+import { useMessagesStore, useMessagingStore } from '@/features/messaging/messaging.store'
+import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -109,6 +119,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 const contactsStore = useContactsStore()
 const conversationsStore = useConversationsStore()
+const messagingStore = useMessagingStore()
+const messagesStore = useMessagesStore()
 const { token } = storeToRefs(authStore)
 const { user } = storeToRefs(authStore)
 const { contactGroups, contacts, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
@@ -122,6 +134,7 @@ const {
   pendingMemberUserIds,
   pendingReadIds,
 } = storeToRefs(conversationsStore)
+const { historyByConversationId } = storeToRefs(messagesStore)
 const sidebarMode = ref<'inbox' | 'new-group' | 'contacts' | 'group-details'>('inbox')
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
@@ -133,6 +146,7 @@ const groupError = ref<string | null>(null)
 const selectedGroupContactIds = ref<Set<string>>(new Set())
 const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
+const currentUserId = computed(() => user.value?.id ?? null)
 const emptyConversation: Conversation = {
   id: 'empty',
   type: 'private',
@@ -143,6 +157,16 @@ const emptyConversation: Conversation = {
   time: '',
   messages: [],
 }
+const selectedConversationIdRef = computed(() => selectedConversationId.value)
+const {
+  canSend: canSendMessage,
+  error: realtimeError,
+  sendMessage: sendRealtimeMessage,
+} = useRealtimeMessaging({
+  token,
+  userId: currentUserId,
+  selectedConversationId: selectedConversationIdRef,
+})
 
 const selectedConversation = computed(
   () =>
@@ -153,15 +177,16 @@ const selectedConversation = computed(
 
 const conversationItems = computed(() => {
   if (!token.value) {
-    return conversations
+    return conversations.map(messagingStore.decorate)
   }
 
-  const summaries = inboxSummaries.value.map(toInboxConversationItem)
+  const summaries = inboxSummaries.value.map(toInboxConversationItem).map(messagingStore.decorate)
   const openedItems = openedConversations.value
     .filter((conversation) => !summaries.some((summary) => summary.id === conversation.id))
     .map(toConversationItem)
+    .map(messagingStore.decorate)
 
-  return [...openedItems, ...summaries]
+  return messagingStore.sortByActivity([...openedItems, ...summaries])
 })
 
 const isInboxLoading = computed(() => inboxLoadState.value === 'loading' && inboxSummaries.value.length === 0)
@@ -169,7 +194,24 @@ const isInboxEmpty = computed(
   () => Boolean(token.value) && inboxLoadState.value === 'success' && conversationItems.value.length === 0,
 )
 
-const currentUserId = computed(() => user.value?.id ?? null)
+const selectedBackendConversation = computed(() =>
+  openedConversations.value.find((conversation) => conversation.id === selectedConversation.value.id) ?? null,
+)
+const selectedHistoryState = computed(() => {
+  const history = historyByConversationId.value[selectedConversation.value.id]
+
+  return (
+    history ?? {
+      messages: [],
+      nextCursor: null,
+      hasMore: false,
+      isLoadingInitial: false,
+      isLoadingOlder: false,
+      didLoadInitial: false,
+      error: null,
+    }
+  )
+})
 const selectedGroupConversation = computed<GroupConversation | null>(() => {
   const conversation = openedConversations.value.find(
     (item) => item.id === selectedConversationId.value && item.type === 'group',
@@ -184,6 +226,7 @@ watch(
     if (!currentToken) {
       contactsStore.reset()
       conversationsStore.reset()
+      messagesStore.reset()
       return
     }
 
@@ -212,6 +255,20 @@ async function selectConversation(conversationId: string) {
   }
 }
 
+watch(
+  [selectedBackendConversation, token],
+  ([conversation, currentToken], _previous, onCleanup) => {
+    if (!conversation || !currentToken) {
+      return
+    }
+
+    const controller = new AbortController()
+    messagesStore.loadInitial(conversation.id, currentToken, controller.signal)
+    onCleanup(() => controller.abort())
+  },
+  { immediate: true },
+)
+
 function openSearch() {
   searchTerm.value = ''
   isSearching.value = true
@@ -230,12 +287,34 @@ function closeSearchOnFocusOut(event: FocusEvent) {
 }
 
 function sendMessage() {
+  const body = messageDraft.value.trim()
+
+  if (!body) {
+    return
+  }
+
+  if (!sendRealtimeMessage(body)) {
+    return
+  }
+
   messageDraft.value = ''
+}
+
+function loadOlderMessages() {
+  const currentToken = token.value
+
+  if (!currentToken) {
+    return
+  }
+
+  messagesStore.loadOlder(selectedConversation.value.id, currentToken)
 }
 
 function logout() {
   contactsStore.reset()
   conversationsStore.reset()
+  messagingStore.reset()
+  messagesStore.reset()
   authStore.logout()
   router.push('/')
 }
@@ -460,6 +539,8 @@ function conversationErrorMessage(error: unknown): string {
 }
 
 function toConversationItem(conversation: ConversationRecord) {
+  const messages = historyByConversationId.value[conversation.id]?.messages.map(toMessageItem) ?? []
+
   if (conversation.type === 'private') {
     return {
       id: conversation.id,
@@ -469,7 +550,7 @@ function toConversationItem(conversation: ConversationRecord) {
       subtitle: conversation.counterpart.lastSeenAt ? 'visto recentemente' : 'offline',
       preview: 'Conversa iniciada',
       time: '',
-      messages: [],
+      messages,
     }
   }
 
@@ -481,11 +562,13 @@ function toConversationItem(conversation: ConversationRecord) {
     subtitle: `${conversation.memberCount} membros`,
     preview: 'Grupo criado',
     time: '',
-    messages: [],
+    messages,
   }
 }
 
 function toInboxConversationItem(conversation: InboxConversationSummary): Conversation & { unreadLabel?: string } {
+  const messages = historyByConversationId.value[conversation.id]?.messages.map(toMessageItem) ?? []
+
   return {
     id: conversation.id,
     type: conversation.type,
@@ -498,8 +581,8 @@ function toInboxConversationItem(conversation: InboxConversationSummary): Conver
           ? 'visto recentemente'
           : 'offline',
     preview: inboxPreview(conversation),
-    time: conversation.lastMessage ? formatConversationTime(conversation.lastMessage.insertedAt) : '',
-    messages: [],
+    time: conversation.lastMessage ? formatMessageTime(conversation.lastMessage.insertedAt) : '',
+    messages,
     unreadLabel: unreadLabel(conversation),
   }
 }
@@ -524,7 +607,17 @@ function unreadLabel(conversation: InboxConversationSummary): string | undefined
   return conversation.unreadOverflow ? '99+' : String(conversation.unreadCount)
 }
 
-function formatConversationTime(value: string): string {
+function toMessageItem(message: PersistedMessage): Message {
+  return {
+    side: message.sender.id === currentUserId.value ? 'out' : 'in',
+    author: message.sender.id === currentUserId.value ? undefined : message.sender.name,
+    text: message.body,
+    time: formatMessageTime(message.insertedAt),
+    wide: message.body.length > 44,
+  }
+}
+
+function formatMessageTime(value: string): string {
   const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {

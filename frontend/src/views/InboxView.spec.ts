@@ -1,11 +1,21 @@
-import { screen, within } from '@testing-library/vue'
+import { screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth.store'
 import { renderWithApp } from '@/test/render'
 
 import InboxView from './InboxView.vue'
+
+const sockets: FakeSocket[] = []
+
+vi.mock('@/shared/realtime/socket', () => ({
+  createRealtimeSocket: (token: string) => {
+    const socket = new FakeSocket(token)
+    sockets.push(socket)
+    return socket
+  },
+}))
 
 const routes = [
   {
@@ -23,6 +33,10 @@ async function renderInbox() {
 }
 
 describe('InboxView', () => {
+  beforeEach(() => {
+    sockets.length = 0
+  })
+
   it('shows the default conversation and switches to another conversation', async () => {
     const user = userEvent.setup()
 
@@ -144,10 +158,11 @@ describe('InboxView', () => {
         conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
       }),
     )
+    fetchMock.mockResolvedValueOnce(historyResponse())
 
     await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
 
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:4000/api/conversations/private',
       expect.objectContaining({
         method: 'POST',
@@ -157,14 +172,114 @@ describe('InboxView', () => {
         }),
       }),
     )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/conversation-ana/messages?limit=30',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
     expect(await screen.findByText('Conversa iniciada')).toBeTruthy()
     expect(screen.getByText('Nenhuma mensagem nesta conversa.')).toBeTruthy()
+  })
+
+  it('loads and paginates persisted history for a backend conversation', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /contatos/i }))
+    await screen.findByText('@anabeatriz')
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, {
+        conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      historyResponse({
+        messages: [
+          historyMessageResponse('message-2', 'Mensagem mais recente', 'user-current', 'Patric', '2026-07-22T13:49:00Z'),
+        ],
+        nextCursor: 'older-cursor',
+        hasMore: true,
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
+
+    expect(await screen.findByText('Mensagem mais recente')).toBeTruthy()
+
+    fetchMock.mockResolvedValueOnce(
+      historyResponse({
+        messages: [historyMessageResponse('message-1', 'Mensagem anterior', 'user-ana', 'Ana Beatriz', '2026-07-22T13:40:00Z')],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /carregar mensagens anteriores/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/conversation-ana/messages?limit=30&before=older-cursor',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(await screen.findByText('Mensagem anterior')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /carregar mensagens anteriores/i })).toBeNull()
+  })
+
+  it('shows a history load error for a backend conversation', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /contatos/i }))
+    await screen.findByText('@anabeatriz')
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, {
+        conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, {
+        errors: {
+          code: 'invalid_cursor',
+          detail: 'The pagination cursor is invalid',
+        },
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
+
+    expect(await screen.findByText('O cursor de paginação é inválido.')).toBeTruthy()
   })
 
   it('opens conversation search and clears the draft when sending', async () => {
     const user = userEvent.setup()
 
-    await renderInbox()
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+    sockets[0].channelFor('user:user-current').okJoin()
+    sockets[0].channelFor('conversation:ana').okJoin()
 
     await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
 
@@ -177,6 +292,89 @@ describe('InboxView', () => {
     await user.click(screen.getByRole('button', { name: /enviar mensagem/i }))
 
     expect(messageInput.value).toBe('')
+  })
+
+  it('sends over the conversation channel and reconciles the optimistic message from the ack', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+    const socket = sockets[0]
+    socket.channelFor('user:user-current').okJoin()
+    const conversationChannel = socket.channelFor('conversation:ana')
+    conversationChannel.okJoin()
+
+    const messageInput = screen.getByLabelText(/^mensagem$/i) as HTMLTextAreaElement
+
+    await user.type(messageInput, 'Mensagem de teste')
+    await user.click(screen.getByRole('button', { name: /enviar mensagem/i }))
+
+    expect(conversationChannel.lastPush).toMatchObject({
+      event: 'new_message',
+      payload: {
+        body: 'Mensagem de teste',
+      },
+    })
+    expect(conversationChannel.lastPush?.payload.client_ref).toEqual(expect.stringMatching(/^client-/))
+    expect(screen.getByText('Mensagem de teste')).toBeTruthy()
+    expect(screen.getByText('Enviando')).toBeTruthy()
+
+    conversationChannel.replyLastPush('ok', {
+      message: realtimeMessageResponse({
+        id: 'message-1',
+        body: 'Mensagem de teste',
+        senderId: 'user-current',
+        senderName: 'Patric',
+      }),
+      client_ref: conversationChannel.lastPush?.payload.client_ref,
+    })
+
+    await waitFor(() => expect(screen.queryByText('Enviando')).toBeNull())
+    expect(screen.getAllByText('14:40').length).toBeGreaterThanOrEqual(1)
+    expect(messageInput.value).toBe('')
+  })
+
+  it('applies incoming conversation messages, user updates, and membership revocation events', async () => {
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+    const socket = sockets[0]
+    const conversationChannel = socket.channelFor('conversation:ana')
+    const userChannel = socket.channelFor('user:user-current')
+    userChannel.okJoin()
+    conversationChannel.okJoin()
+
+    conversationChannel.pushServer('message:new', realtimeMessageResponse({
+      id: 'message-2',
+      body: 'Cheguei por socket',
+      senderId: 'user-ana',
+      senderName: 'Ana Beatriz',
+    }))
+
+    await waitFor(() => expect(screen.getAllByText('Cheguei por socket').length).toBeGreaterThanOrEqual(1))
+    expect(screen.getAllByText('Ana Beatriz').length).toBeGreaterThanOrEqual(1)
+
+    userChannel.pushServer('conversation:updated', {
+      conversation_id: 'ana',
+      last_message: {
+        preview: 'Cheguei por socket',
+        sender_id: 'user-ana',
+        inserted_at: '2026-07-23T17:40:00.000000Z',
+      },
+      unread: true,
+    })
+
+    expect(screen.getAllByText('Cheguei por socket').length).toBeGreaterThanOrEqual(1)
+
+    conversationChannel.pushServer('conversation:membership_revoked', {
+      conversation_id: 'ana',
+    })
+
+    expect((await screen.findAllByText('Voce saiu desta conversa.')).length).toBeGreaterThanOrEqual(1)
+    expect(conversationChannel.leaveCount).toBe(1)
   })
 
   it('creates and manages a group from contacts', async () => {
@@ -198,17 +396,22 @@ describe('InboxView', () => {
     await user.click(screen.getByLabelText(/carlos silva/i))
 
     fetchMock.mockResolvedValueOnce(jsonResponse(201, { conversation: groupResponse() }))
+    fetchMock.mockResolvedValueOnce(historyResponse())
 
     await user.clear(screen.getByLabelText(/nome do grupo/i))
     await user.type(screen.getByLabelText(/nome do grupo/i), 'Time de Produto')
     await user.click(screen.getByRole('button', { name: /criar grupo/i }))
 
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:4000/api/conversations/groups',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ name: 'Time de Produto', member_ids: ['user-ana', 'user-carlos'] }),
       }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/group-product/messages?limit=30',
+      expect.objectContaining({ method: 'GET' }),
     )
     expect(await screen.findByText('Grupo criado')).toBeTruthy()
 
@@ -350,6 +553,16 @@ function inboxSummaryResponse(
   }
 }
 
+function defaultAnaInboxSummary() {
+  return inboxSummaryResponse({
+    id: 'ana',
+    title: 'Ana Beatriz',
+    senderId: 'user-ana',
+    body: 'Perfeito, fico no aguardo entao',
+    unreadCount: 0,
+  })
+}
+
 function privateConversationResponse(id: string, userId: string, username: string, name: string) {
   return {
     id,
@@ -393,6 +606,35 @@ function userResponse(id: string, username: string, name: string) {
   }
 }
 
+function historyResponse(
+  options: {
+    messages?: ReturnType<typeof historyMessageResponse>[]
+    nextCursor?: string | null
+    hasMore?: boolean
+  } = {},
+) {
+  return jsonResponse(200, {
+    messages: options.messages ?? [],
+    next_cursor: options.nextCursor ?? null,
+    has_more: options.hasMore ?? false,
+  })
+}
+
+function historyMessageResponse(id: string, body: string, senderId: string, senderName: string, insertedAt: string) {
+  return {
+    id,
+    conversation_id: 'conversation-ana',
+    body,
+    inserted_at: insertedAt,
+    sender: {
+      id: senderId,
+      username: senderName.toLowerCase().replaceAll(' ', ''),
+      name: senderName,
+      last_seen_at: null,
+    },
+  }
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(body === null ? null : JSON.stringify(body), {
     status,
@@ -424,4 +666,129 @@ function mockAuthenticatedFetch(options: { contacts?: unknown[]; conversations?:
   })
 
   return fetchMock
+}
+
+function realtimeMessageResponse({
+  id,
+  body,
+  senderId,
+  senderName,
+}: {
+  id: string
+  body: string
+  senderId: string
+  senderName: string
+}) {
+  return {
+    id,
+    conversation_id: 'ana',
+    body,
+    inserted_at: '2026-07-23T17:40:00.000000Z',
+    sender: {
+      id: senderId,
+      username: senderName.toLowerCase().replaceAll(' ', ''),
+      name: senderName,
+      last_seen_at: null,
+    },
+  }
+}
+
+type PushStatus = 'ok' | 'error'
+
+class FakePush {
+  private callbacks: Partial<Record<PushStatus, (payload: unknown) => void>> = {}
+
+  receive(status: PushStatus, callback: (payload: unknown) => void): FakePush {
+    this.callbacks[status] = callback
+    return this
+  }
+
+  reply(status: PushStatus, payload: unknown): void {
+    this.callbacks[status]?.(payload)
+  }
+}
+
+class FakeChannel {
+  handlers = new Map<string, Array<(payload: unknown) => void>>()
+  joinPush = new FakePush()
+  lastPush: { event: string; payload: Record<string, unknown>; push: FakePush } | null = null
+  leaveCount = 0
+
+  join(): FakePush {
+    return this.joinPush
+  }
+
+  okJoin(): void {
+    this.joinPush.reply('ok', {})
+  }
+
+  leave(): void {
+    this.leaveCount += 1
+  }
+
+  on(event: string, callback: (payload: unknown) => void): number {
+    const callbacks = this.handlers.get(event) ?? []
+    callbacks.push(callback)
+    this.handlers.set(event, callbacks)
+    return callbacks.length
+  }
+
+  off(): void {}
+
+  push(event: string, payload: Record<string, unknown>): FakePush {
+    const push = new FakePush()
+    this.lastPush = { event, payload, push }
+    return push
+  }
+
+  replyLastPush(status: PushStatus, payload: unknown): void {
+    this.lastPush?.push.reply(status, payload)
+  }
+
+  pushServer(event: string, payload: unknown): void {
+    for (const callback of this.handlers.get(event) ?? []) {
+      callback(payload)
+    }
+  }
+}
+
+class FakeSocket {
+  connected = false
+  disconnected = false
+  channels = new Map<string, FakeChannel>()
+  token: string
+
+  constructor(token: string) {
+    this.token = token
+  }
+
+  connect(): void {
+    this.connected = true
+  }
+
+  disconnect(): void {
+    this.disconnected = true
+  }
+
+  channel(topic: string): FakeChannel {
+    const existing = this.channels.get(topic)
+
+    if (existing) {
+      return existing
+    }
+
+    const channel = new FakeChannel()
+    this.channels.set(topic, channel)
+    return channel
+  }
+
+  channelFor(topic: string): FakeChannel {
+    const channel = this.channels.get(topic)
+
+    if (!channel) {
+      throw new Error(`Missing channel ${topic}`)
+    }
+
+    return channel
+  }
 }
