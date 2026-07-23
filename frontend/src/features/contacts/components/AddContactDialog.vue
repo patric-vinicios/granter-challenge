@@ -38,44 +38,51 @@
               id="add-contact-username"
               :value="username"
               class="h-11 min-w-0 flex-1 rounded-lg border bg-white px-4 text-[15px] text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
-              :class="feedback === 'error' ? 'border-[#ef4444]' : 'border-[#e8e8e8]'"
+              :class="feedback.kind === 'error' ? 'border-[#ef4444]' : 'border-[#e8e8e8]'"
               placeholder="@anabeatriz"
               type="text"
+              :aria-invalid="feedback.kind === 'error'"
+              :aria-describedby="feedback.kind === 'idle' ? undefined : 'add-contact-feedback'"
               @input="$emit('update:username', ($event.target as HTMLInputElement).value.trim())"
             />
             <button
               class="h-11 w-[100px] shrink-0 rounded-lg border border-black bg-black px-3 text-[14px] font-bold text-white hover:bg-[#222222]"
               type="submit"
+              :disabled="isSubmitting"
             >
-              Adicionar
+              {{ isSubmitting ? 'Enviando' : 'Adicionar' }}
             </button>
           </div>
         </div>
 
         <div class="min-h-[64px]">
           <div
-            v-if="feedback === 'success'"
+            v-if="feedback.kind === 'success'"
+            id="add-contact-feedback"
             class="grid grid-cols-[28px_minmax(0,1fr)] gap-3 rounded-lg border border-[#bbf7d0] bg-[#ecfdf3] p-3 text-[#15803d]"
+            role="status"
           >
             <span class="grid h-6 w-6 place-items-center rounded-full bg-[#16a34a] text-white">
               <Check :size="15" :stroke-width="3" aria-hidden="true" />
             </span>
             <span class="min-w-0 text-[13px]">
               <strong class="block text-[14px]">Contato adicionado</strong>
-              Ana Beatriz (@anabeatriz) entrou na sua lista.
+              {{ feedback.message }}
             </span>
           </div>
 
           <div
-            v-else-if="feedback === 'error'"
+            v-else-if="feedback.kind === 'error'"
+            id="add-contact-feedback"
             class="grid grid-cols-[28px_minmax(0,1fr)] gap-3 rounded-lg border border-[#fecaca] bg-[#fef2f2] p-3 text-[#dc2626]"
+            role="alert"
           >
             <span class="grid h-6 w-6 place-items-center rounded-full bg-[#ef4444] text-white">
               <X :size="15" :stroke-width="3" aria-hidden="true" />
             </span>
             <span class="min-w-0 text-[13px]">
-              <strong class="block text-[14px]">Usuario nao encontrado</strong>
-              Nenhum usuario com @fulano123 existe no sistema.
+              <strong class="block text-[14px]">{{ feedback.title }}</strong>
+              {{ feedback.message }}
             </span>
           </div>
         </div>
@@ -87,9 +94,12 @@
 <script setup lang="ts">
 import { ArrowLeft, Check, X } from '@lucide/vue'
 
+import type { AddContactFeedback } from '../contacts.contracts'
+
 defineProps<{
   username: string
-  feedback: 'idle' | 'success' | 'error'
+  feedback: AddContactFeedback
+  isSubmitting: boolean
 }>()
 
 defineEmits<{

@@ -17,8 +17,13 @@
         <ContactsPanel
           v-else-if="sidebarMode === 'contacts'"
           :contact-groups="contactGroups"
+          :error="loadError"
+          :is-empty="isEmpty"
+          :is-loading="isLoading"
+          :pending-removal-ids="pendingRemovalIds"
           @add-contact="openAddContact"
           @close="sidebarMode = 'inbox'"
+          @remove-contact="removeContact"
         />
 
         <NewGroupPanel
@@ -46,6 +51,7 @@
       v-if="isAddContactOpen"
       v-model:username="contactUsername"
       :feedback="contactFeedback"
+      :is-submitting="isAddingContact"
       @add-contact="addContact"
       @close="closeAddContact"
     />
@@ -53,33 +59,58 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 
 import AddContactDialog from '@/features/contacts/components/AddContactDialog.vue'
 import ContactsPanel from '@/features/contacts/components/ContactsPanel.vue'
-import { contactGroups, groupContacts } from '@/features/contacts/contacts.mock'
+import type { AddContactFeedback } from '@/features/contacts/contacts.contracts'
+import { groupContacts } from '@/features/contacts/contacts.mock'
+import { useContactsStore } from '@/features/contacts/contacts.store'
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
 import { conversations } from '@/features/conversations/conversations.mock'
 import NewGroupPanel from '@/features/conversations/components/NewGroupPanel.vue'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
+import { isApiError } from '@/shared/api/errors'
+import { useAuthStore } from '@/stores/auth.store'
 
 const selectedConversationId = ref('ana')
 const router = useRouter()
+const authStore = useAuthStore()
+const contactsStore = useContactsStore()
+const { token } = storeToRefs(authStore)
+const { contactGroups, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
 const sidebarMode = ref<'inbox' | 'new-group' | 'contacts'>('inbox')
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
+const isAddingContact = ref(false)
 const searchTerm = ref('')
 const messageDraft = ref('')
 const groupName = ref('Squad Lancamento')
 const contactUsername = ref('')
-const contactFeedback = ref<'idle' | 'success' | 'error'>('idle')
+const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
 
 const selectedConversation = computed(
   () => conversations.find((conversation) => conversation.id === selectedConversationId.value) ?? conversations[0],
 )
 
 const selectedGroupContacts = computed(() => groupContacts.filter((contact) => contact.selected))
+
+watch(
+  token,
+  (currentToken, _previousToken, onCleanup) => {
+    if (!currentToken) {
+      contactsStore.reset()
+      return
+    }
+
+    const controller = new AbortController()
+    contactsStore.load(currentToken, controller.signal)
+    onCleanup(() => controller.abort())
+  },
+  { immediate: true },
+)
 
 function openSearch() {
   searchTerm.value = ''
@@ -103,12 +134,14 @@ function sendMessage() {
 }
 
 function logout() {
+  contactsStore.reset()
+  authStore.logout()
   router.push('/')
 }
 
 function openAddContact() {
   contactUsername.value = ''
-  contactFeedback.value = 'idle'
+  contactFeedback.value = { kind: 'idle' }
   isAddContactOpen.value = true
 }
 
@@ -116,7 +149,84 @@ function closeAddContact() {
   isAddContactOpen.value = false
 }
 
-function addContact() {
-  contactFeedback.value = contactUsername.value.replace('@', '') === 'fulano123' ? 'error' : 'success'
+async function addContact() {
+  const currentToken = token.value
+
+  if (!contactUsername.value) {
+    contactFeedback.value = {
+      kind: 'error',
+      title: 'Usuario obrigatorio',
+      message: 'Informe o @usuario que deseja adicionar.',
+    }
+    return
+  }
+
+  if (!currentToken || isAddingContact.value) {
+    return
+  }
+
+  isAddingContact.value = true
+  contactFeedback.value = { kind: 'idle' }
+
+  try {
+    const contact = await contactsStore.add(contactUsername.value, currentToken)
+    contactFeedback.value = {
+      kind: 'success',
+      message: `${contact.user.name} (@${contact.user.username}) entrou na sua lista.`,
+    }
+    contactUsername.value = ''
+  } catch (error) {
+    contactFeedback.value = contactErrorFeedback(error)
+  } finally {
+    isAddingContact.value = false
+  }
+}
+
+async function removeContact(contactId: string) {
+  const currentToken = token.value
+
+  if (!currentToken) {
+    return
+  }
+
+  try {
+    await contactsStore.remove(contactId, currentToken)
+  } catch {
+    loadError.value = 'Não foi possível remover o contato.'
+  }
+}
+
+function contactErrorFeedback(error: unknown): AddContactFeedback {
+  if (isApiError(error)) {
+    if (error.code === 'user_not_found') {
+      return {
+        kind: 'error',
+        title: 'Usuario nao encontrado',
+        message: error.message,
+      }
+    }
+
+    if (error.code === 'contact_already_exists') {
+      return {
+        kind: 'error',
+        title: 'Contato ja adicionado',
+        message: error.message,
+      }
+    }
+
+    if (error.code === 'self_contact') {
+      return {
+        kind: 'error',
+        title: 'Este e voce',
+        message: error.message,
+      }
+    }
+  }
+
+  return {
+    kind: 'error',
+    title: 'Nao foi possivel adicionar',
+    message: error instanceof Error ? error.message : 'Tente novamente em instantes.',
+  }
 }
 </script>
