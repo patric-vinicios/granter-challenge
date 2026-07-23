@@ -128,6 +128,43 @@ describe('InboxView', () => {
     expect(screen.queryByText('@rafaelalves')).toBeNull()
   })
 
+  it('opens a private conversation from a contact', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /contatos/i }))
+    await screen.findByText('@anabeatriz')
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, {
+        conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/private',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ user_id: 'user-ana' }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
+    expect(await screen.findByText('Conversa iniciada')).toBeTruthy()
+    expect(screen.getByText('Nenhuma mensagem nesta conversa.')).toBeTruthy()
+  })
+
   it('opens conversation search and clears the draft when sending', async () => {
     const user = userEvent.setup()
 
@@ -163,6 +200,20 @@ function contactResponse(id: string, userId: string, username: string, name: str
   return {
     id,
     user: {
+      id: userId,
+      username,
+      name,
+      last_seen_at: null,
+    },
+  }
+}
+
+function privateConversationResponse(id: string, userId: string, username: string, name: string) {
+  return {
+    id,
+    type: 'private',
+    last_read_at: null,
+    counterpart: {
       id: userId,
       username,
       name,

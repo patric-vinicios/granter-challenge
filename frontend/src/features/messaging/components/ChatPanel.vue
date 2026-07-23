@@ -85,15 +85,20 @@
       </div>
 
       <div class="grid gap-2">
-        <MessageBubble
-          v-for="message in conversation.messages"
-          :key="`${message.time}-${message.text}`"
-          :side="message.side"
-          :text="message.text"
-          :time="message.time"
-          :wide="message.wide"
-          :author="conversation.type === 'group' ? message.author : undefined"
-        />
+        <p v-if="conversation.messages.length === 0" class="py-10 text-center text-[14px] text-[#737373]">
+          Nenhuma mensagem nesta conversa.
+        </p>
+        <template v-else>
+          <MessageBubble
+            v-for="message in conversation.messages"
+            :key="`${message.time}-${message.text}`"
+            :side="message.side"
+            :text="message.text"
+            :time="message.time"
+            :wide="message.wide"
+            :author="conversation.type === 'group' ? message.author : undefined"
+          />
+        </template>
       </div>
     </div>
 
