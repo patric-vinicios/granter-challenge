@@ -63,7 +63,7 @@
             {{ conversation.name }}
           </strong>
           <span class="block truncate text-[13px] text-[#737373]">
-            {{ conversation.subtitle }}
+            {{ realtimeError ?? conversation.subtitle }}
           </span>
         </div>
         <button
@@ -116,7 +116,7 @@
         <template v-else>
           <MessageBubble
             v-for="message in conversation.messages"
-            :key="`${message.time}-${message.text}`"
+            :key="`${message.time}-${message.side}-${message.text}`"
             :side="message.side"
             :text="message.text"
             :time="message.time"
@@ -143,8 +143,10 @@
       />
       <button
         class="grid h-12 w-11 place-items-center rounded-lg border border-black bg-black text-white hover:bg-[#222222]"
+        :class="{ 'opacity-50': !canSendMessage }"
         type="button"
         aria-label="Enviar mensagem"
+        :disabled="!canSendMessage"
         @click="$emit('sendMessage')"
       >
         <Navigation fill="currentColor" :size="18" :stroke-width="2" aria-hidden="true" />
@@ -161,6 +163,7 @@ import type { Conversation } from '@/features/conversations/conversations.mock'
 
 defineProps<{
   conversation: Conversation
+  canSendMessage: boolean
   isSearching: boolean
   isLoadingHistory: boolean
   isLoadingOlder: boolean
@@ -168,6 +171,7 @@ defineProps<{
   historyError: string | null
   searchTerm: string
   messageDraft: string
+  realtimeError: string | null
 }>()
 
 defineEmits<{

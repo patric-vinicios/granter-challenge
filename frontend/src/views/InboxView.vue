@@ -57,10 +57,12 @@
       <ChatPanel
         v-model:message-draft="messageDraft"
         v-model:search-term="searchTerm"
+        :can-send-message="canSendMessage"
         :can-load-older="selectedHistoryState.hasMore"
         :conversation="selectedConversation"
         :history-error="selectedHistoryState.error"
         :is-searching="isSearching"
+        :realtime-error="realtimeError"
         :is-loading-history="selectedHistoryState.isLoadingInitial"
         :is-loading-older="selectedHistoryState.isLoadingOlder"
         @close-search="isSearching = false"
@@ -100,7 +102,8 @@ import { conversations, type Message } from '@/features/conversations/conversati
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
 import type { PersistedMessage } from '@/features/messaging/messaging.contracts'
-import { useMessagesStore } from '@/features/messaging/messaging.store'
+import { useMessagesStore, useMessagingStore } from '@/features/messaging/messaging.store'
+import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -109,6 +112,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const contactsStore = useContactsStore()
 const conversationsStore = useConversationsStore()
+const messagingStore = useMessagingStore()
 const messagesStore = useMessagesStore()
 const { token } = storeToRefs(authStore)
 const { user } = storeToRefs(authStore)
@@ -127,19 +131,29 @@ const groupError = ref<string | null>(null)
 const selectedGroupContactIds = ref<Set<string>>(new Set())
 const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
+const currentUserId = computed(() => user.value?.id ?? null)
+const selectedConversationIdRef = computed(() => selectedConversationId.value)
+const {
+  canSend: canSendMessage,
+  error: realtimeError,
+  sendMessage: sendRealtimeMessage,
+} = useRealtimeMessaging({
+  token,
+  userId: currentUserId,
+  selectedConversationId: selectedConversationIdRef,
+})
 
 const selectedConversation = computed(
   () => conversationItems.value.find((conversation) => conversation.id === selectedConversationId.value) ?? conversationItems.value[0],
 )
 
 const conversationItems = computed(() => [
-  ...openedConversations.value.map(toConversationItem),
+  ...messagingStore.sortByActivity(openedConversations.value.map(toConversationItem).map(messagingStore.decorate)),
   ...conversations.filter(
     (conversation) => !openedConversations.value.some((opened) => opened.id === conversation.id),
-  ),
+  ).map(messagingStore.decorate),
 ])
 
-const currentUserId = computed(() => user.value?.id ?? null)
 const selectedBackendConversation = computed(() =>
   openedConversations.value.find((conversation) => conversation.id === selectedConversation.value.id) ?? null,
 )
@@ -215,6 +229,16 @@ function closeSearchOnFocusOut(event: FocusEvent) {
 }
 
 function sendMessage() {
+  const body = messageDraft.value.trim()
+
+  if (!body) {
+    return
+  }
+
+  if (!sendRealtimeMessage(body)) {
+    return
+  }
+
   messageDraft.value = ''
 }
 
@@ -231,6 +255,7 @@ function loadOlderMessages() {
 function logout() {
   contactsStore.reset()
   conversationsStore.reset()
+  messagingStore.reset()
   messagesStore.reset()
   authStore.logout()
   router.push('/')
