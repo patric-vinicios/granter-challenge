@@ -30,9 +30,11 @@ defmodule ApiWeb.Router do
     get "/contacts", ContactController, :index
     delete "/contacts/:id", ContactController, :delete
 
+    get "/conversations", ConversationController, :index
     post "/conversations/private", ConversationController, :create_private
     post "/conversations/groups", ConversationController, :create_group
     get "/conversations/:id", ConversationController, :show
+    post "/conversations/:id/read", ConversationController, :mark_read
     post "/conversations/:id/members", ConversationController, :add_members
     # The static `me` segment must be declared before the parameterised one, so
     # Phoenix's top-down match sends "I leave" here rather than into the id cast.

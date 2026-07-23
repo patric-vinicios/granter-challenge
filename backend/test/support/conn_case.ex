@@ -16,6 +16,7 @@ defmodule ApiWeb.ConnCase do
 
       use ApiWeb, :verified_routes
 
+      import Api.DataCase, only: [count_queries: 1]
       import Api.Factory
       import ApiWeb.ConnCase
       import Phoenix.ConnTest

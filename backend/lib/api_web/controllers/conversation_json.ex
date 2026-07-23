@@ -22,6 +22,32 @@ defmodule ApiWeb.ConversationJSON do
   def show(%{conversation: conversation, caller: caller}),
     do: %{conversation: data(conversation, caller)}
 
+  def index(%{conversations: conversations}),
+    do: %{conversations: Enum.map(conversations, &summary/1)}
+
+  @doc """
+  One inbox entry. `counterpart` and `member_count` are mutually exclusive — each
+  is null for the type it does not describe — and `last_message` is a nested
+  object or null so "never used" is a single check. The body arrives already
+  truncated from the context.
+  """
+  def summary(entry) do
+    %{
+      id: entry.id,
+      type: entry.type,
+      title: entry.title,
+      counterpart: entry.counterpart && UserJSON.data(entry.counterpart),
+      member_count: entry.member_count,
+      last_message: last_message(entry.last_message),
+      unread_count: entry.unread_count,
+      unread_overflow: entry.unread_overflow,
+      last_read_at: entry.last_read_at
+    }
+  end
+
+  def read(%{result: %{conversation_id: id, last_read_at: last_read_at}}),
+    do: %{conversation_id: id, last_read_at: last_read_at, unread_count: 0}
+
   @doc """
   The `conversation:updated` payload for one recipient: which conversation
   moved, a truncated preview of the new message with its sender and timestamp,
@@ -40,6 +66,17 @@ defmodule ApiWeb.ConversationJSON do
         inserted_at: message.inserted_at
       },
       unread: message.sender_id != recipient_id
+    }
+  end
+
+  defp last_message(nil), do: nil
+
+  defp last_message(message) do
+    %{
+      id: message.id,
+      body: message.body,
+      sender_id: message.sender_id,
+      inserted_at: message.inserted_at
     }
   end
 

@@ -597,6 +597,432 @@ defmodule Api.ConversationsTest do
     end
   end
 
+  describe "list_conversations/1" do
+    test "lists private and group conversations in one response" do
+      caller = insert(:user)
+      private_pair(caller, insert(:user))
+      private_pair(caller, insert(:user))
+      group_with(caller)
+      group_with(caller)
+
+      entries = Conversations.list_conversations(caller)
+
+      assert Enum.count(entries) == 4
+      assert Enum.count(entries, &(&1.type == :private)) == 2
+      assert Enum.count(entries, &(&1.type == :group)) == 2
+    end
+
+    test "resolves the title from the counterpart for private conversations" do
+      caller = insert(:user)
+      other = insert(:user, name: "Carlos Eduardo")
+      private_pair(caller, other)
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.title == "Carlos Eduardo"
+      assert entry.counterpart.id == other.id
+      assert entry.counterpart.username == other.username
+      assert entry.member_count == nil
+    end
+
+    test "resolves the title from the group name for groups" do
+      caller = insert(:user)
+      group = group_with(caller, name: "Time de Produto")
+      seat(group, insert(:user))
+      seat(group, insert(:user))
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.title == "Time de Produto"
+      assert entry.member_count == 3
+      assert entry.counterpart == nil
+    end
+
+    test "orders by last message timestamp descending" do
+      caller = insert(:user)
+      a = messaged_pair(caller, ago(300))
+      b = messaged_pair(caller, ago(100))
+      c = messaged_pair(caller, ago(200))
+
+      ids = caller |> Conversations.list_conversations() |> Enum.map(& &1.id)
+
+      assert ids == [b.id, c.id, a.id]
+    end
+
+    test "places message-less conversations after those with messages" do
+      caller = insert(:user)
+      messaged = messaged_pair(caller, ago(3600))
+      empty = private_pair(caller, insert(:user), joined_at: ago(60))
+
+      ids = caller |> Conversations.list_conversations() |> Enum.map(& &1.id)
+
+      assert ids == [messaged.id, empty.id]
+    end
+
+    test "orders message-less conversations by their own creation time" do
+      caller = insert(:user)
+      older = insert(:conversation, participant_key: pair_key(caller, insert(:user)))
+      seat(older, caller)
+      newer = insert(:conversation, participant_key: pair_key(caller, insert(:user)))
+      seat(newer, caller)
+
+      ids = caller |> Conversations.list_conversations() |> Enum.map(& &1.id)
+
+      assert ids == [newer.id, older.id]
+    end
+
+    test "previews the newest message of each conversation" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+
+      for n <- 1..9,
+          do: insert(:message, conversation: conv, sender: other, inserted_at: ago(1000 - n * 10))
+
+      newest =
+        insert(:message,
+          conversation: conv,
+          sender: other,
+          body: "the newest one",
+          inserted_at: ago(10)
+        )
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.last_message.id == newest.id
+      assert entry.last_message.body == "the newest one"
+      assert entry.last_message.sender_id == other.id
+      assert entry.last_message.inserted_at == newest.inserted_at
+    end
+
+    test "breaks a timestamp tie on message id" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+      tie = ago(30)
+
+      ids =
+        for _ <- 1..2 do
+          insert(:message, conversation: conv, sender: other, inserted_at: tie).id
+        end
+
+      expected = Enum.max(ids)
+
+      for _ <- 1..3 do
+        [entry] = Conversations.list_conversations(caller)
+        assert entry.last_message.id == expected
+      end
+    end
+
+    test "returns a null last_message for a conversation never used" do
+      caller = insert(:user)
+      group_with(caller)
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.last_message == nil
+      assert entry.unread_count == 0
+    end
+
+    test "excludes the caller's own messages from the unread count" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+
+      for _ <- 1..5,
+          do: insert(:message, conversation: conv, sender: caller, inserted_at: ago(20))
+
+      for _ <- 1..3, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 3
+    end
+
+    test "counts every message the caller did not send when last_read_at is null" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other, last_read_at: nil)
+
+      for _ <- 1..4, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 4
+    end
+
+    test "counts only messages after last_read_at" do
+      caller = insert(:user)
+      other = insert(:user)
+      marker = ago(100)
+      conv = private_pair(caller, other, last_read_at: marker)
+
+      for _ <- 1..3,
+          do: insert(:message, conversation: conv, sender: other, inserted_at: ago(200))
+
+      for _ <- 1..2, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(50))
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 2
+    end
+
+    test "caps the unread count at 99 and flags the overflow" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+      seed_unread(conv, other, 150)
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 99
+      assert entry.unread_overflow == true
+    end
+
+    test "reports 99 without overflow at exactly 99 unread" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+      seed_unread(conv, other, 99)
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 99
+      assert entry.unread_overflow == false
+    end
+
+    test "flags overflow at exactly 100 unread" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+      seed_unread(conv, other, 100)
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 99
+      assert entry.unread_overflow == true
+    end
+
+    test "counts only messages sent while the caller was an active member" do
+      caller = insert(:user)
+      group = group_with(caller, joined_at: ago(100))
+      other = insert(:user)
+      seat(group, other)
+
+      for _ <- 1..2,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(200))
+
+      for _ <- 1..3,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(50))
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 3
+    end
+
+    test "restarts the unread window after a re-add" do
+      caller = insert(:user)
+      group = group_with(caller, joined_at: ago(30))
+      other = insert(:user)
+      seat(group, other)
+
+      for _ <- 1..4,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(90))
+
+      for _ <- 1..2,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(10))
+
+      [entry] = Conversations.list_conversations(caller)
+
+      assert entry.unread_count == 2
+    end
+
+    test "omits a conversation the caller has left" do
+      caller = insert(:user)
+      group = group_with(caller, name: "Gone")
+      other = insert(:user)
+      seat(group, other)
+      insert(:message, conversation: group, sender: other, inserted_at: ago(10))
+
+      Repo.update_all(
+        from(p in Participant, where: p.conversation_id == ^group.id and p.user_id == ^caller.id),
+        set: [left_at: ago(5)]
+      )
+
+      assert Conversations.list_conversations(caller) == []
+    end
+
+    test "omits a conversation the caller was never in" do
+      caller = insert(:user)
+      strangers = private_pair(insert(:user), insert(:user))
+      insert(:message, conversation: strangers, sender: insert(:user), inserted_at: ago(10))
+
+      assert Conversations.list_conversations(caller) == []
+    end
+
+    test "caps the response at 200 conversations" do
+      caller = insert(:user)
+
+      for n <- 1..205 do
+        conv = private_pair(caller, insert(:user))
+        insert(:message, conversation: conv, sender: insert(:user), inserted_at: ago(1000 - n))
+      end
+
+      assert Enum.count(Conversations.list_conversations(caller)) == 200
+    end
+
+    test "issues exactly one query regardless of conversation count" do
+      caller = insert(:user)
+      for _ <- 1..5, do: messaged_pair(caller, ago(10))
+      assert count_queries(fn -> Conversations.list_conversations(caller) end) == 1
+
+      other = insert(:user)
+      for _ <- 1..50, do: messaged_pair(other, ago(10))
+      assert count_queries(fn -> Conversations.list_conversations(other) end) == 1
+    end
+  end
+
+  describe "mark_read/2" do
+    test "sets the marker for an active participant" do
+      caller = insert(:user)
+      conv = private_pair(caller, insert(:user), last_read_at: nil)
+
+      assert {:ok, %{conversation_id: id, last_read_at: %DateTime{} = t}} =
+               Conversations.mark_read(caller, conv.id)
+
+      assert id == conv.id
+      row = Repo.get_by(Participant, conversation_id: conv.id, user_id: caller.id)
+      assert row.last_read_at == t
+    end
+
+    test "zeroes the unread count on the next list" do
+      caller = insert(:user)
+      other = insert(:user)
+      conv = private_pair(caller, other)
+      for _ <- 1..3, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
+
+      {:ok, _} = Conversations.mark_read(caller, conv.id)
+
+      assert [%{unread_count: 0}] = Conversations.list_conversations(caller)
+      assert [%{unread_count: 0}] = Conversations.list_conversations(caller)
+    end
+
+    test "is idempotent" do
+      caller = insert(:user)
+      conv = private_pair(caller, insert(:user))
+
+      assert {:ok, %{last_read_at: first}} = Conversations.mark_read(caller, conv.id)
+      assert {:ok, %{last_read_at: second}} = Conversations.mark_read(caller, conv.id)
+      assert DateTime.compare(second, first) != :lt
+    end
+
+    test "never moves the marker backwards" do
+      caller = insert(:user)
+      future = DateTime.add(DateTime.utc_now(), 3600, :second)
+      conv = private_pair(caller, insert(:user), last_read_at: future)
+
+      assert {:ok, %{last_read_at: ^future}} = Conversations.mark_read(caller, conv.id)
+    end
+
+    test "refuses a departed member and writes nothing" do
+      caller = insert(:user)
+      group = group_with(caller, last_read_at: ago(100))
+      left_at = ago(5)
+
+      Repo.update_all(
+        from(p in Participant, where: p.conversation_id == ^group.id and p.user_id == ^caller.id),
+        set: [left_at: left_at]
+      )
+
+      before =
+        Repo.get_by(Participant, conversation_id: group.id, user_id: caller.id).last_read_at
+
+      assert {:error, :not_a_participant} = Conversations.mark_read(caller, group.id)
+      after_row = Repo.get_by(Participant, conversation_id: group.id, user_id: caller.id)
+      assert after_row.last_read_at == before
+    end
+
+    test "refuses a non-participant" do
+      caller = insert(:user)
+      strangers = private_pair(insert(:user), insert(:user))
+
+      assert {:error, :not_found} = Conversations.mark_read(caller, strangers.id)
+    end
+
+    test "refuses an unknown conversation" do
+      caller = insert(:user)
+      assert {:error, :not_found} = Conversations.mark_read(caller, Ecto.UUID.generate())
+    end
+
+    test "rejects a malformed id" do
+      caller = insert(:user)
+      assert {:error, :invalid_id} = Conversations.mark_read(caller, "nope")
+    end
+  end
+
+  defp ago(seconds), do: DateTime.add(DateTime.utc_now(), -seconds, :second)
+
+  defp pair_key(a, b), do: Enum.join(Enum.sort([a.id, b.id]), ":")
+
+  defp seat(conversation, user, attrs \\ []) do
+    insert(:participant, [conversation: conversation, user: user, joined_at: ago(3600)] ++ attrs)
+  end
+
+  defp private_pair(caller, other, opts \\ []) do
+    conv = insert(:conversation, participant_key: pair_key(caller, other))
+
+    seat(conv, caller,
+      joined_at: opts[:joined_at] || ago(3600),
+      last_read_at: opts[:last_read_at]
+    )
+
+    seat(conv, other)
+    conv
+  end
+
+  defp group_with(caller, opts \\ []) do
+    creator = opts[:creator] || caller
+
+    group =
+      insert(:conversation,
+        type: :group,
+        name: opts[:name] || "Grupo #{System.unique_integer([:positive])}",
+        creator: creator
+      )
+
+    seat(group, caller,
+      joined_at: opts[:joined_at] || ago(3600),
+      last_read_at: opts[:last_read_at]
+    )
+
+    group
+  end
+
+  defp messaged_pair(caller, last_at) do
+    other = insert(:user)
+    conv = private_pair(caller, other)
+    insert(:message, conversation: conv, sender: other, inserted_at: last_at)
+    conv
+  end
+
+  defp seed_unread(conversation, sender, count) do
+    entries =
+      for n <- 1..count do
+        now = ago(count - n)
+
+        %{
+          id: Ecto.UUID.generate(),
+          conversation_id: conversation.id,
+          sender_id: sender.id,
+          body: "unread #{n}",
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    Repo.insert_all(Api.Messages.Message, entries)
+  end
+
   defp member(conversation, user, joined_at) do
     %Participant{conversation_id: conversation.id, user_id: user.id}
     |> Participant.changeset(%{joined_at: joined_at})

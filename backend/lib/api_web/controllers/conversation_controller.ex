@@ -43,6 +43,17 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
+  def index(conn, _params) do
+    conversations = Conversations.list_conversations(conn.assigns.current_user)
+    render(conn, :index, conversations: conversations)
+  end
+
+  def mark_read(conn, %{"id" => id}) do
+    with {:ok, result} <- Conversations.mark_read(conn.assigns.current_user, id) do
+      render(conn, :read, result: result)
+    end
+  end
+
   def show(conn, %{"id" => id}) do
     caller = conn.assigns.current_user
 

@@ -65,7 +65,8 @@ defmodule ApiWeb.FallbackController do
     last_member: {:unprocessable_entity, "last_member", "A group must keep at least one member"},
     cannot_remove_self:
       {:unprocessable_entity, "cannot_remove_self",
-       "The creator cannot remove themselves; leave the group instead"}
+       "The creator cannot remove themselves; leave the group instead"},
+    not_a_participant: {:forbidden, "not_a_participant", "You have left this conversation"}
   }
 
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
