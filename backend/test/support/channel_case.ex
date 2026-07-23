@@ -10,6 +10,9 @@ defmodule ApiWeb.ChannelCase do
   use ExUnit.CaseTemplate
   use Boundary, top_level?: true, check: [in: false, out: false]
 
+  alias Api.Accounts.Guardian
+  alias Phoenix.ChannelTest
+
   @endpoint ApiWeb.Endpoint
 
   using do
@@ -33,10 +36,10 @@ defmodule ApiWeb.ChannelCase do
   handshake once by the user it belongs to.
   """
   def connect_socket(user) do
-    {:ok, token, _expires_at} = Api.Accounts.Guardian.issue_token(user)
+    {:ok, token, _expires_at} = Guardian.issue_token(user)
 
     {:ok, socket} =
-      Phoenix.ChannelTest.__connect__(@endpoint, ApiWeb.UserSocket, %{"token" => token}, [])
+      ChannelTest.__connect__(@endpoint, ApiWeb.UserSocket, %{"token" => token}, [])
 
     socket
   end

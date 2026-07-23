@@ -17,8 +17,8 @@ defmodule ApiWeb.ConversationChannelTest do
   # --- Setup helpers ------------------------------------------------------
 
   defp private_pair do
-    ana = insert(:user, username: "anabeatriz", name: "Ana Beatriz")
-    carlos = insert(:user, username: "carlosedu", name: "Carlos Eduardo")
+    ana = insert(:user, name: "Ana Beatriz")
+    carlos = insert(:user, name: "Carlos Eduardo")
     {ana, carlos, private_conversation(ana, carlos)}
   end
 
@@ -60,8 +60,8 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "joins as an active group member" do
-    creator = insert(:user, username: "creator")
-    member = insert(:user, username: "member")
+    creator = insert(:user)
+    member = insert(:user)
     group = group_with(creator, [member])
 
     assert {:ok, _reply, %Phoenix.Socket{}} = try_join(member, group)
@@ -69,14 +69,14 @@ defmodule ApiWeb.ConversationChannelTest do
 
   test "rejects a non-participant" do
     {_ana, _carlos, thread} = private_pair()
-    outsider = insert(:user, username: "outsider")
+    outsider = insert(:user)
 
     assert {:error, %{reason: "unauthorized"}} = try_join(outsider, thread)
   end
 
   test "rejects a departed group member" do
-    creator = insert(:user, username: "creator")
-    member = insert(:user, username: "member")
+    creator = insert(:user)
+    member = insert(:user)
     group = group_with(creator, [member])
     :ok = Conversations.remove_member(creator, group.id, member.id)
 
@@ -84,7 +84,7 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "rejects an unknown conversation id with the outsider's answer" do
-    outsider = insert(:user, username: "outsider")
+    outsider = insert(:user)
     unknown = Ecto.UUID.generate()
 
     assert {:error, %{reason: "unauthorized"}} =
@@ -96,7 +96,7 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "rejects a malformed conversation id without raising" do
-    outsider = insert(:user, username: "outsider")
+    outsider = insert(:user)
 
     assert {:error, %{reason: "unauthorized"}} =
              subscribe_and_join(
@@ -119,7 +119,7 @@ defmodule ApiWeb.ConversationChannelTest do
     assert message.inserted_at
     assert message.body == "bom dia"
     assert message.sender.id == ana.id
-    assert message.sender.username == "anabeatriz"
+    assert message.sender.username == ana.username
     assert message.sender.name == "Ana Beatriz"
   end
 
@@ -235,8 +235,8 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "rejects a send from a member removed after joining" do
-    creator = insert(:user, username: "creator")
-    member = insert(:user, username: "member")
+    creator = insert(:user)
+    member = insert(:user)
     group = group_with(creator, [member])
     socket = joined(member, group)
 
@@ -282,9 +282,9 @@ defmodule ApiWeb.ConversationChannelTest do
   # --- Fan-out ------------------------------------------------------------
 
   test "pushes conversation:updated to every participant, sender's copy read" do
-    creator = insert(:user, username: "creator", name: "Creator")
-    m1 = insert(:user, username: "m1")
-    m2 = insert(:user, username: "m2")
+    creator = insert(:user, name: "Creator")
+    m1 = insert(:user)
+    m2 = insert(:user)
     group = group_with(creator, [m1, m2])
 
     for id <- [creator.id, m1.id, m2.id] do
@@ -331,8 +331,8 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "handles 5 concurrent senders of 20 messages each" do
-    creator = insert(:user, username: "creator")
-    senders_users = for i <- 1..5, do: insert(:user, username: "sender#{i}")
+    creator = insert(:user)
+    senders_users = for i <- 1..5, do: insert(:user)
     group = group_with(creator, senders_users)
 
     # The sockets must connect from the test process, so they are joined with
@@ -370,16 +370,16 @@ defmodule ApiWeb.ConversationChannelTest do
         payload.id
       end
 
-    assert length(Enum.uniq(ids)) == 100
+    assert MapSet.size(MapSet.new(ids)) == 100
     refute_receive %Broadcast{event: "message:new"}, 50
   end
 
   # --- Membership revocation ----------------------------------------------
 
   test "pushes membership_revoked to the removed member only, then stops it" do
-    creator = insert(:user, username: "creator")
-    m1 = insert(:user, username: "m1")
-    m2 = insert(:user, username: "m2")
+    creator = insert(:user)
+    m1 = insert(:user)
+    m2 = insert(:user)
     group = group_with(creator, [m1, m2])
 
     {:ok, _reply, m1_socket} = try_join(m1, group)
@@ -400,8 +400,8 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "rejects a rejoin after revocation" do
-    creator = insert(:user, username: "creator")
-    member = insert(:user, username: "member")
+    creator = insert(:user)
+    member = insert(:user)
     group = group_with(creator, [member])
     {:ok, _reply, _socket} = try_join(member, group)
 
@@ -412,8 +412,8 @@ defmodule ApiWeb.ConversationChannelTest do
   end
 
   test "does not revoke on a voluntary leave" do
-    creator = insert(:user, username: "creator")
-    member = insert(:user, username: "member")
+    creator = insert(:user)
+    member = insert(:user)
     group = group_with(creator, [member])
     {:ok, _reply, _socket} = try_join(member, group)
 
