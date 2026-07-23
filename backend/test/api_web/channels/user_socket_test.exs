@@ -1,0 +1,54 @@
+defmodule ApiWeb.UserSocketTest do
+  use ApiWeb.ChannelCase, async: false
+
+  alias Api.Accounts.Guardian
+  alias Api.Repo
+  alias ApiWeb.UserSocket
+
+  defp token_for(user) do
+    {:ok, token, _expires_at} = Guardian.issue_token(user)
+    token
+  end
+
+  test "connects with a valid token" do
+    user = insert(:user)
+
+    assert {:ok, socket} = connect(UserSocket, %{"token" => token_for(user)})
+    assert socket.assigns.current_user_id == user.id
+    assert socket.assigns.current_user.id == user.id
+  end
+
+  test "rejects a missing token" do
+    assert :error = connect(UserSocket, %{})
+  end
+
+  test "rejects a malformed token" do
+    assert :error = connect(UserSocket, %{"token" => "not-a-jwt"})
+  end
+
+  test "rejects an expired token" do
+    user = insert(:user)
+    {:ok, token, _claims} = Guardian.encode_and_sign(user, %{}, ttl: {-1, :hour})
+
+    assert :error = connect(UserSocket, %{"token" => token})
+  end
+
+  test "rejects a token whose subject no longer exists" do
+    user = insert(:user)
+    token = token_for(user)
+    Repo.delete!(user)
+
+    assert :error = connect(UserSocket, %{"token" => token})
+  end
+
+  test "assigns a per-user socket id" do
+    user = insert(:user)
+    {:ok, socket} = connect(UserSocket, %{"token" => token_for(user)})
+
+    assert UserSocket.id(socket) == "user_socket:#{user.id}"
+  end
+
+  test "a refused handshake yields no socket to reach a channel through" do
+    assert :error = connect(UserSocket, %{"token" => "not-a-jwt"})
+  end
+end

@@ -19,6 +19,15 @@ defmodule ApiWeb.Endpoint do
       cookie_key: "request_logger"
   end
 
+  # The real-time surface. The token authenticating every HTTP request travels
+  # as the `token` connect param; the frame cap keeps a 4000-character body's
+  # ~16 KB well clear of the ceiling while refusing anything that could not be a
+  # valid message, and the origin allowlist is the one `CORS_ORIGINS` already
+  # governs, so both surfaces read a single setting.
+  socket "/socket", ApiWeb.UserSocket,
+    websocket: [max_frame_size: 65_536, check_origin: {ApiWeb.Endpoint, :cors_origins, []}],
+    longpoll: false
+
   if code_reloading? do
     plug Phoenix.CodeReloader
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :api

@@ -39,6 +39,28 @@ mix phx.server
 Sourcing `.env` is not optional: startup aborts naming any missing secret, in
 every environment except `test`.
 
+## Seeded accounts
+
+`mix ecto.setup` (and the Docker startup) populate the database with seven demo
+accounts, a full contact graph between them, four private conversations and two
+groups, so the application looks lived-in on first run. Every account shares the
+same password:
+
+| `@username` | Name | Password |
+|---|---|---|
+| `@demo` | Usuário Demo | `senha123` |
+| `@anabeatriz` | Ana Beatriz | `senha123` |
+| `@carlosedu` | Carlos Eduardo | `senha123` |
+| `@joaopedro` | João Pedro | `senha123` |
+| `@leticiam` | Letícia Moraes | `senha123` |
+| `@marianas` | Mariana Silva | `senha123` |
+| `@rafaelalves` | Rafael Alves | `senha123` |
+
+`@demo` is the account to log in with first: it belongs to every conversation
+and creates both groups, so every endpoint is exercisable from it. The seed
+script is idempotent — re-running it prints `Seeds already applied, skipping`
+and changes nothing — and refuses to run in the `prod` environment.
+
 ## Tests
 
 The test suite has its own database, on a different port, so running it never

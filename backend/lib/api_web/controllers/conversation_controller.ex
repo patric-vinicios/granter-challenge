@@ -72,6 +72,12 @@ defmodule ApiWeb.ConversationController do
 
   def remove_member(conn, %{"id" => id, "user_id" => user_id}) do
     with :ok <- Conversations.remove_member(conn.assigns.current_user, id, user_id) do
+      # The context is never told channels exist; the controller relays the
+      # removal it already observed, and the conversation channel filters it
+      # down to the one live socket that must stop. Announced only after `:ok`,
+      # so it fires on a removal that actually took effect and never on a
+      # voluntary leave, which routes elsewhere.
+      ApiWeb.Endpoint.broadcast("conversation:#{id}", "membership_revoked", %{user_id: user_id})
       send_resp(conn, :no_content, "")
     end
   end

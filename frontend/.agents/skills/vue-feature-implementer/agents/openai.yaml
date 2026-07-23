@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vue Feature Implementer"
+  short_description: "Implementa features Vue a partir dos contratos"
+  default_prompt: "Use $vue-feature-implementer para implementar no frontend Vue uma feature documentada no backend."

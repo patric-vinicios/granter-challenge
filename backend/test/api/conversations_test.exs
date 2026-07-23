@@ -1027,4 +1027,46 @@ defmodule Api.ConversationsTest do
     %Participant{conversation_id: conversation.id, user_id: user.id}
     |> Participant.changeset(%{joined_at: joined_at})
   end
+
+  describe "participant_ids/1" do
+    test "returns both members of a private conversation" do
+      a = insert(:user, username: "pia", name: "Pia")
+      b = insert(:user, username: "pib", name: "Pib")
+      conversation = private_conversation(a, b)
+
+      assert MapSet.equal?(
+               MapSet.new(Conversations.participant_ids(conversation.id)),
+               MapSet.new([a.id, b.id])
+             )
+    end
+
+    test "excludes departed group members" do
+      {creator, [c1, c2]} = creator_with_contacts()
+      {:ok, group} = Conversations.create_group(creator, "Time", [c1.id, c2.id])
+      :ok = Conversations.remove_member(creator, group.id, c2.id)
+
+      ids = Conversations.participant_ids(group.id)
+
+      assert MapSet.equal?(MapSet.new(ids), MapSet.new([creator.id, c1.id]))
+      refute c2.id in ids
+    end
+
+    test "accepts a conversation record as well as an id" do
+      {creator, [c1]} = creator_with_contacts(1)
+      {:ok, group} = Conversations.create_group(creator, "Time", [c1.id])
+
+      assert MapSet.equal?(
+               MapSet.new(Conversations.participant_ids(group)),
+               MapSet.new([creator.id, c1.id])
+             )
+    end
+
+    test "returns an empty list for an unknown conversation" do
+      assert Conversations.participant_ids(Ecto.UUID.generate()) == []
+    end
+
+    test "returns an empty list for a malformed id" do
+      assert Conversations.participant_ids("nope") == []
+    end
+  end
 end
