@@ -60,6 +60,15 @@
       >
         {{ isSubmitting ? 'Entrando...' : 'Entrar' }}
       </button>
+
+      <button
+        class="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#d4d4d4] bg-white px-3.5 text-[13px] font-bold text-[#171717] hover:bg-[#f5f5f5] disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="isSubmitting"
+        type="button"
+        @click="submitDemo"
+      >
+        Entrar com demo
+      </button>
     </form>
 
     <p class="m-0 text-[13px] text-[#737373]">
@@ -89,6 +98,10 @@ const fieldErrors = ref<Record<string, string[]>>({})
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const demoCredentials = {
+  username: '@demo',
+  password: 'senha123',
+}
 
 const redirectTarget = computed(() => {
   const redirect = route.query.redirect
@@ -101,15 +114,23 @@ function fieldError(field: string): string {
 }
 
 async function submit() {
+  await loginWith({
+    username: username.value,
+    password: password.value,
+  })
+}
+
+async function submitDemo() {
+  await loginWith(demoCredentials)
+}
+
+async function loginWith(credentials: { username: string; password: string }) {
   isSubmitting.value = true
   formError.value = ''
   fieldErrors.value = {}
 
   try {
-    await auth.login({
-      username: username.value,
-      password: password.value,
-    })
+    await auth.login(credentials)
     await router.push(redirectTarget.value)
   } catch (error) {
     if (isApiError(error)) {
