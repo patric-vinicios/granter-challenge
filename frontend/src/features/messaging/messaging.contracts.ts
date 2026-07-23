@@ -8,6 +8,12 @@ export interface PersistedMessage {
   sender: ContactUser
 }
 
+export interface MessageHistoryPage {
+  messages: PersistedMessage[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
 export interface MessageAck {
   message: PersistedMessage
   clientRef: string | null
@@ -34,6 +40,21 @@ export interface ConversationUpdated {
 
 export interface MembershipRevoked {
   conversationId: string
+}
+
+export function decodeMessageHistoryPage(payload: unknown): MessageHistoryPage {
+  const data = requireRecord(payload)
+  const messages = data.messages
+
+  if (!Array.isArray(messages)) {
+    throw new Error('Expected messages array')
+  }
+
+  return {
+    messages: messages.map(decodePersistedMessage),
+    nextCursor: requireNullableString(data.next_cursor),
+    hasMore: requireBoolean(data.has_more),
+  }
 }
 
 export function decodePersistedMessage(payload: unknown): PersistedMessage {

@@ -162,10 +162,11 @@ describe('InboxView', () => {
         conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
       }),
     )
+    fetchMock.mockResolvedValueOnce(historyResponse())
 
     await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
 
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:4000/api/conversations/private',
       expect.objectContaining({
         method: 'POST',
@@ -175,8 +176,103 @@ describe('InboxView', () => {
         }),
       }),
     )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/conversation-ana/messages?limit=30',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
     expect(await screen.findByText('Conversa iniciada')).toBeTruthy()
     expect(screen.getByText('Nenhuma mensagem nesta conversa.')).toBeTruthy()
+  })
+
+  it('loads and paginates persisted history for a backend conversation', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /contatos/i }))
+    await screen.findByText('@anabeatriz')
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, {
+        conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      historyResponse({
+        messages: [
+          historyMessageResponse('message-2', 'Mensagem mais recente', 'user-current', 'Patric', '2026-07-22T13:49:00Z'),
+        ],
+        nextCursor: 'older-cursor',
+        hasMore: true,
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
+
+    expect(await screen.findByText('Mensagem mais recente')).toBeTruthy()
+
+    fetchMock.mockResolvedValueOnce(
+      historyResponse({
+        messages: [historyMessageResponse('message-1', 'Mensagem anterior', 'user-ana', 'Ana Beatriz', '2026-07-22T13:40:00Z')],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /carregar mensagens anteriores/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/conversation-ana/messages?limit=30&before=older-cursor',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(await screen.findByText('Mensagem anterior')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /carregar mensagens anteriores/i })).toBeNull()
+  })
+
+  it('shows a history load error for a backend conversation', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /contatos/i }))
+    await screen.findByText('@anabeatriz')
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, {
+        conversation: privateConversationResponse('conversation-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(400, {
+        errors: {
+          code: 'invalid_cursor',
+          detail: 'The pagination cursor is invalid',
+        },
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /abrir conversa com ana beatriz/i }))
+
+    expect(await screen.findByText('O cursor de paginação é inválido.')).toBeTruthy()
   })
 
   it('opens conversation search and clears the draft when sending', async () => {
@@ -228,7 +324,7 @@ describe('InboxView', () => {
     expect(screen.getByText('Enviando')).toBeTruthy()
 
     conversationChannel.replyLastPush('ok', {
-      message: messageResponse({
+      message: realtimeMessageResponse({
         id: 'message-1',
         body: 'Mensagem de teste',
         senderId: 'user-current',
@@ -252,7 +348,7 @@ describe('InboxView', () => {
     userChannel.okJoin()
     conversationChannel.okJoin()
 
-    conversationChannel.pushServer('message:new', messageResponse({
+    conversationChannel.pushServer('message:new', realtimeMessageResponse({
       id: 'message-2',
       body: 'Cheguei por socket',
       senderId: 'user-ana',
@@ -303,17 +399,22 @@ describe('InboxView', () => {
     await user.click(screen.getByLabelText(/carlos silva/i))
 
     fetchMock.mockResolvedValueOnce(jsonResponse(201, { conversation: groupResponse() }))
+    fetchMock.mockResolvedValueOnce(historyResponse())
 
     await user.clear(screen.getByLabelText(/nome do grupo/i))
     await user.type(screen.getByLabelText(/nome do grupo/i), 'Time de Produto')
     await user.click(screen.getByRole('button', { name: /criar grupo/i }))
 
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:4000/api/conversations/groups',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ name: 'Time de Produto', member_ids: ['user-ana', 'user-carlos'] }),
       }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/group-product/messages?limit=30',
+      expect.objectContaining({ method: 'GET' }),
     )
     expect(await screen.findByText('Grupo criado')).toBeTruthy()
 
@@ -410,6 +511,35 @@ function userResponse(id: string, username: string, name: string) {
   }
 }
 
+function historyResponse(
+  options: {
+    messages?: ReturnType<typeof historyMessageResponse>[]
+    nextCursor?: string | null
+    hasMore?: boolean
+  } = {},
+) {
+  return jsonResponse(200, {
+    messages: options.messages ?? [],
+    next_cursor: options.nextCursor ?? null,
+    has_more: options.hasMore ?? false,
+  })
+}
+
+function historyMessageResponse(id: string, body: string, senderId: string, senderName: string, insertedAt: string) {
+  return {
+    id,
+    conversation_id: 'conversation-ana',
+    body,
+    inserted_at: insertedAt,
+    sender: {
+      id: senderId,
+      username: senderName.toLowerCase().replaceAll(' ', ''),
+      name: senderName,
+      last_seen_at: null,
+    },
+  }
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(body === null ? null : JSON.stringify(body), {
     status,
@@ -417,7 +547,7 @@ function jsonResponse(status: number, body: unknown): Response {
   })
 }
 
-function messageResponse({
+function realtimeMessageResponse({
   id,
   body,
   senderId,
