@@ -607,7 +607,7 @@ defmodule Api.ConversationsTest do
 
       entries = Conversations.list_conversations(caller)
 
-      assert length(entries) == 4
+      assert Enum.count(entries) == 4
       assert Enum.count(entries, &(&1.type == :private)) == 2
       assert Enum.count(entries, &(&1.type == :group)) == 2
     end
@@ -729,7 +729,9 @@ defmodule Api.ConversationsTest do
       other = insert(:user)
       conv = private_pair(caller, other)
 
-      for _ <- 1..5, do: insert(:message, conversation: conv, sender: caller, inserted_at: ago(20))
+      for _ <- 1..5,
+          do: insert(:message, conversation: conv, sender: caller, inserted_at: ago(20))
+
       for _ <- 1..3, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
 
       [entry] = Conversations.list_conversations(caller)
@@ -755,7 +757,9 @@ defmodule Api.ConversationsTest do
       marker = ago(100)
       conv = private_pair(caller, other, last_read_at: marker)
 
-      for _ <- 1..3, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(200))
+      for _ <- 1..3,
+          do: insert(:message, conversation: conv, sender: other, inserted_at: ago(200))
+
       for _ <- 1..2, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(50))
 
       [entry] = Conversations.list_conversations(caller)
@@ -805,8 +809,11 @@ defmodule Api.ConversationsTest do
       other = insert(:user)
       seat(group, other)
 
-      for _ <- 1..2, do: insert(:message, conversation: group, sender: other, inserted_at: ago(200))
-      for _ <- 1..3, do: insert(:message, conversation: group, sender: other, inserted_at: ago(50))
+      for _ <- 1..2,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(200))
+
+      for _ <- 1..3,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(50))
 
       [entry] = Conversations.list_conversations(caller)
 
@@ -819,8 +826,11 @@ defmodule Api.ConversationsTest do
       other = insert(:user)
       seat(group, other)
 
-      for _ <- 1..4, do: insert(:message, conversation: group, sender: other, inserted_at: ago(90))
-      for _ <- 1..2, do: insert(:message, conversation: group, sender: other, inserted_at: ago(10))
+      for _ <- 1..4,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(90))
+
+      for _ <- 1..2,
+          do: insert(:message, conversation: group, sender: other, inserted_at: ago(10))
 
       [entry] = Conversations.list_conversations(caller)
 
@@ -858,7 +868,7 @@ defmodule Api.ConversationsTest do
         insert(:message, conversation: conv, sender: insert(:user), inserted_at: ago(1000 - n))
       end
 
-      assert length(Conversations.list_conversations(caller)) == 200
+      assert Enum.count(Conversations.list_conversations(caller)) == 200
     end
 
     test "issues exactly one query regardless of conversation count" do
@@ -924,7 +934,8 @@ defmodule Api.ConversationsTest do
         set: [left_at: left_at]
       )
 
-      before = Repo.get_by(Participant, conversation_id: group.id, user_id: caller.id).last_read_at
+      before =
+        Repo.get_by(Participant, conversation_id: group.id, user_id: caller.id).last_read_at
 
       assert {:error, :not_a_participant} = Conversations.mark_read(caller, group.id)
       after_row = Repo.get_by(Participant, conversation_id: group.id, user_id: caller.id)
@@ -959,7 +970,12 @@ defmodule Api.ConversationsTest do
 
   defp private_pair(caller, other, opts \\ []) do
     conv = insert(:conversation, participant_key: pair_key(caller, other))
-    seat(conv, caller, joined_at: opts[:joined_at] || ago(3600), last_read_at: opts[:last_read_at])
+
+    seat(conv, caller,
+      joined_at: opts[:joined_at] || ago(3600),
+      last_read_at: opts[:last_read_at]
+    )
+
     seat(conv, other)
     conv
   end
@@ -974,7 +990,11 @@ defmodule Api.ConversationsTest do
         creator: creator
       )
 
-    seat(group, caller, joined_at: opts[:joined_at] || ago(3600), last_read_at: opts[:last_read_at])
+    seat(group, caller,
+      joined_at: opts[:joined_at] || ago(3600),
+      last_read_at: opts[:last_read_at]
+    )
+
     group
   end
 

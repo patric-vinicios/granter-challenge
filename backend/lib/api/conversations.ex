@@ -299,7 +299,14 @@ defmodule Api.Conversations do
     )
     |> limit(^@list_limit)
     |> select(
-      [participant: p, conversation: c, last_message: lm, unread: un, counterpart: cp, members: mc],
+      [
+        participant: p,
+        conversation: c,
+        last_message: lm,
+        unread: un,
+        counterpart: cp,
+        members: mc
+      ],
       %{
         id: c.id,
         type: c.type,

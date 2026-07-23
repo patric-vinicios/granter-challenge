@@ -51,7 +51,8 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       other = insert(:user, name: "Ana Beatriz")
       private_pair(caller, other)
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       assert entry["title"] == "Ana Beatriz"
       assert entry["counterpart"]["id"] == other.id
@@ -68,7 +69,8 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       removed = insert(:user)
       seat(group, removed, left_at: ago(5))
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       assert entry["title"] == "Família"
       assert entry["member_count"] == 2
@@ -78,9 +80,12 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       other = insert(:user)
       conv = private_pair(caller, other)
       body = String.duplicate("palavra ", 60) |> String.trim()
-      message = insert(:message, conversation: conv, sender: other, body: body, inserted_at: ago(10))
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      message =
+        insert(:message, conversation: conv, sender: other, body: body, inserted_at: ago(10))
+
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       preview = entry["last_message"]["body"]
       assert String.length(preview) <= 120
@@ -99,7 +104,8 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       conv = private_pair(caller, other)
       message = insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       assert entry["last_message"]["sender_id"] == other.id
       assert entry["last_message"]["inserted_at"] == DateTime.to_iso8601(message.inserted_at)
@@ -124,7 +130,8 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       conv = private_pair(caller, other)
       insert(:message, conversation: conv, sender: caller, inserted_at: ago(10))
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       assert entry["unread_count"] == 0
     end
@@ -134,7 +141,8 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       conv = private_pair(caller, other)
       seed_unread(conv, other, 120)
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       assert entry["unread_count"] == 99
       assert entry["unread_overflow"] == true
@@ -156,7 +164,9 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       assert body["unread_count"] == 0
       assert body["last_read_at"]
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+
       assert entry["unread_count"] == 0
     end
 
@@ -225,17 +235,19 @@ defmodule ApiWeb.ConversationInboxControllerTest do
         |> json_response(201)
         |> get_in(["conversation", "id"])
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
 
       assert entry["id"] == created
       assert entry["title"] == "Carlos Eduardo"
       assert entry["counterpart"]["id"] == other.id
     end
 
-    test "groups appear with their name and member count, and disappear once the caller leaves", %{
-      conn: conn,
-      caller: caller
-    } do
+    test "groups appear with their name and member count, and disappear once the caller leaves",
+         %{
+           conn: conn,
+           caller: caller
+         } do
       m1 = insert(:user)
       m2 = insert(:user)
       insert(:contact, owner: caller, user: m1)
@@ -243,11 +255,16 @@ defmodule ApiWeb.ConversationInboxControllerTest do
 
       group =
         conn
-        |> post(~p"/api/conversations/groups", %{"name" => "Time de Produto", "member_ids" => [m1.id, m2.id]})
+        |> post(~p"/api/conversations/groups", %{
+          "name" => "Time de Produto",
+          "member_ids" => [m1.id, m2.id]
+        })
         |> json_response(201)
         |> get_in(["conversation", "id"])
 
-      [entry] = conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+      [entry] =
+        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")
+
       assert entry["id"] == group
       assert entry["title"] == "Time de Produto"
       assert entry["member_count"] == 3
@@ -255,7 +272,11 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       assert conn |> delete(~p"/api/conversations/#{group}/members/me") |> response(204)
 
       ids =
-        conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations") |> Enum.map(& &1["id"])
+        conn
+        |> get(~p"/api/conversations")
+        |> json_response(200)
+        |> Map.fetch!("conversations")
+        |> Enum.map(& &1["id"])
 
       refute group in ids
     end
@@ -269,7 +290,9 @@ defmodule ApiWeb.ConversationInboxControllerTest do
 
       other = insert(:user)
       active = private_pair(caller, other)
-      newest = insert(:message, conversation: active, sender: other, body: "latest", inserted_at: ago(1))
+
+      newest =
+        insert(:message, conversation: active, sender: other, body: "latest", inserted_at: ago(1))
 
       %{"conversations" => [first | _]} =
         conn |> get(~p"/api/conversations") |> json_response(200)
@@ -291,7 +314,12 @@ defmodule ApiWeb.ConversationInboxControllerTest do
 
   defp private_pair(caller, other, opts \\ []) do
     conv = insert(:conversation, participant_key: pair_key(caller, other))
-    seat(conv, caller, joined_at: opts[:joined_at] || ago(3600), last_read_at: opts[:last_read_at])
+
+    seat(conv, caller,
+      joined_at: opts[:joined_at] || ago(3600),
+      last_read_at: opts[:last_read_at]
+    )
+
     seat(conv, other)
     conv
   end
