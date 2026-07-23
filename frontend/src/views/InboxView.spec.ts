@@ -182,6 +182,66 @@ describe('InboxView', () => {
 
     expect(messageInput.value).toBe('')
   })
+
+  it('creates and manages a group from contacts', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [
+          contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+          contactResponse('contact-carlos', 'user-carlos', 'carlos', 'Carlos Silva'),
+          contactResponse('contact-leticia', 'user-leticia', 'leticia', 'Leticia Moraes'),
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /novo grupo/i }))
+    await user.click(screen.getByLabelText(/ana beatriz/i))
+    await user.click(screen.getByLabelText(/carlos silva/i))
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { conversation: groupResponse() }))
+
+    await user.clear(screen.getByLabelText(/nome do grupo/i))
+    await user.type(screen.getByLabelText(/nome do grupo/i), 'Time de Produto')
+    await user.click(screen.getByRole('button', { name: /criar grupo/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/groups',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'Time de Produto', member_ids: ['user-ana', 'user-carlos'] }),
+      }),
+    )
+    expect(await screen.findByText('Grupo criado')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /gerenciar grupo/i }))
+    expect(screen.getByText('@anabeatriz')).toBeTruthy()
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(204, null))
+    await user.click(screen.getByRole('button', { name: /remover ana beatriz/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/group-product/members/user-ana',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+    expect(screen.queryByRole('button', { name: /remover ana beatriz/i })).toBeNull()
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { conversation: groupResponse({ includeAna: false, includeLeticia: true }) }))
+    await user.click(screen.getByRole('button', { name: /leticia moraes/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/group-product/members',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ member_ids: ['user-leticia'] }),
+      }),
+    )
+    expect(await screen.findByText('@leticia')).toBeTruthy()
+  })
 })
 
 function authenticate(pinia: Awaited<ReturnType<typeof renderInbox>>['pinia']) {
@@ -219,6 +279,35 @@ function privateConversationResponse(id: string, userId: string, username: strin
       name,
       last_seen_at: null,
     },
+  }
+}
+
+function groupResponse(options: { includeAna?: boolean; includeLeticia?: boolean } = {}) {
+  const includeAna = options.includeAna ?? true
+  const members = [
+    userResponse('user-current', 'patric', 'Patric'),
+    ...(includeAna ? [userResponse('user-ana', 'anabeatriz', 'Ana Beatriz')] : []),
+    userResponse('user-carlos', 'carlos', 'Carlos Silva'),
+    ...(options.includeLeticia ? [userResponse('user-leticia', 'leticia', 'Leticia Moraes')] : []),
+  ]
+
+  return {
+    id: 'group-product',
+    type: 'group',
+    name: 'Time de Produto',
+    creator_id: 'user-current',
+    member_count: members.length,
+    last_read_at: null,
+    members,
+  }
+}
+
+function userResponse(id: string, username: string, name: string) {
+  return {
+    id,
+    username,
+    name,
+    last_seen_at: null,
   }
 }
 

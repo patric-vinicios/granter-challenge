@@ -29,11 +29,28 @@
         />
 
         <NewGroupPanel
-          v-else
+          v-else-if="sidebarMode === 'new-group'"
           v-model:group-name="groupName"
-          :contacts="groupContacts"
-          :selected-contacts="selectedGroupContacts"
+          :contacts="contacts"
+          :error="groupError"
+          :is-submitting="isSavingGroup"
+          :selected-contact-ids="selectedGroupContactIds"
           @close="sidebarMode = 'inbox'"
+          @create-group="createGroup"
+          @toggle-contact="toggleGroupContact"
+        />
+
+        <GroupDetailsPanel
+          v-else-if="selectedGroupConversation && currentUserId"
+          :contacts="contacts"
+          :current-user-id="currentUserId"
+          :error="groupError"
+          :group="selectedGroupConversation"
+          :pending-user-ids="pendingMemberUserIds"
+          @add-member="addGroupMember"
+          @close="sidebarMode = 'inbox'"
+          @leave-group="leaveSelectedGroup"
+          @remove-member="removeGroupMember"
         />
       </aside>
 
@@ -43,6 +60,7 @@
         :conversation="selectedConversation"
         :is-searching="isSearching"
         @close-search="isSearching = false"
+        @open-group-details="openGroupDetails"
         @open-search="openSearch"
         @search-focusout="closeSearchOnFocusOut"
         @send-message="sendMessage"
@@ -68,11 +86,11 @@ import { useRouter } from 'vue-router'
 import AddContactDialog from '@/features/contacts/components/AddContactDialog.vue'
 import ContactsPanel from '@/features/contacts/components/ContactsPanel.vue'
 import type { AddContactFeedback } from '@/features/contacts/contacts.contracts'
-import { groupContacts } from '@/features/contacts/contacts.mock'
 import { contactInitials, useContactsStore } from '@/features/contacts/contacts.store'
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
+import GroupDetailsPanel from '@/features/conversations/components/GroupDetailsPanel.vue'
 import NewGroupPanel from '@/features/conversations/components/NewGroupPanel.vue'
-import type { ConversationRecord } from '@/features/conversations/conversations.contracts'
+import type { ConversationRecord, GroupConversation } from '@/features/conversations/conversations.contracts'
 import { conversations } from '@/features/conversations/conversations.mock'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
@@ -85,15 +103,19 @@ const authStore = useAuthStore()
 const contactsStore = useContactsStore()
 const conversationsStore = useConversationsStore()
 const { token } = storeToRefs(authStore)
-const { contactGroups, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
-const { conversations: openedConversations, pendingPrivateUserIds } = storeToRefs(conversationsStore)
-const sidebarMode = ref<'inbox' | 'new-group' | 'contacts'>('inbox')
+const { user } = storeToRefs(authStore)
+const { contactGroups, contacts, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
+const { conversations: openedConversations, pendingPrivateUserIds, isSavingGroup, pendingMemberUserIds } =
+  storeToRefs(conversationsStore)
+const sidebarMode = ref<'inbox' | 'new-group' | 'contacts' | 'group-details'>('inbox')
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
 const isAddingContact = ref(false)
 const searchTerm = ref('')
 const messageDraft = ref('')
 const groupName = ref('Squad Lancamento')
+const groupError = ref<string | null>(null)
+const selectedGroupContactIds = ref<Set<string>>(new Set())
 const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
 
@@ -108,7 +130,14 @@ const conversationItems = computed(() => [
   ),
 ])
 
-const selectedGroupContacts = computed(() => groupContacts.filter((contact) => contact.selected))
+const currentUserId = computed(() => user.value?.id ?? null)
+const selectedGroupConversation = computed<GroupConversation | null>(() => {
+  const conversation = openedConversations.value.find(
+    (item) => item.id === selectedConversationId.value && item.type === 'group',
+  )
+
+  return conversation?.type === 'group' ? conversation : null
+})
 
 watch(
   token,
@@ -152,6 +181,110 @@ function logout() {
   conversationsStore.reset()
   authStore.logout()
   router.push('/')
+}
+
+function toggleGroupContact(userId: string) {
+  const nextIds = new Set(selectedGroupContactIds.value)
+
+  if (nextIds.has(userId)) {
+    nextIds.delete(userId)
+  } else {
+    nextIds.add(userId)
+  }
+
+  selectedGroupContactIds.value = nextIds
+}
+
+async function createGroup() {
+  const currentToken = token.value
+
+  if (!currentToken || isSavingGroup.value) {
+    return
+  }
+
+  if (!groupName.value.trim()) {
+    groupError.value = 'Informe o nome do grupo.'
+    return
+  }
+
+  if (selectedGroupContactIds.value.size === 0) {
+    groupError.value = 'Selecione pelo menos um contato.'
+    return
+  }
+
+  groupError.value = null
+
+  try {
+    const conversation = await conversationsStore.createGroup(
+      groupName.value,
+      Array.from(selectedGroupContactIds.value),
+      currentToken,
+    )
+    selectedConversationId.value = conversation.id
+    selectedGroupContactIds.value = new Set()
+    groupName.value = ''
+    sidebarMode.value = 'inbox'
+  } catch (error) {
+    groupError.value = conversationErrorMessage(error)
+  }
+}
+
+function openGroupDetails() {
+  if (selectedGroupConversation.value) {
+    groupError.value = null
+    sidebarMode.value = 'group-details'
+  }
+}
+
+async function addGroupMember(userId: string) {
+  const currentToken = token.value
+  const group = selectedGroupConversation.value
+
+  if (!currentToken || !group) {
+    return
+  }
+
+  try {
+    await conversationsStore.addMembers(group.id, [userId], currentToken)
+    groupError.value = null
+  } catch (error) {
+    groupError.value = conversationErrorMessage(error)
+  }
+}
+
+async function removeGroupMember(userId: string) {
+  const currentToken = token.value
+  const group = selectedGroupConversation.value
+
+  if (!currentToken || !group) {
+    return
+  }
+
+  try {
+    await conversationsStore.removeMember(group.id, userId, currentToken)
+    groupError.value = null
+  } catch (error) {
+    groupError.value = conversationErrorMessage(error)
+  }
+}
+
+async function leaveSelectedGroup() {
+  const currentToken = token.value
+  const userId = currentUserId.value
+  const group = selectedGroupConversation.value
+
+  if (!currentToken || !userId || !group) {
+    return
+  }
+
+  try {
+    await conversationsStore.leave(group.id, userId, currentToken)
+    sidebarMode.value = 'inbox'
+    selectedConversationId.value = conversations[0].id
+    groupError.value = null
+  } catch (error) {
+    groupError.value = conversationErrorMessage(error)
+  }
 }
 
 async function openPrivateConversation(userId: string) {
@@ -266,7 +399,7 @@ function conversationErrorMessage(error: unknown): string {
     return error.message
   }
 
-  return error instanceof Error ? error.message : 'Não foi possível abrir a conversa.'
+  return error instanceof Error ? error.message : 'Não foi possível atualizar a conversa.'
 }
 
 function toConversationItem(conversation: ConversationRecord) {
