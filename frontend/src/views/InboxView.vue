@@ -105,7 +105,7 @@ import { useRouter } from 'vue-router'
 
 import AddContactDialog from '@/features/contacts/components/AddContactDialog.vue'
 import ContactsPanel from '@/features/contacts/components/ContactsPanel.vue'
-import type { AddContactFeedback } from '@/features/contacts/contacts.contracts'
+import type { AddContactFeedback, ContactUser } from '@/features/contacts/contacts.contracts'
 import { contactInitials, useContactsStore } from '@/features/contacts/contacts.store'
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
 import GroupDetailsPanel from '@/features/conversations/components/GroupDetailsPanel.vue'
@@ -121,6 +121,8 @@ import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
 import type { PersistedMessage } from '@/features/messaging/messaging.contracts'
 import { useMessagesStore, useMessagingStore } from '@/features/messaging/messaging.store'
 import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
+import { decodePresenceDiff, decodePresenceState, type PresenceStatus } from '@/features/presence/presence.contracts'
+import { formatPresenceLabel } from '@/features/presence/presence.format'
 import { useConversationSearch } from '@/features/search/useConversationSearch'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
@@ -158,6 +160,7 @@ const groupError = ref<string | null>(null)
 const selectedGroupContactIds = ref<Set<string>>(new Set())
 const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
+const presenceByUserId = ref<Record<string, PresenceStatus>>({})
 const currentUserId = computed(() => user.value?.id ?? null)
 const emptyConversation: Conversation = {
   id: 'empty',
@@ -192,6 +195,8 @@ const {
   token,
   userId: currentUserId,
   selectedConversationId: selectedConversationIdRef,
+  onPresenceState: applyPresenceState,
+  onPresenceDiff: applyPresenceDiff,
 })
 
 const searchActivePosition = computed(() => activeSearchHit.value?.position ?? null)
@@ -597,7 +602,7 @@ function toConversationItem(conversation: ConversationRecord) {
       type: conversation.type,
       initials: contactInitials(conversation.counterpart.name),
       name: conversation.counterpart.name,
-      subtitle: conversation.counterpart.lastSeenAt ? 'visto recentemente' : 'offline',
+      subtitle: presenceSubtitle(conversation.counterpart),
       preview: 'Conversa iniciada',
       time: '',
       messages,
@@ -627,8 +632,8 @@ function toInboxConversationItem(conversation: InboxConversationSummary): Conver
     subtitle:
       conversation.type === 'group'
         ? `${conversation.memberCount ?? 0} membros`
-        : conversation.counterpart?.lastSeenAt
-          ? 'visto recentemente'
+        : conversation.counterpart
+          ? presenceSubtitle(conversation.counterpart)
           : 'offline',
     preview: inboxPreview(conversation),
     time: conversation.lastMessage ? formatMessageTime(conversation.lastMessage.insertedAt) : '',
@@ -655,6 +660,34 @@ function unreadLabel(conversation: InboxConversationSummary): string | undefined
   }
 
   return conversation.unreadOverflow ? '99+' : String(conversation.unreadCount)
+}
+
+function applyPresenceState(payload: unknown): void {
+  applyPresenceUpdates(decodePresenceState(payload))
+}
+
+function applyPresenceDiff(payload: unknown): void {
+  applyPresenceUpdates(decodePresenceDiff(payload))
+}
+
+function applyPresenceUpdates(updates: PresenceStatus[]): void {
+  const nextPresence = { ...presenceByUserId.value }
+
+  for (const update of updates) {
+    nextPresence[update.userId] = update
+  }
+
+  presenceByUserId.value = nextPresence
+}
+
+function presenceSubtitle(user: ContactUser): string {
+  const status = presenceByUserId.value[user.id] ?? {
+    userId: user.id,
+    online: user.online,
+    lastSeenAt: user.lastSeenAt,
+  }
+
+  return formatPresenceLabel(status)
 }
 
 function toMessageItem(message: PersistedMessage): Message {

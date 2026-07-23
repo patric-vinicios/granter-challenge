@@ -3,6 +3,7 @@ export interface ContactUser {
   username: string
   name: string
   lastSeenAt: string | null
+  online: boolean
 }
 
 export interface Contact {
@@ -54,6 +55,7 @@ function decodeContactUser(payload: unknown): ContactUser {
     username: requireString(data.username),
     name: requireString(data.name),
     lastSeenAt: requireNullableString(data.last_seen_at),
+    online: requireOptionalBoolean(data.online),
   }
 }
 
@@ -79,4 +81,16 @@ function requireNullableString(value: unknown): string | null {
   }
 
   return requireString(value)
+}
+
+function requireOptionalBoolean(value: unknown): boolean {
+  if (value === undefined) {
+    return false
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new Error('Expected boolean')
+  }
+
+  return value
 }

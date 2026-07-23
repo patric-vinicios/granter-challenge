@@ -47,6 +47,7 @@ describe('search.api', () => {
               username: 'anabeatriz',
               name: 'Ana Beatriz',
               lastSeenAt: null,
+              online: false,
             },
           },
           position: 1,

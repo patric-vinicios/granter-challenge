@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth.store'
 import { renderWithApp } from '@/test/render'
@@ -35,6 +35,10 @@ async function renderInbox() {
 describe('InboxView', () => {
   beforeEach(() => {
     sockets.length = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('shows the default conversation and switches to another conversation', async () => {
@@ -560,6 +564,70 @@ describe('InboxView', () => {
     expect(screen.queryByLabelText('7 mensagens nao lidas')).toBeNull()
     expect(screen.getByLabelText('99+ mensagens nao lidas')).toBeTruthy()
   })
+
+  it('renders presence from conversation data and updates it from channel events', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    vi.stubGlobal(
+      'fetch',
+      mockAuthenticatedFetch({
+        conversations: [
+          inboxSummaryResponse({
+            id: 'ana',
+            title: 'Ana Beatriz',
+            senderId: 'user-ana',
+            body: 'Perfeito, fico no aguardo entao',
+            unreadCount: 0,
+            online: false,
+            lastSeenAt: null,
+          }),
+          inboxSummaryResponse({
+            id: 'group-product',
+            type: 'group',
+            title: 'Time de Produto',
+            senderId: 'user-rafael',
+            body: 'Bom dia pessoal! Subi a build de staging pra validacao',
+            unreadCount: 0,
+            memberCount: 5,
+          }),
+        ],
+      }),
+    )
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+
+    const socket = sockets[0]
+    const conversationChannel = socket.channelFor('conversation:ana')
+
+    expect(await screen.findByText('offline')).toBeTruthy()
+
+    conversationChannel.pushServer('presence:state', {
+      'user-ana': {
+        metas: [{ online_at: '2026-07-23T17:44:00.000Z' }],
+      },
+    })
+
+    expect(await screen.findByText('online')).toBeTruthy()
+
+    conversationChannel.pushServer('presence:diff', {
+      joins: {},
+      leaves: {
+        'user-ana': {
+          metas: [{}],
+        },
+      },
+    })
+
+    expect(await screen.findByText('visto por ultimo agora')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /time de produto/i }))
+
+    expect(conversationChannel.offEvents).toEqual(
+      expect.arrayContaining(['message:new', 'conversation:membership_revoked', 'presence:state', 'presence:diff']),
+    )
+    expect(conversationChannel.leaveCount).toBe(1)
+  })
 })
 
 function authenticate(pinia: Awaited<ReturnType<typeof renderInbox>>['pinia']) {
@@ -582,6 +650,7 @@ function contactResponse(id: string, userId: string, username: string, name: str
       username,
       name,
       last_seen_at: null,
+      online: false,
     },
   }
 }
@@ -596,6 +665,8 @@ function inboxSummaryResponse(
     type?: 'private' | 'group'
     unreadOverflow?: boolean
     memberCount?: number
+    lastSeenAt?: string | null
+    online?: boolean
   },
 ) {
   return {
@@ -609,7 +680,8 @@ function inboxSummaryResponse(
             id: 'user-ana',
             username: 'anabeatriz',
             name: options.title,
-            last_seen_at: null,
+            last_seen_at: options.lastSeenAt ?? null,
+            online: options.online ?? false,
           },
     member_count: options.type === 'group' ? (options.memberCount ?? 3) : null,
     last_message: {
@@ -644,6 +716,7 @@ function privateConversationResponse(id: string, userId: string, username: strin
       username,
       name,
       last_seen_at: null,
+      online: false,
     },
   }
 }
@@ -674,6 +747,7 @@ function userResponse(id: string, username: string, name: string) {
     username,
     name,
     last_seen_at: null,
+    online: false,
   }
 }
 
@@ -702,6 +776,7 @@ function historyMessageResponse(id: string, body: string, senderId: string, send
       username: senderName.toLowerCase().replaceAll(' ', ''),
       name: senderName,
       last_seen_at: null,
+      online: false,
     },
   }
 }
@@ -803,6 +878,7 @@ function realtimeMessageResponse({
       username: senderName.toLowerCase().replaceAll(' ', ''),
       name: senderName,
       last_seen_at: null,
+      online: false,
     },
   }
 }
@@ -827,6 +903,7 @@ class FakeChannel {
   joinPush = new FakePush()
   lastPush: { event: string; payload: Record<string, unknown>; push: FakePush } | null = null
   leaveCount = 0
+  offEvents: string[] = []
 
   join(): FakePush {
     return this.joinPush
@@ -847,7 +924,9 @@ class FakeChannel {
     return callbacks.length
   }
 
-  off(): void {}
+  off(event: string): void {
+    this.offEvents.push(event)
+  }
 
   push(event: string, payload: Record<string, unknown>): FakePush {
     const push = new FakePush()
