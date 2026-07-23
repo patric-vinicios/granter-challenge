@@ -52,6 +52,37 @@ defmodule Api.DataCase do
   end
 
   @doc """
+  Runs `fun` and returns how many database queries it issued.
+
+  A telemetry handler on the repo's query event counts, and is detached in an
+  `after` clause so an exception in `fun` never leaks it. Only queries emitted
+  from the calling process are counted: `Phoenix.ConnTest` dispatches a request
+  in the test process, so this is exact at both the context and the endpoint
+  level and never counts a concurrent async test's queries.
+  """
+  def count_queries(fun) when is_function(fun, 0) do
+    test_pid = self()
+    counter = :counters.new(1, [])
+    handler_id = {:count_queries, make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:api, :repo, :query],
+      fn _event, _measurements, _metadata, _config ->
+        if self() == test_pid, do: :counters.add(counter, 1, 1)
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+      :counters.get(counter, 1)
+    after
+      :telemetry.detach(handler_id)
+    end
+  end
+
+  @doc """
   A helper that transforms changeset errors into a map of messages.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})
