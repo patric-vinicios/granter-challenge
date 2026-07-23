@@ -1,0 +1,89 @@
+defmodule ApiWeb.RateLimiter do
+  @moduledoc """
+  A per-user ceiling on how fast messages may be sent, across every conversation
+  a socket holds at once.
+
+  The count lives in a public ETS table rather than in `socket.assigns` for one
+  reason: assigns are per channel process, so a limit tracked there would grant
+  a fresh allowance for each conversation a user opens — and opening
+  conversations is exactly what a spammer does. Keyed on the user instead, the
+  same ceiling holds no matter how many topics one socket has joined.
+
+  `hit/1` runs in the calling channel process and touches the table with a
+  single `:ets.update_counter/4`, so the GenServer is never in the send path: it
+  exists only to own the table and sweep the windows that have rolled past. A
+  fixed window is chosen over a sliding log because the worst case it admits — a
+  burst straddling a boundary — is not a threat model for a chat, while the
+  sliding version would keep a list per active user and walk it on every send to
+  buy a precision no one here consumes.
+
+  State is node-local and lost on restart, which for an abuse guard is the safe
+  direction to fail: a restart resets every window rather than locking anyone out.
+  """
+
+  use GenServer
+
+  @table __MODULE__
+  @limit 20
+  @window_ms 10_000
+  @sweep_ms 30_000
+
+  @doc """
+  Records one send for `user_id` and answers whether it is allowed.
+
+  Returns `:ok` for the twentieth send or earlier in the current window, and
+  `{:error, retry_after_ms}` past it, where `retry_after_ms` is the time left
+  before the window rolls, always in `1..#{@window_ms}`. The counter is created
+  on first use in the same atomic operation that increments it, so a never-seen
+  user needs no setup.
+  """
+  def hit(user_id) do
+    now = System.system_time(:millisecond)
+    window = div(now, @window_ms)
+    key = {user_id, window}
+    count = :ets.update_counter(@table, key, {2, 1}, {key, 0})
+
+    if count <= @limit do
+      :ok
+    else
+      {:error, (window + 1) * @window_ms - now}
+    end
+  end
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+  end
+
+  @impl GenServer
+  def init(_opts) do
+    :ets.new(@table, [
+      :set,
+      :named_table,
+      :public,
+      read_concurrency: true,
+      write_concurrency: true
+    ])
+
+    schedule_sweep()
+    {:ok, %{}}
+  end
+
+  @impl GenServer
+  def handle_info(:sweep, state) do
+    sweep()
+    schedule_sweep()
+    {:noreply, state}
+  end
+
+  # Deletes every bucket whose window has already rolled. A stale bucket is
+  # unreachable by the current key anyway, so this only bounds the table at the
+  # active-user count and correctness never depends on it running.
+  defp sweep do
+    current = div(System.system_time(:millisecond), @window_ms)
+    :ets.select_delete(@table, [{{{:_, :"$1"}, :_}, [{:<, :"$1", current}], [true]}])
+  end
+
+  defp schedule_sweep do
+    Process.send_after(self(), :sweep, @sweep_ms)
+  end
+end

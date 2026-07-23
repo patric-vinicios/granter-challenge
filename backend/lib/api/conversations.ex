@@ -177,6 +177,31 @@ defmodule Api.Conversations do
   end
 
   @doc """
+  The user ids of every currently active member of `conversation`, taking a
+  record or an id.
+
+  Feeds the per-message fan-out that pushes a summary to each participant's
+  personal topic. Answers `[]` for a malformed or unknown id rather than
+  raising, so a conversation deleted between a message's insert and its fan-out
+  cannot crash a channel that has already replied.
+  """
+  def participant_ids(%Conversation{id: id}), do: participant_ids(id)
+
+  def participant_ids(conversation_id) do
+    case cast_id(conversation_id) do
+      {:ok, cid} ->
+        Repo.all(
+          from p in Participant,
+            where: p.conversation_id == ^cid and is_nil(p.left_at),
+            select: p.user_id
+        )
+
+      {:error, :invalid_id} ->
+        []
+    end
+  end
+
+  @doc """
   How much of `conversation` this user may read: all of it, everything up to the
   moment they left, or nothing at all.
 

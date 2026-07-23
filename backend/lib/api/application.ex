@@ -15,8 +15,9 @@ defmodule Api.Application do
       ApiWeb.Telemetry,
       Api.Repo,
       {Phoenix.PubSub, name: Api.PubSub},
-      # Start a worker by calling: Api.Worker.start_link(arg)
-      # {Api.Worker, arg},
+      # Ahead of the endpoint so the counter table exists before the first
+      # socket can connect and send.
+      ApiWeb.RateLimiter,
       # Start to serve requests, typically the last entry
       ApiWeb.Endpoint
     ]
