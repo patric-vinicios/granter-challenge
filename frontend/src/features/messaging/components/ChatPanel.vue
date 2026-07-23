@@ -67,6 +67,15 @@
           </span>
         </div>
         <button
+          v-if="conversation.type === 'group'"
+          class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
+          type="button"
+          aria-label="Gerenciar grupo"
+          @click="$emit('openGroupDetails')"
+        >
+          <UsersRound :size="18" :stroke-width="2" aria-hidden="true" />
+        </button>
+        <button
           class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
           type="button"
           aria-label="Buscar na conversa"
@@ -129,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, Navigation, Search, X } from '@lucide/vue'
+import { ChevronDown, ChevronUp, Navigation, Search, UsersRound, X } from '@lucide/vue'
 
 import MessageBubble from '@/components/MessageBubble.vue'
 import type { Conversation } from '@/features/conversations/conversations.mock'
@@ -143,6 +152,7 @@ defineProps<{
 
 defineEmits<{
   closeSearch: []
+  openGroupDetails: []
   openSearch: []
   searchFocusout: [event: FocusEvent]
   sendMessage: []

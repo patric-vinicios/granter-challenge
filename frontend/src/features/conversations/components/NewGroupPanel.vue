@@ -11,7 +11,7 @@
       </button>
       <div class="min-w-0">
         <strong class="block text-[18px] text-[#171717]">Novo grupo</strong>
-        <span class="block text-[13px] text-[#a3a3a3]">3 de 8 contatos selecionados</span>
+        <span class="block text-[13px] text-[#a3a3a3]">{{ selectedContactIds.size }} de {{ contacts.length }} contatos selecionados</span>
       </div>
     </header>
 
@@ -36,17 +36,20 @@
     </section>
 
     <div class="flex flex-wrap gap-2 border-b border-[#e8e8e8] px-3 pb-5">
-      <span
+      <button
         v-for="contact in selectedContacts"
-        :key="contact.username"
+        :key="contact.id"
         class="inline-flex h-8 items-center gap-2 rounded-full border border-[#e8e8e8] bg-[#fbfbfb] pl-1 pr-3 text-[13px] font-bold text-[#444444]"
+        type="button"
+        :aria-label="`Remover ${contact.user.name} da selecao`"
+        @click="$emit('toggleContact', contact.user.id)"
       >
         <span class="grid h-6 w-6 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[10px]">
-          {{ contact.initials }}
+          {{ contactInitials(contact.user.name) }}
         </span>
-        {{ contact.shortName }}
+        {{ contact.user.name }}
         <X :size="14" :stroke-width="2" class="text-[#a3a3a3]" aria-hidden="true" />
-      </span>
+      </button>
     </div>
 
     <section class="min-h-0 overflow-hidden px-3 py-5">
@@ -70,16 +73,21 @@
       <div class="max-h-full overflow-auto">
         <label
           v-for="contact in contacts"
-          :key="contact.username"
+          :key="contact.id"
           class="grid min-h-[59px] grid-cols-[44px_minmax(0,1fr)_24px] items-center gap-3 text-[#171717]"
         >
           <span
             class="grid h-10 w-10 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
           >
-            {{ contact.initials }}
+            {{ contactInitials(contact.user.name) }}
           </span>
-          <strong class="text-[15px]">{{ contact.name }}</strong>
-          <input class="peer sr-only" type="checkbox" :checked="contact.selected" />
+          <strong class="text-[15px]">{{ contact.user.name }}</strong>
+          <input
+            class="peer sr-only"
+            type="checkbox"
+            :checked="selectedContactIds.has(contact.user.id)"
+            @change="$emit('toggleContact', contact.user.id)"
+          />
           <span
             class="grid h-5 w-5 place-items-center rounded-md border border-[#d4d4d4] bg-white text-white peer-checked:border-black peer-checked:bg-black"
           >
@@ -88,6 +96,14 @@
         </label>
       </div>
     </section>
+
+    <p
+      v-if="error"
+      class="mx-3 rounded-lg border border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#dc2626]"
+      role="alert"
+    >
+      {{ error }}
+    </p>
 
     <footer class="grid grid-cols-2 gap-3 border-t border-[#e8e8e8] bg-white p-3">
       <button
@@ -99,10 +115,11 @@
       </button>
       <button
         class="h-10 rounded-lg border border-black bg-black text-[14px] font-bold text-white hover:bg-[#222222]"
+        :disabled="isSubmitting"
         type="button"
-        @click="$emit('close')"
+        @click="$emit('createGroup')"
       >
-        Criar grupo
+        {{ isSubmitting ? 'Criando...' : 'Criar grupo' }}
       </button>
     </footer>
   </form>
@@ -110,17 +127,25 @@
 
 <script setup lang="ts">
 import { ArrowLeft, Check, Search, UsersRound, X } from '@lucide/vue'
+import { computed } from 'vue'
 
-import type { GroupContact } from '@/features/contacts/contacts.mock'
+import type { Contact } from '@/features/contacts/contacts.contracts'
+import { contactInitials } from '@/features/contacts/contacts.store'
 
-defineProps<{
-  contacts: GroupContact[]
-  selectedContacts: GroupContact[]
+const props = defineProps<{
+  contacts: Contact[]
+  error: string | null
+  isSubmitting: boolean
+  selectedContactIds: Set<string>
   groupName: string
 }>()
 
+const selectedContacts = computed(() => props.contacts.filter((contact) => props.selectedContactIds.has(contact.user.id)))
+
 defineEmits<{
   close: []
+  createGroup: []
+  toggleContact: [userId: string]
   'update:groupName': [groupName: string]
 }>()
 </script>
