@@ -11,7 +11,8 @@ alias Api.Repo
 
 config :api,
   ecto_repos: [Repo],
-  generators: [timestamp_type: :utc_datetime_usec, binary_id: true]
+  generators: [timestamp_type: :utc_datetime_usec, binary_id: true],
+  env: config_env()
 
 config :api, Repo,
   migration_primary_key: [type: :binary_id],
