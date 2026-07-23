@@ -284,7 +284,7 @@ describe('InboxView', () => {
     await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
 
     expect(screen.getByLabelText(/buscar na conversa/i)).toBeTruthy()
-    expect(screen.getByText('1 / 1')).toBeTruthy()
+    expect(screen.getByText('0 / 0')).toBeTruthy()
 
     const messageInput = screen.getByLabelText(/^mensagem$/i) as HTMLTextAreaElement
 
@@ -292,6 +292,77 @@ describe('InboxView', () => {
     await user.click(screen.getByRole('button', { name: /enviar mensagem/i }))
 
     expect(messageInput.value).toBe('')
+  })
+
+  it('filters authenticated inbox summaries through the documented query parameter', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        defaultAnaInboxSummary(),
+        inboxSummaryResponse({
+          id: 'group-product',
+          type: 'group',
+          title: 'Time de Produto',
+          senderId: 'user-rafael',
+          body: 'Bom dia pessoal! Subi a build de staging pra validacao',
+          unreadCount: 0,
+          memberCount: 5,
+        }),
+      ],
+      filteredConversations: [defaultAnaInboxSummary()],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await screen.findByText('Time de Produto')
+    await user.type(screen.getByLabelText(/buscar conversa/i), 'ana')
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:4000/api/conversations?q=ana',
+        expect.objectContaining({ method: 'GET' }),
+      ),
+    )
+    expect(screen.getByRole('button', { name: /ana beatriz/i })).toBeTruthy()
+    expect(screen.queryByText('Time de Produto')).toBeNull()
+  })
+
+  it('searches messages in the selected conversation and navigates returned matches', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [defaultAnaInboxSummary()],
+      searchResult: {
+        matches: [
+          searchHitResponse('message-1', 'Ajustei o cronograma final', 1, [{ start: 10, length: 10 }]),
+          searchHitResponse('message-2', 'Familia alinhou o cronograma', 2, [{ start: 0, length: 7 }]),
+        ],
+        total_matches: 2,
+        truncated: false,
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
+    await user.type(screen.getByLabelText(/buscar na conversa/i), 'cronograma')
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:4000/api/conversations/ana/messages/search?q=cronograma',
+        expect.objectContaining({ method: 'GET' }),
+      ),
+    )
+    expect(await screen.findByText('1 / 2')).toBeTruthy()
+    expect(screen.getByText('cronograma')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /proximo resultado/i }))
+
+    expect(screen.getByText('2 / 2')).toBeTruthy()
+    expect(screen.getByText('Familia')).toBeTruthy()
   })
 
   it('sends over the conversation channel and reconciles the optimistic message from the ack', async () => {
@@ -642,7 +713,15 @@ function jsonResponse(status: number, body: unknown): Response {
   })
 }
 
-function mockAuthenticatedFetch(options: { contacts?: unknown[]; conversations?: unknown[] }) {
+function mockAuthenticatedFetch(options: {
+  contacts?: unknown[]
+  conversations?: unknown[]
+  filteredConversations?: unknown[]
+  searchResult?: unknown
+}) {
+  const conversations = options.conversations ?? []
+  const filteredConversations = options.filteredConversations ?? conversations
+
   const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
     const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url
     const method = init?.method ?? 'GET'
@@ -652,7 +731,24 @@ function mockAuthenticatedFetch(options: { contacts?: unknown[]; conversations?:
     }
 
     if (href === 'http://localhost:4000/api/conversations' && method === 'GET') {
-      return Promise.resolve(jsonResponse(200, { conversations: options.conversations ?? [] }))
+      return Promise.resolve(jsonResponse(200, { conversations }))
+    }
+
+    if (href.startsWith('http://localhost:4000/api/conversations?q=') && method === 'GET') {
+      return Promise.resolve(jsonResponse(200, { conversations: filteredConversations }))
+    }
+
+    if (href.startsWith('http://localhost:4000/api/conversations/ana/messages/search?') && method === 'GET') {
+      return Promise.resolve(
+        jsonResponse(
+          200,
+          options.searchResult ?? {
+            matches: [],
+            total_matches: 0,
+            truncated: false,
+          },
+        ),
+      )
     }
 
     return Promise.resolve(
@@ -666,6 +762,24 @@ function mockAuthenticatedFetch(options: { contacts?: unknown[]; conversations?:
   })
 
   return fetchMock
+}
+
+function searchHitResponse(
+  id: string,
+  body: string,
+  position: number,
+  matchOffsets: Array<{ start: number; length: number }>,
+) {
+  return {
+    message: realtimeMessageResponse({
+      id,
+      body,
+      senderId: 'user-ana',
+      senderName: 'Ana Beatriz',
+    }),
+    position,
+    match_offsets: matchOffsets,
+  }
 }
 
 function realtimeMessageResponse({

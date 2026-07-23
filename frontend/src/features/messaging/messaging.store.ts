@@ -307,6 +307,7 @@ function isAbortError(error: unknown): boolean {
 
 function toConversationMessage(message: PersistedMessage, currentUserId: string): Message {
   return {
+    id: message.id,
     side: message.sender.id === currentUserId ? 'out' : 'in',
     author: message.sender.id === currentUserId ? undefined : message.sender.name,
     text: message.body,

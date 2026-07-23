@@ -33,12 +33,20 @@
           />
         </div>
 
-        <span class="px-1 text-[13px] text-[#a3a3a3]">1 / 1</span>
+        <span
+          class="min-w-14 px-1 text-center text-[13px]"
+          :class="searchStatus === 'error' || searchStatus === 'validation' ? 'text-[#991b1b]' : 'text-[#737373]'"
+          role="status"
+        >
+          {{ searchStatusLabel }}
+        </span>
 
         <button
           class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
           type="button"
           aria-label="Resultado anterior"
+          :disabled="!canNavigateSearch"
+          @click="$emit('previousSearchResult')"
         >
           <ChevronUp :size="17" :stroke-width="2" aria-hidden="true" />
         </button>
@@ -47,6 +55,8 @@
           class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
           type="button"
           aria-label="Proximo resultado"
+          :disabled="!canNavigateSearch"
+          @click="$emit('nextSearchResult')"
         >
           <ChevronDown :size="17" :stroke-width="2" aria-hidden="true" />
         </button>
@@ -122,6 +132,8 @@
             :time="message.time"
             :wide="message.wide"
             :author="conversation.type === 'group' ? message.author : undefined"
+            :is-highlighted="message.id === searchActiveMessageId"
+            :highlight-ranges="message.id === searchActiveMessageId ? searchActiveMatchOffsets : []"
           />
         </template>
       </div>
@@ -157,11 +169,14 @@
 
 <script setup lang="ts">
 import { ChevronDown, ChevronUp, Navigation, Search, UsersRound, X } from '@lucide/vue'
+import { computed } from 'vue'
 
 import MessageBubble from '@/components/MessageBubble.vue'
 import type { Conversation } from '@/features/conversations/conversations.mock'
+import type { SearchMatchOffset } from '@/features/search/search.contracts'
+import type { ConversationSearchStatus } from '@/features/search/useConversationSearch'
 
-defineProps<{
+const props = defineProps<{
   conversation: Conversation
   canSendMessage: boolean
   isSearching: boolean
@@ -172,6 +187,13 @@ defineProps<{
   searchTerm: string
   messageDraft: string
   realtimeError: string | null
+  searchStatus: ConversationSearchStatus
+  searchError: string | null
+  searchActivePosition: number | null
+  searchTotalMatches: number
+  searchTruncated: boolean
+  searchActiveMessageId: string | null
+  searchActiveMatchOffsets: SearchMatchOffset[]
 }>()
 
 defineEmits<{
@@ -179,9 +201,35 @@ defineEmits<{
   openGroupDetails: []
   openSearch: []
   loadOlderMessages: []
+  nextSearchResult: []
+  previousSearchResult: []
   searchFocusout: [event: FocusEvent]
   sendMessage: []
   'update:searchTerm': [searchTerm: string]
   'update:messageDraft': [messageDraft: string]
 }>()
+
+const canNavigateSearch = computed(() => props.searchTotalMatches > 1 && props.searchStatus === 'success')
+
+const searchStatusLabel = computed(() => {
+  if (props.searchStatus === 'loading') {
+    return 'Buscando...'
+  }
+
+  if (props.searchStatus === 'validation' || props.searchStatus === 'error') {
+    return props.searchError ?? 'Falha'
+  }
+
+  if (props.searchStatus === 'success') {
+    if (props.searchTotalMatches === 0) {
+      return '0 / 0'
+    }
+
+    const total = props.searchTruncated ? `${props.searchTotalMatches}+` : String(props.searchTotalMatches)
+
+    return `${props.searchActivePosition ?? 1} / ${total}`
+  }
+
+  return '0 / 0'
+})
 </script>
