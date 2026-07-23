@@ -16,6 +16,8 @@ interface UseRealtimeMessagingOptions {
   userId: Ref<string | null>
   selectedConversationId: Ref<string | null>
   socketFactory?: RealtimeSocketFactory
+  onPresenceState?: (payload: unknown) => void
+  onPresenceDiff?: (payload: unknown) => void
 }
 
 export function useRealtimeMessaging({
@@ -23,11 +25,15 @@ export function useRealtimeMessaging({
   userId,
   selectedConversationId,
   socketFactory = createRealtimeSocket,
+  onPresenceState,
+  onPresenceDiff,
 }: UseRealtimeMessagingOptions) {
   const store = useMessagingStore()
   const socket = ref<RealtimeSocket | null>(null)
   const userChannel = ref<RealtimeChannel | null>(null)
+  const userChannelHandlers = ref<Array<{ event: string; ref: number }>>([])
   const conversationChannel = ref<RealtimeChannel | null>(null)
+  const conversationChannelHandlers = ref<Array<{ event: string; ref: number }>>([])
   const joinedConversationId = ref<string | null>(null)
   const status = ref<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   const error = ref<string | null>(null)
@@ -49,7 +55,12 @@ export function useRealtimeMessaging({
       status.value = 'connecting'
       nextSocket.connect()
       userChannel.value = nextSocket.channel(`user:${currentUserId}`)
-      userChannel.value.on('conversation:updated', handleConversationUpdated)
+      userChannelHandlers.value = [
+        {
+          event: 'conversation:updated',
+          ref: userChannel.value.on('conversation:updated', handleConversationUpdated),
+        },
+      ]
       userChannel.value.join().receive('ok', () => {
         status.value = 'connected'
       }).receive('error', () => {
@@ -106,17 +117,46 @@ export function useRealtimeMessaging({
     const channel = socket.value.channel(`conversation:${conversationId}`)
     conversationChannel.value = channel
     joinedConversationId.value = conversationId
-    channel.on('message:new', (payload) => {
-      if (currentUserId) {
-        store.receiveMessage(decodePersistedMessage(payload), currentUserId)
-      }
-    })
-    channel.on('conversation:membership_revoked', (payload) => {
-      const revoked = decodeMembershipRevoked(payload)
-      store.revokeConversation(revoked.conversationId)
-      error.value = 'Voce saiu desta conversa.'
-      leaveConversation()
-    })
+    conversationChannelHandlers.value = [
+      {
+        event: 'message:new',
+        ref: channel.on('message:new', (payload) => {
+          if (currentUserId) {
+            store.receiveMessage(decodePersistedMessage(payload), currentUserId)
+          }
+        }),
+      },
+      {
+        event: 'conversation:membership_revoked',
+        ref: channel.on('conversation:membership_revoked', (payload) => {
+          const revoked = decodeMembershipRevoked(payload)
+          store.revokeConversation(revoked.conversationId)
+          error.value = 'Voce saiu desta conversa.'
+          leaveConversation()
+        }),
+      },
+    ]
+
+    if (onPresenceState) {
+      conversationChannelHandlers.value = [
+        ...conversationChannelHandlers.value,
+        {
+          event: 'presence:state',
+          ref: channel.on('presence:state', onPresenceState),
+        },
+      ]
+    }
+
+    if (onPresenceDiff) {
+      conversationChannelHandlers.value = [
+        ...conversationChannelHandlers.value,
+        {
+          event: 'presence:diff',
+          ref: channel.on('presence:diff', onPresenceDiff),
+        },
+      ]
+    }
+
     channel.join().receive('error', () => {
       status.value = 'error'
       error.value = 'Não foi possível entrar nesta conversa.'
@@ -125,14 +165,34 @@ export function useRealtimeMessaging({
   }
 
   function leaveConversation(): void {
-    conversationChannel.value?.leave()
+    const channel = conversationChannel.value
+
+    if (channel) {
+      for (const handler of conversationChannelHandlers.value) {
+        channel.off(handler.event, handler.ref)
+      }
+
+      channel.leave()
+    }
+
+    conversationChannelHandlers.value = []
     conversationChannel.value = null
     joinedConversationId.value = null
   }
 
   function disconnect(): void {
     leaveConversation()
-    userChannel.value?.leave()
+    const channel = userChannel.value
+
+    if (channel) {
+      for (const handler of userChannelHandlers.value) {
+        channel.off(handler.event, handler.ref)
+      }
+
+      channel.leave()
+    }
+
+    userChannelHandlers.value = []
     userChannel.value = null
     socket.value?.disconnect()
     socket.value = null
