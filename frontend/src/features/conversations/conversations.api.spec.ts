@@ -4,6 +4,8 @@ import {
   addGroupMembers,
   createGroupConversation,
   leaveGroup,
+  listInboxConversations,
+  markConversationRead,
   openPrivateConversation,
   removeGroupMember,
 } from './conversations.api'
@@ -44,6 +46,118 @@ describe('conversations.api', () => {
         name: 'Ana Beatriz',
         lastSeenAt: null,
       },
+    })
+  })
+
+  it('lists inbox summaries with the documented response shape', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        conversations: [
+          {
+            id: 'conversation-ana',
+            type: 'private',
+            title: 'Ana Beatriz',
+            counterpart: userResponse('user-ana', 'anabeatriz', 'Ana Beatriz'),
+            member_count: null,
+            last_message: {
+              id: 'message-latest',
+              body: 'bom dia!',
+              sender_id: 'user-ana',
+              inserted_at: '2026-07-22T11:02:44.884210Z',
+            },
+            unread_count: 3,
+            unread_overflow: false,
+            last_read_at: null,
+          },
+          {
+            id: 'group-product',
+            type: 'group',
+            title: 'Time de Produto',
+            counterpart: null,
+            member_count: 7,
+            last_message: null,
+            unread_count: 99,
+            unread_overflow: true,
+            last_read_at: '2026-07-22T09:14:02.000000Z',
+          },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const summaries = await listInboxConversations('jwt-token')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
+    expect(summaries).toEqual([
+      {
+        id: 'conversation-ana',
+        type: 'private',
+        title: 'Ana Beatriz',
+        counterpart: {
+          id: 'user-ana',
+          username: 'anabeatriz',
+          name: 'Ana Beatriz',
+          lastSeenAt: null,
+        },
+        memberCount: null,
+        lastMessage: {
+          id: 'message-latest',
+          body: 'bom dia!',
+          senderId: 'user-ana',
+          insertedAt: '2026-07-22T11:02:44.884210Z',
+        },
+        unreadCount: 3,
+        unreadOverflow: false,
+        lastReadAt: null,
+      },
+      {
+        id: 'group-product',
+        type: 'group',
+        title: 'Time de Produto',
+        counterpart: null,
+        memberCount: 7,
+        lastMessage: null,
+        unreadCount: 99,
+        unreadOverflow: true,
+        lastReadAt: '2026-07-22T09:14:02.000000Z',
+      },
+    ])
+  })
+
+  it('marks a conversation as read with the documented path and response shape', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        conversation_id: 'conversation-ana',
+        last_read_at: '2026-07-22T14:30:11.204518Z',
+        unread_count: 0,
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await markConversationRead('conversation-ana', 'jwt-token')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/conversation-ana/read',
+      expect.objectContaining({
+        method: 'POST',
+        body: undefined,
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
+    expect(result).toEqual({
+      conversationId: 'conversation-ana',
+      lastReadAt: '2026-07-22T14:30:11.204518Z',
+      unreadCount: 0,
     })
   })
 

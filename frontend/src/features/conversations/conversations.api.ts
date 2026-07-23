@@ -1,6 +1,34 @@
 import { requestJson } from '@/shared/api/httpClient'
 
-import { type ConversationRecord, decodeConversation } from './conversations.contracts'
+import {
+  type ConversationRecord,
+  type InboxConversationSummary,
+  type MarkReadResult,
+  decodeConversation,
+  decodeInboxConversations,
+  decodeMarkReadResult,
+} from './conversations.contracts'
+
+export function listInboxConversations(token: string, signal?: AbortSignal): Promise<InboxConversationSummary[]> {
+  return requestJson('/conversations', {
+    token,
+    signal,
+    decode: decodeInboxConversations,
+  })
+}
+
+export function markConversationRead(
+  conversationId: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<MarkReadResult> {
+  return requestJson('/conversations/' + encodeURIComponent(conversationId) + '/read', {
+    method: 'POST',
+    token,
+    signal,
+    decode: decodeMarkReadResult,
+  })
+}
 
 export function openPrivateConversation(
   userId: string,

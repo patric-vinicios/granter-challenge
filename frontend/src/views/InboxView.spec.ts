@@ -56,14 +56,12 @@ describe('InboxView', () => {
     const user = userEvent.setup()
 
     const { pinia } = await renderInbox()
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, {
-        contacts: [
-          contactResponse('contact-rafael', 'user-rafael', 'rafaelalves', 'Rafael Alves'),
-          contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
-        ],
-      }),
-    )
+    const fetchMock = mockAuthenticatedFetch({
+      contacts: [
+        contactResponse('contact-rafael', 'user-rafael', 'rafaelalves', 'Rafael Alves'),
+        contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+      ],
+    })
     vi.stubGlobal('fetch', fetchMock)
     authenticate(pinia)
 
@@ -146,11 +144,9 @@ describe('InboxView', () => {
     const user = userEvent.setup()
 
     const { pinia } = await renderInbox()
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, {
-        contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
-      }),
-    )
+    const fetchMock = mockAuthenticatedFetch({
+      contacts: [contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz')],
+    })
     vi.stubGlobal('fetch', fetchMock)
     authenticate(pinia)
 
@@ -279,6 +275,7 @@ describe('InboxView', () => {
     const user = userEvent.setup()
 
     const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
     sockets[0].channelFor('user:user-current').okJoin()
@@ -301,6 +298,7 @@ describe('InboxView', () => {
     const user = userEvent.setup()
 
     const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
     const socket = sockets[0]
@@ -340,6 +338,7 @@ describe('InboxView', () => {
 
   it('applies incoming conversation messages, user updates, and membership revocation events', async () => {
     const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
     const socket = sockets[0]
@@ -382,15 +381,13 @@ describe('InboxView', () => {
     const user = userEvent.setup()
 
     const { pinia } = await renderInbox()
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, {
-        contacts: [
-          contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
-          contactResponse('contact-carlos', 'user-carlos', 'carlos', 'Carlos Silva'),
-          contactResponse('contact-leticia', 'user-leticia', 'leticia', 'Leticia Moraes'),
-        ],
-      }),
-    )
+    const fetchMock = mockAuthenticatedFetch({
+      contacts: [
+        contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+        contactResponse('contact-carlos', 'user-carlos', 'carlos', 'Carlos Silva'),
+        contactResponse('contact-leticia', 'user-leticia', 'leticia', 'Leticia Moraes'),
+      ],
+    })
     vi.stubGlobal('fetch', fetchMock)
     authenticate(pinia)
 
@@ -442,6 +439,56 @@ describe('InboxView', () => {
     )
     expect(await screen.findByText('@leticia')).toBeTruthy()
   })
+
+  it('loads authenticated inbox summaries, renders unread badges, and marks a selected conversation read', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        inboxSummaryResponse({
+          id: 'conversation-ana',
+          title: 'Ana Beatriz',
+          senderId: 'user-current',
+          body: 'Perfeito, fico no aguardo entao',
+          unreadCount: 7,
+        }),
+        inboxSummaryResponse({
+          id: 'group-product',
+          type: 'group',
+          title: 'Time de Produto',
+          senderId: 'user-rafael',
+          body: 'Bom dia pessoal! Subi a build de staging pra validacao',
+          unreadCount: 99,
+          unreadOverflow: true,
+          memberCount: 5,
+        }),
+      ],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    expect(await screen.findByText('Voce: Perfeito, fico no aguardo entao')).toBeTruthy()
+    expect(await screen.findByLabelText('7 mensagens nao lidas')).toBeTruthy()
+    expect(screen.getByLabelText('99+ mensagens nao lidas')).toBeTruthy()
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        conversation_id: 'conversation-ana',
+        last_read_at: '2026-07-22T14:30:11.204518Z',
+        unread_count: 0,
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /ana beatriz/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/conversations/conversation-ana/read',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(screen.queryByLabelText('7 mensagens nao lidas')).toBeNull()
+    expect(screen.getByLabelText('99+ mensagens nao lidas')).toBeTruthy()
+  })
 })
 
 function authenticate(pinia: Awaited<ReturnType<typeof renderInbox>>['pinia']) {
@@ -466,6 +513,54 @@ function contactResponse(id: string, userId: string, username: string, name: str
       last_seen_at: null,
     },
   }
+}
+
+function inboxSummaryResponse(
+  options: {
+    id: string
+    title: string
+    senderId: string
+    body: string
+    unreadCount: number
+    type?: 'private' | 'group'
+    unreadOverflow?: boolean
+    memberCount?: number
+  },
+) {
+  return {
+    id: options.id,
+    type: options.type ?? 'private',
+    title: options.title,
+    counterpart:
+      options.type === 'group'
+        ? null
+        : {
+            id: 'user-ana',
+            username: 'anabeatriz',
+            name: options.title,
+            last_seen_at: null,
+          },
+    member_count: options.type === 'group' ? (options.memberCount ?? 3) : null,
+    last_message: {
+      id: `message-${options.id}`,
+      body: options.body,
+      sender_id: options.senderId,
+      inserted_at: '2026-07-22T11:02:44.884210Z',
+    },
+    unread_count: options.unreadCount,
+    unread_overflow: options.unreadOverflow ?? false,
+    last_read_at: null,
+  }
+}
+
+function defaultAnaInboxSummary() {
+  return inboxSummaryResponse({
+    id: 'ana',
+    title: 'Ana Beatriz',
+    senderId: 'user-ana',
+    body: 'Perfeito, fico no aguardo entao',
+    unreadCount: 0,
+  })
 }
 
 function privateConversationResponse(id: string, userId: string, username: string, name: string) {
@@ -545,6 +640,32 @@ function jsonResponse(status: number, body: unknown): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function mockAuthenticatedFetch(options: { contacts?: unknown[]; conversations?: unknown[] }) {
+  const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+    const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url
+    const method = init?.method ?? 'GET'
+
+    if (href === 'http://localhost:4000/api/contacts' && method === 'GET') {
+      return Promise.resolve(jsonResponse(200, { contacts: options.contacts ?? [] }))
+    }
+
+    if (href === 'http://localhost:4000/api/conversations' && method === 'GET') {
+      return Promise.resolve(jsonResponse(200, { conversations: options.conversations ?? [] }))
+    }
+
+    return Promise.resolve(
+      jsonResponse(500, {
+        errors: {
+          code: 'unexpected_test_request',
+          detail: `Unexpected test request: ${method} ${href}`,
+        },
+      }),
+    )
+  })
+
+  return fetchMock
 }
 
 function realtimeMessageResponse({

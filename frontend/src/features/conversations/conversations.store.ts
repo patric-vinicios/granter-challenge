@@ -5,16 +5,65 @@ import {
   addGroupMembers,
   createGroupConversation,
   leaveGroup,
+  listInboxConversations,
+  markConversationRead,
   openPrivateConversation as openPrivateConversationRequest,
   removeGroupMember,
 } from './conversations.api'
-import type { ConversationRecord } from './conversations.contracts'
+import type { ConversationRecord, InboxConversationSummary } from './conversations.contracts'
+
+type LoadState = 'idle' | 'loading' | 'success' | 'error'
 
 export const useConversationsStore = defineStore('conversations', () => {
   const conversations = ref<ConversationRecord[]>([])
+  const inboxSummaries = ref<InboxConversationSummary[]>([])
+  const inboxLoadState = ref<LoadState>('idle')
+  const inboxLoadError = ref<string | null>(null)
   const pendingPrivateUserIds = ref<Set<string>>(new Set())
   const isSavingGroup = ref(false)
   const pendingMemberUserIds = ref<Set<string>>(new Set())
+  const pendingReadIds = ref<Set<string>>(new Set())
+
+  async function loadInbox(token: string, signal?: AbortSignal): Promise<void> {
+    inboxLoadState.value = 'loading'
+    inboxLoadError.value = null
+
+    try {
+      inboxSummaries.value = await listInboxConversations(token, signal)
+      inboxLoadState.value = 'success'
+    } catch (error) {
+      if (signal?.aborted) {
+        return
+      }
+
+      inboxLoadState.value = 'error'
+      inboxLoadError.value = error instanceof Error ? error.message : 'Não foi possível carregar as conversas.'
+    }
+  }
+
+  async function markRead(conversationId: string, token: string): Promise<void> {
+    pendingReadIds.value = new Set(pendingReadIds.value).add(conversationId)
+
+    try {
+      const result = await markConversationRead(conversationId, token)
+      inboxSummaries.value = inboxSummaries.value.map((conversation) => {
+        if (conversation.id !== result.conversationId) {
+          return conversation
+        }
+
+        return {
+          ...conversation,
+          unreadCount: result.unreadCount,
+          unreadOverflow: false,
+          lastReadAt: result.lastReadAt,
+        }
+      })
+    } finally {
+      const nextIds = new Set(pendingReadIds.value)
+      nextIds.delete(conversationId)
+      pendingReadIds.value = nextIds
+    }
+  }
 
   async function openPrivate(userId: string, token: string): Promise<ConversationRecord> {
     pendingPrivateUserIds.value = new Set(pendingPrivateUserIds.value).add(userId)
@@ -75,9 +124,13 @@ export const useConversationsStore = defineStore('conversations', () => {
 
   function reset(): void {
     conversations.value = []
+    inboxSummaries.value = []
+    inboxLoadState.value = 'idle'
+    inboxLoadError.value = null
     pendingPrivateUserIds.value = new Set()
     isSavingGroup.value = false
     pendingMemberUserIds.value = new Set()
+    pendingReadIds.value = new Set()
   }
 
   function upsertConversation(conversation: ConversationRecord): void {
@@ -117,9 +170,15 @@ export const useConversationsStore = defineStore('conversations', () => {
 
   return {
     conversations,
+    inboxSummaries,
+    inboxLoadState,
+    inboxLoadError,
     pendingPrivateUserIds,
     isSavingGroup,
     pendingMemberUserIds,
+    pendingReadIds,
+    loadInbox,
+    markRead,
     openPrivate,
     createGroup,
     addMembers,
