@@ -7,11 +7,14 @@
         <ConversationListPanel
           v-if="sidebarMode === 'inbox'"
           :conversations="conversationItems"
+          :error="inboxLoadError"
+          :is-empty="isInboxEmpty"
+          :is-loading="isInboxLoading"
           :selected-conversation-id="selectedConversationId"
           @create-group="sidebarMode = 'new-group'"
           @open-contacts="sidebarMode = 'contacts'"
           @logout="logout"
-          @select-conversation="selectedConversationId = $event"
+          @select-conversation="selectConversation"
         />
 
         <ContactsPanel
@@ -90,8 +93,12 @@ import { contactInitials, useContactsStore } from '@/features/contacts/contacts.
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
 import GroupDetailsPanel from '@/features/conversations/components/GroupDetailsPanel.vue'
 import NewGroupPanel from '@/features/conversations/components/NewGroupPanel.vue'
-import type { ConversationRecord, GroupConversation } from '@/features/conversations/conversations.contracts'
-import { conversations } from '@/features/conversations/conversations.mock'
+import type {
+  ConversationRecord,
+  GroupConversation,
+  InboxConversationSummary,
+} from '@/features/conversations/conversations.contracts'
+import { type Conversation, conversations } from '@/features/conversations/conversations.mock'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
 import { isApiError } from '@/shared/api/errors'
@@ -105,8 +112,16 @@ const conversationsStore = useConversationsStore()
 const { token } = storeToRefs(authStore)
 const { user } = storeToRefs(authStore)
 const { contactGroups, contacts, isEmpty, isLoading, loadError, pendingRemovalIds } = storeToRefs(contactsStore)
-const { conversations: openedConversations, pendingPrivateUserIds, isSavingGroup, pendingMemberUserIds } =
-  storeToRefs(conversationsStore)
+const {
+  conversations: openedConversations,
+  inboxSummaries,
+  inboxLoadState,
+  inboxLoadError,
+  pendingPrivateUserIds,
+  isSavingGroup,
+  pendingMemberUserIds,
+  pendingReadIds,
+} = storeToRefs(conversationsStore)
 const sidebarMode = ref<'inbox' | 'new-group' | 'contacts' | 'group-details'>('inbox')
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
@@ -118,17 +133,41 @@ const groupError = ref<string | null>(null)
 const selectedGroupContactIds = ref<Set<string>>(new Set())
 const contactUsername = ref('')
 const contactFeedback = ref<AddContactFeedback>({ kind: 'idle' })
+const emptyConversation: Conversation = {
+  id: 'empty',
+  type: 'private',
+  initials: '--',
+  name: 'Conversa',
+  subtitle: '',
+  preview: '',
+  time: '',
+  messages: [],
+}
 
 const selectedConversation = computed(
-  () => conversationItems.value.find((conversation) => conversation.id === selectedConversationId.value) ?? conversationItems.value[0],
+  () =>
+    conversationItems.value.find((conversation) => conversation.id === selectedConversationId.value) ??
+    conversationItems.value[0] ??
+    emptyConversation,
 )
 
-const conversationItems = computed(() => [
-  ...openedConversations.value.map(toConversationItem),
-  ...conversations.filter(
-    (conversation) => !openedConversations.value.some((opened) => opened.id === conversation.id),
-  ),
-])
+const conversationItems = computed(() => {
+  if (!token.value) {
+    return conversations
+  }
+
+  const summaries = inboxSummaries.value.map(toInboxConversationItem)
+  const openedItems = openedConversations.value
+    .filter((conversation) => !summaries.some((summary) => summary.id === conversation.id))
+    .map(toConversationItem)
+
+  return [...openedItems, ...summaries]
+})
+
+const isInboxLoading = computed(() => inboxLoadState.value === 'loading' && inboxSummaries.value.length === 0)
+const isInboxEmpty = computed(
+  () => Boolean(token.value) && inboxLoadState.value === 'success' && conversationItems.value.length === 0,
+)
 
 const currentUserId = computed(() => user.value?.id ?? null)
 const selectedGroupConversation = computed<GroupConversation | null>(() => {
@@ -150,10 +189,28 @@ watch(
 
     const controller = new AbortController()
     contactsStore.load(currentToken, controller.signal)
+    conversationsStore.loadInbox(currentToken, controller.signal)
     onCleanup(() => controller.abort())
   },
   { immediate: true },
 )
+
+async function selectConversation(conversationId: string) {
+  selectedConversationId.value = conversationId
+
+  const currentToken = token.value
+  const summary = inboxSummaries.value.find((conversation) => conversation.id === conversationId)
+
+  if (!currentToken || !summary || summary.unreadCount === 0 || pendingReadIds.value.has(conversationId)) {
+    return
+  }
+
+  try {
+    await conversationsStore.markRead(conversationId, currentToken)
+  } catch (error) {
+    inboxLoadError.value = conversationErrorMessage(error)
+  }
+}
 
 function openSearch() {
   searchTerm.value = ''
@@ -426,5 +483,57 @@ function toConversationItem(conversation: ConversationRecord) {
     time: '',
     messages: [],
   }
+}
+
+function toInboxConversationItem(conversation: InboxConversationSummary): Conversation & { unreadLabel?: string } {
+  return {
+    id: conversation.id,
+    type: conversation.type,
+    initials: contactInitials(conversation.title),
+    name: conversation.title,
+    subtitle:
+      conversation.type === 'group'
+        ? `${conversation.memberCount ?? 0} membros`
+        : conversation.counterpart?.lastSeenAt
+          ? 'visto recentemente'
+          : 'offline',
+    preview: inboxPreview(conversation),
+    time: conversation.lastMessage ? formatConversationTime(conversation.lastMessage.insertedAt) : '',
+    messages: [],
+    unreadLabel: unreadLabel(conversation),
+  }
+}
+
+function inboxPreview(conversation: InboxConversationSummary): string {
+  const message = conversation.lastMessage
+
+  if (!message) {
+    return 'Nenhuma mensagem'
+  }
+
+  const prefix = message.senderId === currentUserId.value ? 'Voce: ' : ''
+
+  return `${prefix}${message.body}`
+}
+
+function unreadLabel(conversation: InboxConversationSummary): string | undefined {
+  if (conversation.unreadCount <= 0) {
+    return undefined
+  }
+
+  return conversation.unreadOverflow ? '99+' : String(conversation.unreadCount)
+}
+
+function formatConversationTime(value: string): string {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
 }
 </script>

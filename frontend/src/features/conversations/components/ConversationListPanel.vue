@@ -45,7 +45,19 @@
       </div>
   </div>
 
-  <nav class="grid gap-1 px-2">
+  <div v-if="isLoading" class="px-5 py-6 text-[14px] text-[#737373]" role="status">
+    Carregando conversas...
+  </div>
+
+  <div v-else-if="error" class="px-5 py-6 text-[14px] text-[#991b1b]" role="alert">
+    {{ error }}
+  </div>
+
+  <div v-else-if="isEmpty" class="px-5 py-6 text-[14px] text-[#737373]">
+    Nenhuma conversa.
+  </div>
+
+  <nav v-else class="grid gap-1 px-2">
       <button
         v-for="conversation in conversations"
         :key="conversation.id"
@@ -67,7 +79,16 @@
             {{ conversation.preview }}
           </span>
         </span>
-        <span class="text-[12px] text-[#a3a3a3]">{{ conversation.time }}</span>
+        <span class="grid justify-items-end gap-1">
+          <span class="text-[12px] text-[#a3a3a3]">{{ conversation.time }}</span>
+          <span
+            v-if="conversation.unreadLabel"
+            class="grid min-h-5 min-w-5 place-items-center rounded-full bg-[#171717] px-1.5 text-[11px] font-bold leading-none text-white"
+            :aria-label="`${conversation.unreadLabel} mensagens nao lidas`"
+          >
+            {{ conversation.unreadLabel }}
+          </span>
+        </span>
       </button>
   </nav>
 </template>
@@ -77,9 +98,16 @@ import { LogOut, Search, UserRound, UserRoundPlus } from '@lucide/vue'
 
 import type { Conversation } from '../conversations.mock'
 
+type ConversationListItem = Conversation & {
+  unreadLabel?: string
+}
+
 defineProps<{
-  conversations: Conversation[]
+  conversations: ConversationListItem[]
   selectedConversationId: string
+  isLoading: boolean
+  isEmpty: boolean
+  error: string | null
 }>()
 
 defineEmits<{
