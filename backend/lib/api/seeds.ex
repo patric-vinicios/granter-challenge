@@ -57,7 +57,10 @@ defmodule Api.Seeds do
   defp prod?, do: Application.fetch_env!(:api, :env) == :prod
 
   defp refuse do
-    IO.puts("Refusing to seed demo data in the #{Application.fetch_env!(:api, :env)} environment.")
+    IO.puts(
+      "Refusing to seed demo data in the #{Application.fetch_env!(:api, :env)} environment."
+    )
+
     {:error, :prod_refused}
   end
 
@@ -113,7 +116,9 @@ defmodule Api.Seeds do
   defp seed_contacts(users) do
     usernames = Map.keys(users)
 
-    for owner_username <- usernames, target_username <- usernames, owner_username != target_username do
+    for owner_username <- usernames,
+        target_username <- usernames,
+        owner_username != target_username do
       take(
         {:contact, owner_username, target_username},
         Contacts.add_contact(users[owner_username], target_username)
@@ -192,7 +197,10 @@ defmodule Api.Seeds do
     %{
       users: map_size(users),
       conversations: length(conversations),
-      messages: conversations |> Enum.map(fn {_spec, _conv, messages} -> length(messages) end) |> Enum.sum()
+      messages:
+        conversations
+        |> Enum.map(fn {_spec, _conv, messages} -> length(messages) end)
+        |> Enum.sum()
     }
   end
 

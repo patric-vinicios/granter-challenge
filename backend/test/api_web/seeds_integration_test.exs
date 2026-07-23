@@ -64,7 +64,7 @@ defmodule ApiWeb.SeedsIntegrationTest do
         |> json_response(200)
         |> Map.fetch!("contacts")
 
-      assert length(contacts) == 6
+      assert Enum.count(contacts) == 6
       refute Enum.any?(contacts, &(&1["user"]["username"] == username))
 
       names = Enum.map(contacts, &normalize(&1["user"]["name"]))
@@ -107,7 +107,7 @@ defmodule ApiWeb.SeedsIntegrationTest do
       |> json_response(200)
 
     messages = body["messages"]
-    assert length(messages) == 14
+    assert Enum.count(messages) == 14
 
     timestamps = Enum.map(messages, & &1["inserted_at"])
     assert timestamps == Enum.sort(timestamps)
@@ -125,16 +125,19 @@ defmodule ApiWeb.SeedsIntegrationTest do
       |> get(~p"/api/conversations/#{conversation.id}/messages", %{limit: 10})
       |> json_response(200)
 
-    assert length(page1["messages"]) == 10
+    assert Enum.count(page1["messages"]) == 10
     assert page1["has_more"]
 
     page2 =
       json_conn()
       |> authenticate(demo)
-      |> get(~p"/api/conversations/#{conversation.id}/messages", %{limit: 10, before: page1["next_cursor"]})
+      |> get(~p"/api/conversations/#{conversation.id}/messages", %{
+        limit: 10,
+        before: page1["next_cursor"]
+      })
       |> json_response(200)
 
-    assert length(page2["messages"]) == 4
+    assert Enum.count(page2["messages"]) == 4
     refute page2["has_more"]
   end
 end

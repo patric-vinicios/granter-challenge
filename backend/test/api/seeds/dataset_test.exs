@@ -18,7 +18,7 @@ defmodule Api.Seeds.DatasetTest do
   test "declares seven users including the primary account" do
     usernames = Enum.map(@dataset.users, & &1.username)
 
-    assert length(@dataset.users) == 7
+    assert Enum.count(@dataset.users) == 7
     assert Enum.uniq(usernames) == usernames
     assert @dataset.primary in usernames
   end

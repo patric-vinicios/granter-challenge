@@ -21,16 +21,16 @@ defmodule Api.SeedsTest do
   defp count(schema), do: Repo.aggregate(schema, :count)
 
   defp unread_for(%User{} = user) do
-    from(p in Participant, where: p.user_id == ^user.id, select: {p.conversation_id, p.last_read_at})
+    from(p in Participant,
+      where: p.user_id == ^user.id,
+      left_join: m in Message,
+      on:
+        m.conversation_id == p.conversation_id and m.sender_id != ^user.id and
+          m.inserted_at > p.last_read_at,
+      group_by: p.id,
+      select: count(m.id)
+    )
     |> Repo.all()
-    |> Enum.map(fn {conversation_id, last_read_at} ->
-      from(m in Message,
-        where:
-          m.conversation_id == ^conversation_id and m.sender_id != ^user.id and
-            m.inserted_at > ^last_read_at
-      )
-      |> Repo.aggregate(:count)
-    end)
   end
 
   test "seeds the full dataset into an empty database" do
@@ -80,7 +80,7 @@ defmodule Api.SeedsTest do
     assert Enum.min(day_diffs) <= 1
     assert Enum.any?(day_diffs, &(&1 in [1, 2]))
     assert Enum.max(day_diffs) >= 7
-    assert length(day_diffs) >= 3
+    assert Enum.count(day_diffs) >= 3
   end
 
   test "leaves exactly two conversations unread for the demo account" do
@@ -132,7 +132,7 @@ defmodule Api.SeedsTest do
 
     bodies = Repo.all(from(m in Message, select: m.body))
 
-    assert length(bodies) == 62
+    assert Enum.count(bodies) == 62
 
     for body <- bodies do
       assert String.trim(body) != ""
