@@ -187,7 +187,7 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       private_pair(caller, insert(:user, name: "Ana Beatriz"))
       group_with(caller, name: "Marketing")
 
-      assert length(titles_for(conn, "")) == 2
+      assert Enum.count(titles_for(conn, "")) == 2
     end
   end
 

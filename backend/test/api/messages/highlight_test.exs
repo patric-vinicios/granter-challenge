@@ -26,7 +26,7 @@ defmodule Api.Messages.HighlightTest do
 
       assert %{start: 0, length: 4} in offsets
       assert %{start: 16, length: 5} in offsets
-      assert length(offsets) == 2
+      assert Enum.count(offsets) == 2
     end
 
     test "returns an empty list when nothing matches" do

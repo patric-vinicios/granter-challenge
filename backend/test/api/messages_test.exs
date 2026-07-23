@@ -325,7 +325,7 @@ defmodule Api.MessagesTest do
       bulk(thread, ana, "cronograma", 101)
 
       assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma")
-      assert length(result.messages) == 100
+      assert Enum.count(result.messages) == 100
       assert result.total_matches == 100
       assert result.truncated
     end

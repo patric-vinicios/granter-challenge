@@ -86,7 +86,7 @@ defmodule ApiWeb.MessageSearchControllerTest do
       body = conn |> search(thread.id, "cronograma") |> json_response(200)
 
       assert body["truncated"] == true
-      assert length(body["messages"]) == 100
+      assert Enum.count(body["messages"]) == 100
       assert body["total_matches"] == 100
     end
 
