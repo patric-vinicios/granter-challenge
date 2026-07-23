@@ -94,7 +94,23 @@
       </div>
 
       <div class="grid gap-2">
-        <p v-if="conversation.messages.length === 0" class="py-10 text-center text-[14px] text-[#737373]">
+        <button
+          v-if="canLoadOlder"
+          class="mx-auto mb-5 rounded-lg border border-[#e8e8e8] bg-white px-4 py-2 text-[13px] font-medium text-[#171717] hover:bg-[#f5f5f5] disabled:cursor-not-allowed disabled:text-[#a3a3a3]"
+          type="button"
+          :disabled="isLoadingOlder"
+          @click="$emit('loadOlderMessages')"
+        >
+          {{ isLoadingOlder ? 'Carregando...' : 'Carregar mensagens anteriores' }}
+        </button>
+
+        <p v-if="isLoadingHistory" class="py-10 text-center text-[14px] text-[#737373]">
+          Carregando historico...
+        </p>
+        <p v-else-if="historyError" class="py-10 text-center text-[14px] text-[#737373]">
+          {{ historyError }}
+        </p>
+        <p v-else-if="conversation.messages.length === 0" class="py-10 text-center text-[14px] text-[#737373]">
           Nenhuma mensagem nesta conversa.
         </p>
         <template v-else>
@@ -146,6 +162,10 @@ import type { Conversation } from '@/features/conversations/conversations.mock'
 defineProps<{
   conversation: Conversation
   isSearching: boolean
+  isLoadingHistory: boolean
+  isLoadingOlder: boolean
+  canLoadOlder: boolean
+  historyError: string | null
   searchTerm: string
   messageDraft: string
 }>()
@@ -154,6 +174,7 @@ defineEmits<{
   closeSearch: []
   openGroupDetails: []
   openSearch: []
+  loadOlderMessages: []
   searchFocusout: [event: FocusEvent]
   sendMessage: []
   'update:searchTerm': [searchTerm: string]
