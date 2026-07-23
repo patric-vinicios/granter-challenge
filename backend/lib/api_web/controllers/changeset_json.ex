@@ -15,10 +15,17 @@ defmodule ApiWeb.ChangesetJSON do
   def error(%{changeset: changeset}) do
     {code, detail} = ApiWeb.ErrorJSON.error_for(422)
 
-    %{errors: %{code: code, detail: detail, fields: translate_errors(changeset)}}
+    %{errors: %{code: code, detail: detail, fields: fields(changeset)}}
   end
 
-  defp translate_errors(changeset) do
+  @doc """
+  The per-field error map, one list of resolved messages per invalid field.
+
+  Public because the channel's `validation_error` reply carries the same
+  `fields` shape the 422 envelope does, so both surfaces translate a rejected
+  changeset through one function rather than drifting apart.
+  """
+  def fields(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
       Regex.replace(~r"%{(\w+)}", message, fn _whole, key ->
         opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
