@@ -19,10 +19,56 @@ export interface GroupConversation {
 
 export type ConversationRecord = PrivateConversation | GroupConversation
 
+export interface InboxLastMessage {
+  id: string
+  body: string
+  senderId: string
+  insertedAt: string
+}
+
+export interface InboxConversationSummary {
+  id: string
+  type: 'private' | 'group'
+  title: string
+  counterpart: ContactUser | null
+  memberCount: number | null
+  lastMessage: InboxLastMessage | null
+  unreadCount: number
+  unreadOverflow: boolean
+  lastReadAt: string | null
+}
+
+export interface MarkReadResult {
+  conversationId: string
+  lastReadAt: string
+  unreadCount: 0
+}
+
 export function decodeConversation(payload: unknown): ConversationRecord {
   const data = requireRecord(payload)
 
   return decodeConversationRecord(data.conversation)
+}
+
+export function decodeInboxConversations(payload: unknown): InboxConversationSummary[] {
+  const data = requireRecord(payload)
+  const conversations = data.conversations
+
+  if (!Array.isArray(conversations)) {
+    throw new Error('Expected conversations array')
+  }
+
+  return conversations.map(decodeInboxConversation)
+}
+
+export function decodeMarkReadResult(payload: unknown): MarkReadResult {
+  const data = requireRecord(payload)
+
+  return {
+    conversationId: requireString(data.conversation_id),
+    lastReadAt: requireString(data.last_read_at),
+    unreadCount: requireZero(data.unread_count),
+  }
 }
 
 function decodeConversationRecord(payload: unknown): ConversationRecord {
@@ -70,6 +116,38 @@ function decodeUser(payload: unknown): ContactUser {
   }
 }
 
+function decodeInboxConversation(payload: unknown): InboxConversationSummary {
+  const data = requireRecord(payload)
+  const type = requireString(data.type)
+
+  if (type !== 'private' && type !== 'group') {
+    throw new Error('Unsupported conversation summary type')
+  }
+
+  return {
+    id: requireString(data.id),
+    type,
+    title: requireString(data.title),
+    counterpart: data.counterpart === null ? null : decodeUser(data.counterpart),
+    memberCount: requireNullableNumber(data.member_count),
+    lastMessage: data.last_message === null ? null : decodeInboxLastMessage(data.last_message),
+    unreadCount: requireNumber(data.unread_count),
+    unreadOverflow: requireBoolean(data.unread_overflow),
+    lastReadAt: requireNullableString(data.last_read_at),
+  }
+}
+
+function decodeInboxLastMessage(payload: unknown): InboxLastMessage {
+  const data = requireRecord(payload)
+
+  return {
+    id: requireString(data.id),
+    body: requireString(data.body),
+    senderId: requireString(data.sender_id),
+    insertedAt: requireString(data.inserted_at),
+  }
+}
+
 function requireRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error('Expected object')
@@ -100,4 +178,28 @@ function requireNumber(value: unknown): number {
   }
 
   return value
+}
+
+function requireNullableNumber(value: unknown): number | null {
+  if (value === null) {
+    return null
+  }
+
+  return requireNumber(value)
+}
+
+function requireBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error('Expected boolean')
+  }
+
+  return value
+}
+
+function requireZero(value: unknown): 0 {
+  if (value !== 0) {
+    throw new Error('Expected zero')
+  }
+
+  return 0
 }
