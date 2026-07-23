@@ -153,6 +153,44 @@ defmodule ApiWeb.ConversationInboxControllerTest do
     end
   end
 
+  describe "GET /api/conversations?q=" do
+    test "returns only conversations whose title matches", %{conn: conn, caller: caller} do
+      private_pair(caller, insert(:user, name: "Ana Beatriz"))
+      private_pair(caller, insert(:user, name: "Bruno Carvalho"))
+
+      titles = titles_for(conn, "ana")
+
+      assert titles == ["Ana Beatriz"]
+    end
+
+    test "matches group names and private @usernames and display names", %{
+      conn: conn,
+      caller: caller
+    } do
+      group_with(caller, name: "Marketing")
+      private_pair(caller, insert(:user, username: "carlosx", name: "Zeta Silva"))
+      private_pair(caller, insert(:user, name: "Diana Prince"))
+
+      assert titles_for(conn, "marketing") == ["Marketing"]
+      assert titles_for(conn, "carlosx") == ["Zeta Silva"]
+      assert titles_for(conn, "diana") == ["Diana Prince"]
+    end
+
+    test "is accent- and case-insensitive", %{conn: conn, caller: caller} do
+      group_with(caller, name: "Família")
+
+      assert titles_for(conn, "familia") == ["Família"]
+      assert titles_for(conn, "FAMÍLIA") == ["Família"]
+    end
+
+    test "returns the full list for a blank q", %{conn: conn, caller: caller} do
+      private_pair(caller, insert(:user, name: "Ana Beatriz"))
+      group_with(caller, name: "Marketing")
+
+      assert Enum.count(titles_for(conn, "")) == 2
+    end
+  end
+
   describe "POST /api/conversations/:id/read" do
     test "clears the badge and keeps it cleared on the next list", %{conn: conn, caller: caller} do
       other = insert(:user)
@@ -302,6 +340,39 @@ defmodule ApiWeb.ConversationInboxControllerTest do
       assert first["last_message"]["sender_id"] == other.id
       assert first["last_message"]["inserted_at"] == DateTime.to_iso8601(newest.inserted_at)
     end
+
+    test "the filtered list returns the exact unfiltered summary entry shape", %{
+      conn: conn,
+      caller: caller
+    } do
+      other = insert(:user, name: "Ana Beatriz")
+      conv = private_pair(caller, other)
+      insert(:message, conversation: conv, sender: other, body: "oi", inserted_at: ago(10))
+
+      unfiltered =
+        conn
+        |> get(~p"/api/conversations")
+        |> json_response(200)
+        |> Map.fetch!("conversations")
+        |> Enum.find(&(&1["id"] == conv.id))
+
+      filtered =
+        conn
+        |> get(~p"/api/conversations?q=ana")
+        |> json_response(200)
+        |> Map.fetch!("conversations")
+        |> Enum.find(&(&1["id"] == conv.id))
+
+      assert filtered == unfiltered
+    end
+  end
+
+  defp titles_for(conn, q) do
+    conn
+    |> get(~p"/api/conversations?q=#{q}")
+    |> json_response(200)
+    |> Map.fetch!("conversations")
+    |> Enum.map(& &1["title"])
   end
 
   defp ago(seconds), do: DateTime.add(DateTime.utc_now(), -seconds, :second)

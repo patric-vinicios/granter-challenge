@@ -43,8 +43,10 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
-  def index(conn, _params) do
-    conversations = Conversations.list_conversations(conn.assigns.current_user)
+  def index(conn, params) do
+    conversations =
+      Conversations.list_conversations(conn.assigns.current_user, %{query: params["q"]})
+
     render(conn, :index, conversations: conversations)
   end
 
