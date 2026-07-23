@@ -424,6 +424,67 @@ defmodule ApiWeb.ConversationChannelTest do
     assert {:error, %{reason: "unauthorized"}} = try_join(member, group)
   end
 
+  # --- Presence relay -----------------------------------------------------
+
+  test "pushes presence:state on join naming only online participants" do
+    {ana, carlos, thread} = private_pair()
+    _carlos_socket = track_user(carlos)
+
+    _ana_socket = joined(ana, thread)
+
+    assert_push "presence:state", state
+    assert Map.has_key?(state, carlos.id)
+    # Ana is on the conversation channel, not her personal topic, so untracked.
+    refute Map.has_key?(state, ana.id)
+  end
+
+  test "pushes an empty presence:state when no participant is online" do
+    {ana, _carlos, thread} = private_pair()
+
+    _ana_socket = joined(ana, thread)
+
+    assert_push "presence:state", state
+    assert state == %{}
+  end
+
+  test "relays presence:diff when a participant connects" do
+    {ana, carlos, thread} = private_pair()
+    ana_socket = joined(ana, thread)
+    # Flush after_join so the subscription to Carlos's topic is in place first.
+    _ = :sys.get_state(ana_socket.channel_pid)
+    assert_push "presence:state", _state
+
+    _carlos_socket = track_user(carlos)
+
+    assert_push "presence:diff", %{joins: joins}
+    assert Map.has_key?(joins, carlos.id)
+  end
+
+  test "relays presence:diff when a participant disconnects" do
+    {ana, carlos, thread} = private_pair()
+    carlos_socket = track_user(carlos)
+    ana_socket = joined(ana, thread)
+    _ = :sys.get_state(ana_socket.channel_pid)
+    assert_push "presence:state", _state
+
+    :ok = close_and_await_leave(carlos_socket, carlos.id)
+
+    assert_push "presence:diff", %{leaves: leaves}
+    assert Map.has_key?(leaves, carlos.id)
+  end
+
+  test "never relays presence for a user the caller shares no conversation with" do
+    {ana, _carlos, thread} = private_pair()
+    ana_socket = joined(ana, thread)
+    _ = :sys.get_state(ana_socket.channel_pid)
+    assert_push "presence:state", _state
+
+    stranger = insert(:user)
+    _stranger_socket = track_user(stranger)
+
+    refute_push "presence:diff", _payload, 50
+  end
+
   # --- Cross-feature integration -----------------------------------------
 
   test "a broadcast message is the exact record the history endpoint returns" do
