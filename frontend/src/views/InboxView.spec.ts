@@ -1,7 +1,8 @@
 import { screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { useAuthStore } from '@/stores/auth.store'
 import { renderWithApp } from '@/test/render'
 
 import InboxView from './InboxView.vue'
@@ -40,31 +41,91 @@ describe('InboxView', () => {
   it('opens contacts and reports add-contact success and error states', async () => {
     const user = userEvent.setup()
 
-    await renderInbox()
+    const { pinia } = await renderInbox()
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        contacts: [
+          contactResponse('contact-rafael', 'user-rafael', 'rafaelalves', 'Rafael Alves'),
+          contactResponse('contact-ana', 'user-ana', 'anabeatriz', 'Ana Beatriz'),
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
 
     await user.click(screen.getByRole('button', { name: /contatos/i }))
 
     expect(screen.getByText('Contatos')).toBeTruthy()
-    expect(screen.getByText('@rafaelalves')).toBeTruthy()
+    expect(await screen.findByText('@rafaelalves')).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/contacts',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
 
     await user.click(screen.getByRole('button', { name: /adicionar/i }))
 
     const dialog = screen.getByRole('dialog', { name: /adicionar contato/i })
     const usernameInput = within(dialog).getByLabelText(/usuario/i)
 
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, {
+        contact: contactResponse('contact-carlos', 'user-carlos', 'carlos', 'Carlos Silva'),
+      }),
+    )
+
     await user.type(usernameInput, '@anabeatriz')
     await user.click(within(dialog).getByRole('button', { name: /adicionar/i }))
 
-    expect(within(dialog).getByText(/contato adicionado/i)).toBeTruthy()
+    expect(await within(dialog).findByText(/contato adicionado/i)).toBeTruthy()
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/contacts',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ username: '@anabeatriz' }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+    expect(screen.getByText('@carlos')).toBeTruthy()
 
     await user.click(within(dialog).getByRole('button', { name: /voltar/i }))
     await user.click(screen.getByRole('button', { name: /adicionar/i }))
 
     const reopenedDialog = screen.getByRole('dialog', { name: /adicionar contato/i })
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(404, {
+        errors: {
+          code: 'user_not_found',
+          detail: 'No user with @fulano123 exists in the system',
+        },
+      }),
+    )
+
     await user.type(within(reopenedDialog).getByLabelText(/usuario/i), '@fulano123')
     await user.click(within(reopenedDialog).getByRole('button', { name: /adicionar/i }))
 
-    expect(within(reopenedDialog).getByText(/usuario nao encontrado/i)).toBeTruthy()
+    expect(await within(reopenedDialog).findByText(/usuario nao encontrado/i)).toBeTruthy()
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(204, null))
+    await user.click(screen.getByRole('button', { name: /remover rafael alves/i }))
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:4000/api/contacts/contact-rafael',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer jwt-token',
+        }),
+      }),
+    )
+    expect(screen.queryByText('@rafaelalves')).toBeNull()
   })
 
   it('opens conversation search and clears the draft when sending', async () => {
@@ -85,3 +146,34 @@ describe('InboxView', () => {
     expect(messageInput.value).toBe('')
   })
 })
+
+function authenticate(pinia: Awaited<ReturnType<typeof renderInbox>>['pinia']) {
+  const auth = useAuthStore(pinia)
+  auth.user = {
+    id: 'user-current',
+    username: 'patric',
+    name: 'Patric',
+    lastSeenAt: null,
+  }
+  auth.token = 'jwt-token'
+  auth.expiresAt = '2026-07-30T12:00:00Z'
+}
+
+function contactResponse(id: string, userId: string, username: string, name: string) {
+  return {
+    id,
+    user: {
+      id: userId,
+      username,
+      name,
+      last_seen_at: null,
+    },
+  }
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(body === null ? null : JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}

@@ -39,30 +39,44 @@
     </div>
 
     <div class="min-h-0 overflow-auto px-3 py-4">
-      <template v-for="group in contactGroups" :key="group.initial">
+      <div v-if="isLoading" class="py-10 text-center text-[14px] text-[#737373]" role="status">
+        Carregando contatos...
+      </div>
+
+      <div v-else-if="error" class="rounded-lg border border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#dc2626]" role="alert">
+        {{ error }}
+      </div>
+
+      <div v-else-if="isEmpty" class="py-10 text-center text-[14px] text-[#737373]">
+        Nenhum contato adicionado.
+      </div>
+
+      <template v-else v-for="group in contactGroups" :key="group.initial">
         <div class="mb-2 mt-1 text-[12px] font-bold uppercase text-[#a3a3a3]">
           {{ group.initial }}
         </div>
         <div
           v-for="contact in group.contacts"
-          :key="contact.username"
+          :key="contact.id"
           class="grid min-h-[72px] grid-cols-[44px_minmax(0,1fr)_34px] items-center gap-3"
         >
           <span
             class="grid h-10 w-10 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
           >
-            {{ contact.initials }}
+            {{ contactInitials(contact.user.name) }}
           </span>
           <span class="min-w-0">
-            <strong class="block truncate text-[15px] text-[#171717]">{{ contact.name }}</strong>
+            <strong class="block truncate text-[15px] text-[#171717]">{{ contact.user.name }}</strong>
             <span class="block truncate text-[13px] font-bold text-[#a3a3a3]">
-              @{{ contact.username }}
+              @{{ contact.user.username }}
             </span>
           </span>
           <button
             class="grid h-8 w-8 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#737373] hover:bg-[#f5f5f5]"
             type="button"
-            :aria-label="`Remover ${contact.name}`"
+            :aria-label="`Remover ${contact.user.name}`"
+            :disabled="pendingRemovalIds.has(contact.id)"
+            @click="$emit('removeContact', contact.id)"
           >
             <Trash2 :size="16" :stroke-width="2" aria-hidden="true" />
           </button>
@@ -75,14 +89,20 @@
 <script setup lang="ts">
 import { Plus, Search, Trash2, X } from '@lucide/vue'
 
-import type { ContactGroup } from '../contacts.mock'
+import { contactInitials } from '../contacts.store'
+import type { ContactGroup } from '../contacts.contracts'
 
 defineProps<{
   contactGroups: ContactGroup[]
+  error: string | null
+  isEmpty: boolean
+  isLoading: boolean
+  pendingRemovalIds: Set<string>
 }>()
 
 defineEmits<{
   addContact: []
   close: []
+  removeContact: [contactId: string]
 }>()
 </script>
