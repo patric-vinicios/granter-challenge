@@ -20,6 +20,7 @@ defmodule ApiWeb.MessageJSON do
   One page of history: the messages ascending by `(inserted_at, id)`, the cursor
   that fetches the page before it, and whether one exists.
   """
+  @spec index(Api.Messages.page()) :: map()
   def index(%{messages: messages, next_cursor: next_cursor, has_more: has_more}) do
     %{
       messages: Enum.map(messages, &data/1),
@@ -36,6 +37,7 @@ defmodule ApiWeb.MessageJSON do
   Each hit is the canonical message object augmented in place, so a client reads
   a search result with the same message type it reads everywhere else.
   """
+  @spec search(Api.Messages.search_page()) :: map()
   def search(%{messages: messages, total_matches: total_matches, truncated: truncated}) do
     %{
       messages: Enum.map(messages, &hit/1),
@@ -54,6 +56,7 @@ defmodule ApiWeb.MessageJSON do
   The canonical message object. `body` is rendered verbatim: escaping it is the
   client's obligation, and the bytes returned are the bytes that were sent.
   """
+  @spec data(Message.t()) :: map()
   def data(%Message{} = message) do
     %{
       id: message.id,

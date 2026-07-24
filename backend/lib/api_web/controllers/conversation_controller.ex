@@ -20,6 +20,7 @@ defmodule ApiWeb.ConversationController do
 
   @private_types %{user_id: :string}
 
+  @spec create_private(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def create_private(conn, params) do
     caller = conn.assigns.current_user
 
@@ -32,6 +33,8 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
+  @spec create_group(Plug.Conn.t(), map()) ::
+          Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
   def create_group(conn, params) do
     caller = conn.assigns.current_user
 
@@ -43,6 +46,7 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     conversations =
       Conversations.list_conversations(conn.assigns.current_user, %{query: params["q"]})
@@ -50,12 +54,14 @@ defmodule ApiWeb.ConversationController do
     render(conn, :index, conversations: conversations)
   end
 
+  @spec mark_read(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def mark_read(conn, %{"id" => id}) do
     with {:ok, result} <- Conversations.mark_read(conn.assigns.current_user, id) do
       render(conn, :read, result: result)
     end
   end
 
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def show(conn, %{"id" => id}) do
     caller = conn.assigns.current_user
 
@@ -64,6 +70,8 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
+  @spec add_members(Plug.Conn.t(), map()) ::
+          Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
   def add_members(conn, %{"id" => id} = params) do
     caller = conn.assigns.current_user
 
@@ -81,6 +89,7 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
+  @spec remove_member(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def remove_member(conn, %{"id" => id, "user_id" => user_id}) do
     with :ok <- Conversations.remove_member(conn.assigns.current_user, id, user_id) do
       # The context is never told channels exist; the controller relays the
@@ -93,6 +102,7 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
+  @spec leave(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def leave(conn, %{"id" => id}) do
     with :ok <- Conversations.leave(conn.assigns.current_user, id) do
       send_resp(conn, :no_content, "")
@@ -104,6 +114,7 @@ defmodule ApiWeb.ConversationController do
 
   # A missing user_id is a malformed request, not an unknown user: answering
   # user_not_found there would tell a client its own bug looks like a typo.
+  @spec validate_private(map()) :: {:ok, %{user_id: String.t()}} | {:error, Ecto.Changeset.t()}
   defp validate_private(params) do
     {%{}, @private_types}
     |> Ecto.Changeset.cast(params, Map.keys(@private_types))

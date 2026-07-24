@@ -28,6 +28,7 @@ defmodule ApiWeb.Presence do
   An O(1) ETS read over the user's presence topic — no database — so the
   conversation detail can ask it per member on the render path.
   """
+  @spec online?(String.t()) :: boolean()
   def online?(user_id) when is_binary(user_id),
     do: map_size(list("user:#{user_id}")) > 0
 

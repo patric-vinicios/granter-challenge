@@ -37,6 +37,7 @@ defmodule ApiWeb.RateLimiter do
   on first use in the same atomic operation that increments it, so a never-seen
   user needs no setup.
   """
+  @spec hit(String.t()) :: :ok | {:error, pos_integer()}
   def hit(user_id) do
     now = System.system_time(:millisecond)
     window = div(now, @window_ms)
@@ -50,6 +51,7 @@ defmodule ApiWeb.RateLimiter do
     end
   end
 
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
   end

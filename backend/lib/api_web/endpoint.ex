@@ -60,7 +60,22 @@ defmodule ApiWeb.Endpoint do
   Browser origins allowed to call the API, read per request so `CORS_ORIGINS`
   takes effect without recompiling.
   """
+  @spec cors_origins() :: [String.t()]
   def cors_origins do
     Application.get_env(:api, :cors_origins, ["http://localhost:5173"])
+  end
+
+  @doc """
+  Returns whether the WebSocket origin is allowed.
+
+  Phoenix passes the parsed origin URI to `check_origin` MFA callbacks, while
+  CORSPlug uses `cors_origins/0` for HTTP requests. Keep both surfaces backed by
+  the same allowlist.
+  """
+  @spec cors_origins(URI.t()) :: boolean()
+  def cors_origins(%URI{} = uri) do
+    uri
+    |> URI.to_string()
+    |> then(&(&1 in cors_origins()))
   end
 end

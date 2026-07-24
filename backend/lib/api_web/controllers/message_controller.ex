@@ -30,6 +30,7 @@ defmodule ApiWeb.MessageController do
   @query_min 2
   @query_max 100
 
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def index(conn, %{"id" => id} = params) do
     with {:ok, page_params} <- validate_page(params),
          {:ok, page} <- Messages.list_messages(conn.assigns.current_user, id, page_params) do
@@ -41,6 +42,7 @@ defmodule ApiWeb.MessageController do
   # the field rather than a query the database is asked to run — the "no scan on
   # a rejected query" guarantee. The check runs even for a non-participant, so a
   # bad term is 422 before access is ever consulted.
+  @spec search(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def search(conn, %{"id" => id} = params) do
     with {:ok, %{q: q}} <- validate_query(params),
          {:ok, result} <- Messages.search_messages(conn.assigns.current_user, id, q) do
@@ -72,6 +74,7 @@ defmodule ApiWeb.MessageController do
   # `q` is trimmed before it is measured, so trailing spaces neither pad a short
   # term to length nor overflow a full one. A blank or absent `q` fails the
   # required check; both failures render under `fields.q`.
+  @spec validate_query(map()) :: {:ok, %{q: String.t()}} | {:error, Ecto.Changeset.t()}
   defp validate_query(params) do
     {%{}, @search_types}
     |> Ecto.Changeset.cast(params, [:q])

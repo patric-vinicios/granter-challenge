@@ -69,6 +69,7 @@ defmodule ApiWeb.FallbackController do
     not_a_participant: {:forbidden, "not_a_participant", "You have left this conversation"}
   }
 
+  @spec call(Plug.Conn.t(), term()) :: Plug.Conn.t()
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)

@@ -11,6 +11,7 @@ defmodule ApiWeb.HealthController do
 
   alias Api.Health
 
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     case Health.check() do
       :ok ->

@@ -22,6 +22,7 @@ defmodule ApiWeb do
 
   use Boundary, deps: [Api], exports: [Endpoint, Presence, RateLimiter, Telemetry]
 
+  @spec router() :: Macro.t()
   def router do
     quote do
       use Phoenix.Router, helpers: false
@@ -32,12 +33,14 @@ defmodule ApiWeb do
     end
   end
 
+  @spec channel() :: Macro.t()
   def channel do
     quote do
       use Phoenix.Channel
     end
   end
 
+  @spec controller() :: Macro.t()
   def controller do
     quote do
       use Phoenix.Controller, formats: [:json]
@@ -48,6 +51,7 @@ defmodule ApiWeb do
     end
   end
 
+  @spec verified_routes() :: Macro.t()
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
