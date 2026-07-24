@@ -135,9 +135,10 @@ import {
   toInboxConversationItem,
   withActiveSearchHit,
 } from '@/views/inbox/inbox.presenter'
+import { useInboxRouteState } from '@/views/inbox/useInboxRouteState'
 
-const selectedConversationId = ref<string | null>(null)
 const router = useRouter()
+const { inboxSearchQuery, selectedConversationId } = useInboxRouteState()
 const authStore = useAuthStore()
 const contactsStore = useContactsStore()
 const conversationsStore = useConversationsStore()
@@ -200,7 +201,6 @@ const emptyConversation: ChatConversation = {
   time: '',
   messages: [],
 }
-const selectedConversationIdRef = computed(() => selectedConversationId.value)
 const {
   activeHit: activeSearchHit,
   activeMatchOffsets: searchActiveMatchOffsets,
@@ -219,7 +219,7 @@ const {
   truncated: searchTruncated,
 } = useConversationSearchPanel({
   token,
-  conversationId: selectedConversationIdRef,
+  conversationId: selectedConversationId,
 })
 const {
   canSend: canSendMessage,
@@ -228,7 +228,7 @@ const {
 } = useRealtimeMessaging({
   token,
   userId: currentUserId,
-  selectedConversationId: selectedConversationIdRef,
+  selectedConversationId,
   onPresenceState: applyPresenceState,
   onPresenceDiff: applyPresenceDiff,
   onConversationUpdated: conversationsStore.applyRealtimeUnread,
@@ -292,13 +292,13 @@ const {
   error: inboxLoadError,
   isEmpty: isInboxEmpty,
   isLoading: isInboxLoading,
-  query: inboxSearchQuery,
   reload: reloadInbox,
   select: selectInboxConversation,
 } = useInboxList({
   token,
   items: conversationItems,
   selectedConversationId,
+  query: inboxSearchQuery,
 })
 const displayedConversationId = computed(() => selectedConversation.value.id)
 const {

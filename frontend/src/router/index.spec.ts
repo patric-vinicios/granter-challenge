@@ -50,6 +50,53 @@ describe('router auth guard', () => {
 
     expect(router.currentRoute.value.path).toBe('/inbox')
   })
+
+  it.each(['/','/cadastrar'])(
+    'redirects authenticated users away from guest-only route %s',
+    async (path) => {
+      window.localStorage.setItem(
+        'granter.session',
+        JSON.stringify({
+          user: {
+            id: 'user-1',
+            username: 'anabeatriz',
+            name: 'Ana Beatriz',
+            lastSeenAt: null,
+          },
+          token: 'jwt-token',
+          expiresAt: '2026-07-30T12:00:00Z',
+        }),
+      )
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse(200, {
+            user: {
+              id: 'user-1',
+              username: 'anabeatriz',
+              name: 'Ana Beatriz',
+              last_seen_at: null,
+            },
+          }),
+        ),
+      )
+      const router = createAppRouter(createMemoryHistory(), createPinia())
+
+      await router.push(path)
+      await router.isReady()
+
+      expect(router.currentRoute.value.path).toBe('/inbox')
+    },
+  )
+
+  it('routes unknown paths to the not found screen instead of leaving the app blank', async () => {
+    const router = createAppRouter(createMemoryHistory(), createPinia())
+
+    await router.push('/rota-inexistente')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('not-found')
+  })
 })
 
 function jsonResponse(status: number, body: unknown): Response {
