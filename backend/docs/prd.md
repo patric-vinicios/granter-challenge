@@ -311,11 +311,12 @@ All three audiences interact with the same contract from different distances, an
 - Creation is transactional: the conversation and all participant rows are inserted together, so a group is never persisted with a partial member set
 - `GET /api/conversations/:id` for a group returns id, type, name, creator id, active member count and the member list (user id, `@username`, display name), restricted to active members
 - `POST /api/conversations/:id/members` (creator only) accepting `{"member_ids": [...]}`; each must be a contact of the creator and not already an active member; re-adding a user who previously left sets a new `joined_at` and clears `left_at`
+- Each newly seated member is pushed a `conversation:added` event on their own `user:<user_id>` topic carrying the conversation id, so an already-connected member's inbox updates immediately: their session fetches `GET /api/conversations/:id` and inserts the entry without a reload. The notification fires only after the membership change commits, so it is never sent for a rejected add
 - `DELETE /api/conversations/:id/members/:user_id` (creator only) sets `left_at`; the creator cannot remove themselves through this endpoint
 - `DELETE /api/conversations/:id/members/me` lets any member leave by setting `left_at`; the creator may leave only if at least one other active member remains, and the group keeps its original `creator_id`, so once the creator leaves no further membership changes are possible
 - Departed members retain read access to messages sent before their `left_at` but receive no new messages and cannot send; their channel joins are rejected
 
-**Experience:** The user opens the new-group dialog, names the group and checks contacts. The client sends the name and the selected user ids in one call, and receives the full group conversation including the member list, so the group can be rendered and opened immediately. If any selected user was removed from contacts between opening the dialog and submitting, the whole request fails with 403 naming the offending users rather than silently creating a smaller group. Membership changes take effect immediately: a removed member's next channel join is rejected and their next send returns 403.
+**Experience:** The user opens the new-group dialog, names the group and checks contacts. The client sends the name and the selected user ids in one call, and receives the full group conversation including the member list, so the group can be rendered and opened immediately. If any selected user was removed from contacts between opening the dialog and submitting, the whole request fails with 403 naming the offending users rather than silently creating a smaller group. Membership changes take effect immediately: a removed member's next channel join is rejected and their next send returns 403, and a newly added member who is already online sees the group appear in their list the moment they are added, driven by a `conversation:added` push on their personal topic rather than by a manual refresh.
 
 **Error Handling:**
 - One or more `member_ids` are not contacts: 403 with `{"errors": {"code": "not_a_contact", "detail": "These users are not in your contacts: @carlosedu, @joaopedro"}}` and no group created
@@ -370,6 +371,7 @@ All three audiences interact with the same contract from different distances, an
 - The reply is sent to the sender and the broadcast uses `broadcast_from/3`, so the sender receives the persisted record exactly once and can reconcile its optimistic bubble via `client_ref`
 - Persist-then-broadcast ordering: a message is broadcast only after the database insert commits, so no client ever displays a message that is not durable
 - `conversation:updated` is pushed to each participant's `user:<user_id>` topic on every new message, carrying conversation id, last message preview (first 120 characters), last message timestamp, sender id and an unread indicator, so the conversation list stays current without joining every conversation topic
+- `conversation:added` is pushed to the `user:<user_id>` topic of a member the moment they are added to a group (F05), carrying the conversation id, so a member who is already connected gains the new group in their inbox — after fetching it over REST — without a reload; the personal topic is the only place a not-yet-participant already listens
 - Send rate limit: 20 messages per 10 seconds per user across all conversations; exceeding it replies `{:error, %{reason: "rate_limited", retry_after_ms: <n>}}` without persisting
 - Payload limit: inbound frames above 64 KB are rejected by the socket transport before reaching the handler
 - Reconnect behaviour: the client is responsible for refetching history via F06 after a reconnect; the channel replays nothing, so there is exactly one source of truth for history
@@ -483,7 +485,7 @@ All three audiences interact with the same contract from different distances, an
 
 **Capabilities:**
 - `docs/api.md` documenting every REST endpoint with method, path, authentication requirement, path and query parameters, request body example, success response example with status code, and at least one error response with its `code` value
-- A dedicated section documenting the WebSocket contract: socket URL and connect params, both topic patterns (`conversation:<id>`, `user:<id>`), join authorization rules, every inbound event (`new_message`) with its payload, and every outbound event (`message:new`, `conversation:updated`, `presence:state`, `presence:diff`, `conversation:membership_revoked`) with its payload
+- A dedicated section documenting the WebSocket contract: socket URL and connect params, both topic patterns (`conversation:<id>`, `user:<id>`), join authorization rules, every inbound event (`new_message`) with its payload, and every outbound event (`message:new`, `conversation:updated`, `conversation:added`, `presence:state`, `presence:diff`, `conversation:membership_revoked`) with its payload
 - A table of every `errors.code` value emitted by the API mapped to its HTTP status and meaning, so the client can branch exhaustively
 - `backend/README.md` covering: prerequisites, one-command Docker startup, local setup without Docker, environment variables, how to run the test suite and `mix precommit`, and the seeded credentials
 - A "Design decisions" section in the README justifying the significant choices: JWT over cookie sessions for a cross-origin SPA, Argon2id over bcrypt for password hashing, REST plus Channels over an all-channel or GraphQL API, a single `conversations` table for both private and group conversations, keyset over offset pagination, and unidirectional contacts
@@ -696,6 +698,7 @@ graph TD
 - [ ] 5 concurrent senders pushing 20 messages each into one conversation result in exactly 100 persisted messages and 100 `message:new` events received per other subscriber, with no duplicates
 - [ ] The 21st message within a 10-second window replies `{:error, %{reason: "rate_limited"}}` and persists nothing
 - [ ] A member removed from a group while joined receives `conversation:membership_revoked` and a subsequent rejoin attempt is rejected
+- [ ] A user added to a group while connected to their personal topic receives `conversation:added` carrying the conversation id, and no such event is sent when the add is rejected
 - [ ] Every message present in a `message:new` broadcast is retrievable through the history endpoint (F06), confirming persist-before-broadcast ordering
 
 ### F08. Conversation Inbox and Unread Tracking

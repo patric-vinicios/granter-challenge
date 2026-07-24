@@ -613,7 +613,9 @@ their `left_at` and sets a new `joined_at`. **Auth:** Bearer.
 ```
 
 **Success — `200 OK`** — the updated group detail (same shape as `GET
-/api/conversations/:id` for a group).
+/api/conversations/:id` for a group). Each newly seated member is also pushed a
+[`conversation:added`](#conversationadded--on-userid) event on their personal
+topic so their session can add the group to the inbox without a reload.
 
 **Errors**
 
@@ -749,9 +751,10 @@ Bearer.
   case-insensitive (`websearch_to_tsquery` over a Portuguese `tsvector`).
 
 Results are newest-first, capped at 100. Each hit is the canonical message object
-augmented with `position` (1-based) and `match_offsets` (`[start, length]`
-character positions of the matched term in `body`). `total_matches` is exact at
-or below 100, otherwise reported as 100 with `truncated: true`.
+augmented with `position` (1-based) and `match_offsets` (a list of
+`{ "start", "length" }` grapheme spans of the matched term in `body`, `start`
+0-based). `total_matches` is exact at or below 100, otherwise reported as 100 with
+`truncated: true`.
 
 **Success — `200 OK`**
 
@@ -770,7 +773,7 @@ or below 100, otherwise reported as 100 with `truncated: true`.
         "last_seen_at": "2026-07-23T14:02:11.482301Z"
       },
       "position": 1,
-      "match_offsets": [[26, 10]]
+      "match_offsets": [{ "start": 26, "length": 10 }]
     }
   ],
   "total_matches": 1,
@@ -942,6 +945,18 @@ conversation list reorders and badges without joining every conversation topic.
 ```
 
 The `preview` is a leading slice of up to 120 characters.
+
+#### `conversation:added` — on `user:<id>`
+
+Pushed to a user the moment the group creator adds them (`POST
+/api/conversations/:id/members`), on their personal topic — the one place their
+session listens before they are a participant. It carries only the conversation
+id; the client fetches `GET /api/conversations/:id` to populate the new inbox
+entry. A re-added member who previously left is notified the same way.
+
+```json
+{ "conversation_id": "3c2b1a09-8f7e-6d5c-4b3a-291807f6e5d4" }
+```
 
 #### `presence:state` — on `conversation:<id>`
 

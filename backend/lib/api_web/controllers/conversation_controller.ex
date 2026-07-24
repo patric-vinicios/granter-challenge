@@ -68,6 +68,15 @@ defmodule ApiWeb.ConversationController do
     caller = conn.assigns.current_user
 
     with {:ok, conversation} <- Conversations.add_members(caller, id, params["member_ids"]) do
+      # The context is never told channels exist; the controller relays the
+      # membership it already observed. Announced only after `:ok`, so every id
+      # named was actually seated. Each new member learns of the group on their
+      # own personal topic — the one place their session listens before they
+      # participate — and fetches the conversation over REST to fill the inbox.
+      for user_id <- Enum.uniq(List.wrap(params["member_ids"])) do
+        ApiWeb.Endpoint.broadcast("user:#{user_id}", "conversation:added", %{conversation_id: id})
+      end
+
       render(conn, :show, conversation: conversation, caller: caller)
     end
   end

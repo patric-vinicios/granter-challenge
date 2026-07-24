@@ -150,6 +150,39 @@ defmodule ApiWeb.ConversationGroupControllerTest do
       assert joao.id in member_ids
     end
 
+    test "notifies each new member on their personal topic", %{
+      conn: conn,
+      carlos: carlos,
+      joao: joao
+    } do
+      id = create_group(conn, "Time", [carlos.id])
+      Phoenix.PubSub.subscribe(Api.PubSub, "user:#{joao.id}")
+
+      post(conn, ~p"/api/conversations/#{id}/members", %{"member_ids" => [joao.id]})
+
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: topic,
+        event: "conversation:added",
+        payload: %{conversation_id: ^id}
+      }
+
+      assert topic == "user:#{joao.id}"
+    end
+
+    test "does not notify a member the creator failed to add", %{
+      conn: conn,
+      carlos: carlos,
+      joao: joao
+    } do
+      id = create_group(conn, "Time", [carlos.id, joao.id])
+      Phoenix.PubSub.subscribe(Api.PubSub, "user:#{joao.id}")
+
+      # joao is already a member: the whole add is rejected and nothing is announced.
+      post(conn, ~p"/api/conversations/#{id}/members", %{"member_ids" => [joao.id]})
+
+      refute_receive %Phoenix.Socket.Broadcast{event: "conversation:added"}, 50
+    end
+
     test "returns 403 not_group_creator for a member", %{conn: conn, carlos: carlos, joao: joao} do
       id = create_group(conn, "Time", [carlos.id])
       insert(:contact, owner: carlos, user: joao)
