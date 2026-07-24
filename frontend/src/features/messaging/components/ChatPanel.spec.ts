@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/vue'
-import { nextTick } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import type { ChatConversation } from '@/types/chat'
@@ -24,8 +24,7 @@ describe('ChatPanel', () => {
     const scroller = screen.getByRole('log', { name: 'Mensagens da conversa' })
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 480 })
 
-    await nextTick()
-    await nextTick()
+    await flushPromises()
 
     expect(scroller.scrollTop).toBe(480)
   })
@@ -35,8 +34,7 @@ describe('ChatPanel', () => {
     const scroller = screen.getByRole('log', { name: 'Mensagens da conversa' })
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 480 })
 
-    await nextTick()
-    await nextTick()
+    await flushPromises()
 
     scroller.scrollTop = 120
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 580 })
@@ -51,9 +49,54 @@ describe('ChatPanel', () => {
         ],
       },
     })
-    await nextTick()
+    await flushPromises()
 
     expect(scroller.scrollTop).toBe(220)
+  })
+
+  it('renders observable loading, failure and empty history states', async () => {
+    const { rerender } = render(ChatPanel, {
+      props: { ...defaultProps(), isLoadingHistory: true },
+    })
+
+    expect(screen.getByText('Carregando historico...')).toBeTruthy()
+
+    await rerender({
+      ...defaultProps(),
+      isLoadingHistory: false,
+      historyError: 'Histórico indisponível.',
+    })
+    expect(screen.getByText('Histórico indisponível.')).toBeTruthy()
+
+    await rerender({
+      ...defaultProps(),
+      conversation: { ...conversation, messages: [] },
+    })
+    expect(screen.getByText('Nenhuma mensagem nesta conversa.')).toBeTruthy()
+  })
+
+  it('reports truncated search progress and enables navigation for multiple results', () => {
+    render(ChatPanel, {
+      props: {
+        ...defaultProps(),
+        isSearching: true,
+        searchStatus: 'success',
+        searchTerm: 'agenda',
+        searchActivePosition: 2,
+        searchTotalMatches: 100,
+        searchTruncated: true,
+      },
+    })
+
+    expect(screen.getByRole('status').textContent).toContain('2 / 100+')
+    expect(
+      (screen.getByRole('button', { name: 'Resultado anterior' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false)
+    expect(
+      (screen.getByRole('button', { name: 'Proximo resultado' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false)
   })
 })
 

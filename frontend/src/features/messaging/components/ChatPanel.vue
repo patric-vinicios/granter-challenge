@@ -138,8 +138,8 @@
         </p>
         <template v-else>
           <MessageBubble
-            v-for="message in conversation.messages"
-            :key="`${message.time}-${message.side}-${message.text}`"
+            v-for="(message, index) in conversation.messages"
+            :key="messageKey(message, index)"
             :side="message.side"
             :text="message.text"
             :time="message.time"
@@ -281,6 +281,10 @@ const searchStatusLabel = computed(() => {
 
 function messageIdentity(message: ChatConversation['messages'][number]): string {
   return message.id ?? message.clientRef ?? `${message.side}:${message.time}:${message.author ?? ''}:${message.text}`
+}
+
+function messageKey(message: ChatConversation['messages'][number], index: number): string {
+  return message.id ?? message.clientRef ?? `${messageIdentity(message)}:${index}`
 }
 
 function messagesWerePrepended(previousIds: string[], currentIds: string[]): boolean {
