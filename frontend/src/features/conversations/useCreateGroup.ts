@@ -1,12 +1,12 @@
 import { storeToRefs } from 'pinia'
-import { shallowRef, type Ref } from 'vue'
+import { shallowRef, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
 
 import type { ConversationRecord } from './conversations.contracts'
 import { conversationErrorMessage } from './conversations.error'
 import { useConversationsStore } from './conversations.store'
 
 interface UseCreateGroupOptions {
-  token: Readonly<Ref<string | null>>
+  token: MaybeRefOrGetter<string | null>
   error: Ref<string | null>
 }
 
@@ -29,7 +29,7 @@ export function useCreateGroup({ token, error }: UseCreateGroupOptions) {
   }
 
   async function submit(): Promise<ConversationRecord | null> {
-    const currentToken = token.value
+    const currentToken = toValue(token)
 
     if (!currentToken || isSubmitting.value) {
       return null

@@ -1,14 +1,14 @@
 import { storeToRefs } from 'pinia'
-import { computed, type Ref } from 'vue'
+import { computed, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
 
 import type { GroupConversation } from './conversations.contracts'
 import { conversationErrorMessage } from './conversations.error'
 import { useConversationsStore } from './conversations.store'
 
 interface UseGroupDetailsOptions {
-  token: Readonly<Ref<string | null>>
-  currentUserId: Readonly<Ref<string | null>>
-  selectedConversationId: Readonly<Ref<string | null>>
+  token: MaybeRefOrGetter<string | null>
+  currentUserId: MaybeRefOrGetter<string | null>
+  selectedConversationId: MaybeRefOrGetter<string | null>
   error: Ref<string | null>
 }
 
@@ -24,14 +24,14 @@ export function useGroupDetails({
   const { conversations } = storeToRefs(conversationsStore)
   const selectedGroupConversation = computed<GroupConversation | null>(() => {
     const conversation = conversations.value.find(
-      (item) => item.id === selectedConversationId.value && item.type === 'group',
+      (item) => item.id === toValue(selectedConversationId) && item.type === 'group',
     )
 
     return conversation?.type === 'group' ? conversation : null
   })
 
   async function open(conversationId: string, conversationType: ConversationType): Promise<boolean> {
-    const currentToken = token.value
+    const currentToken = toValue(token)
     const selectedGroup = selectedGroupConversation.value
 
     if (selectedGroup) {
@@ -54,7 +54,7 @@ export function useGroupDetails({
   }
 
   async function addMember(userId: string): Promise<void> {
-    const currentToken = token.value
+    const currentToken = toValue(token)
     const group = selectedGroupConversation.value
 
     if (!currentToken || !group) {
@@ -70,7 +70,7 @@ export function useGroupDetails({
   }
 
   async function removeMember(userId: string): Promise<void> {
-    const currentToken = token.value
+    const currentToken = toValue(token)
     const group = selectedGroupConversation.value
 
     if (!currentToken || !group) {
@@ -86,8 +86,8 @@ export function useGroupDetails({
   }
 
   async function leave(): Promise<string | null> {
-    const currentToken = token.value
-    const userId = currentUserId.value
+    const currentToken = toValue(token)
+    const userId = toValue(currentUserId)
     const group = selectedGroupConversation.value
 
     if (!currentToken || !userId || !group) {
