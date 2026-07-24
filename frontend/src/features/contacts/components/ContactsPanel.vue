@@ -31,6 +31,7 @@
         />
         <input
           id="contacts-search"
+          v-model="searchQuery"
           class="h-10 w-full rounded-lg border border-[#e8e8e8] bg-white pl-9 pr-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
           placeholder="Buscar contato"
           type="text"
@@ -51,7 +52,11 @@
         Nenhum contato adicionado.
       </div>
 
-      <template v-else v-for="group in contactGroups" :key="group.initial">
+      <p v-else-if="filteredContactGroups.length === 0" class="py-10 text-center text-[14px] text-[#737373]">
+        Nenhum contato encontrado.
+      </p>
+
+      <template v-else v-for="group in filteredContactGroups" :key="group.initial">
         <div class="mb-2 mt-1 text-[12px] font-bold uppercase text-[#a3a3a3]">
           {{ group.initial }}
         </div>
@@ -97,11 +102,12 @@
 
 <script setup lang="ts">
 import { MessageCircle, Plus, Search, Trash2, X } from '@lucide/vue'
+import { computed, ref } from 'vue'
 
 import { contactInitials } from '../contacts.store'
 import type { ContactGroup } from '../contacts.contracts'
 
-defineProps<{
+const props = defineProps<{
   contactGroups: ContactGroup[]
   error: string | null
   isEmpty: boolean
@@ -109,6 +115,25 @@ defineProps<{
   pendingConversationUserIds: Set<string>
   pendingRemovalIds: Set<string>
 }>()
+
+const searchQuery = ref('')
+const filteredContactGroups = computed(() => {
+  const query = searchQuery.value.trim().toLocaleLowerCase()
+
+  if (!query) {
+    return props.contactGroups
+  }
+
+  return props.contactGroups
+    .map((group) => ({
+      ...group,
+      contacts: group.contacts.filter((contact) => {
+        const searchable = `${contact.user.name} ${contact.user.username}`.toLocaleLowerCase()
+        return searchable.includes(query)
+      }),
+    }))
+    .filter((group) => group.contacts.length > 0)
+})
 
 defineEmits<{
   addContact: []
