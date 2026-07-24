@@ -91,8 +91,8 @@
 import { ArrowLeft, Plus, Trash2 } from '@lucide/vue'
 import { computed } from 'vue'
 
-import type { Contact } from '@/features/contacts/contacts.contracts'
 import { contactInitials } from '@/features/contacts/contacts.store'
+import type { Contact } from '@/types/contact'
 
 import type { GroupConversation } from '../conversations.contracts'
 

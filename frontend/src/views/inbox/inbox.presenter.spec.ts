@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InboxConversationSummary } from '@/features/conversations/conversations.contracts'
-import type { Conversation } from '@/features/conversations/conversations.mock'
-import type { PersistedMessage } from '@/features/messaging/messaging.contracts'
+import type { ChatConversation } from '@/types/chat'
+import type { PersistedMessage } from '@/types/message'
 
 import {
   inboxPreview,
@@ -63,7 +63,7 @@ describe('inbox presenter', () => {
   })
 
   it('appends an active search hit once', () => {
-    const conversation: Conversation = {
+    const conversation: ChatConversation = {
       id: 'conversation-ana',
       type: 'private',
       initials: 'AB',

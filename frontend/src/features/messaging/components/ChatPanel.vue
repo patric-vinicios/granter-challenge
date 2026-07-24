@@ -184,12 +184,11 @@ import { ArrowLeft, ChevronDown, ChevronUp, Navigation, Search, UsersRound, X } 
 import { computed, nextTick, useTemplateRef, watch } from 'vue'
 
 import MessageBubble from '@/components/MessageBubble.vue'
-import type { Conversation } from '@/features/conversations/conversations.mock'
-import type { SearchMatchOffset } from '@/features/search/search.contracts'
-import type { ConversationSearchStatus } from '@/features/search/useConversationSearch'
+import type { ChatConversation } from '@/types/chat'
+import type { ConversationSearchStatus, SearchMatchOffset } from '@/types/search'
 
 const props = defineProps<{
-  conversation: Conversation
+  conversation: ChatConversation
   canSendMessage: boolean
   isSearching: boolean
   isLoadingHistory: boolean
@@ -280,7 +279,7 @@ const searchStatusLabel = computed(() => {
   return '0 / 0'
 })
 
-function messageIdentity(message: Conversation['messages'][number]): string {
+function messageIdentity(message: ChatConversation['messages'][number]): string {
   return message.id ?? message.clientRef ?? `${message.side}:${message.time}:${message.author ?? ''}:${message.text}`
 }
 

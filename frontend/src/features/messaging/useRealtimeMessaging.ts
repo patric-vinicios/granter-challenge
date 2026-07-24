@@ -1,6 +1,7 @@
 import { computed, onUnmounted, ref, watch, type Ref } from 'vue'
 
 import { createRealtimeSocket, type RealtimeChannel, type RealtimeSocket, type RealtimeSocketFactory } from '@/shared/realtime/socket'
+import type { ConversationUpdated } from '@/types/realtime'
 
 import {
   decodeConversationUpdated,
@@ -8,7 +9,6 @@ import {
   decodeMessageAck,
   decodeMessageSendError,
   decodePersistedMessage,
-  type ConversationUpdated,
 } from './messaging.contracts'
 import { useMessagesStore, useMessagingStore } from './messaging.store'
 

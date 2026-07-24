@@ -1,9 +1,6 @@
-export interface AuthUser {
-  id: string
-  username: string
-  name: string
-  lastSeenAt: string | null
-}
+import type { UserIdentity } from '@/types/user'
+
+export type AuthUser = UserIdentity
 
 export interface AuthSession {
   user: AuthUser

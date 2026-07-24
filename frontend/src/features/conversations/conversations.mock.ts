@@ -1,25 +1,6 @@
-export type Message = {
-  id?: string
-  side: 'in' | 'out'
-  text: string
-  time: string
-  wide?: boolean
-  author?: string
-  clientRef?: string
-}
+import type { ChatConversation } from '@/types/chat'
 
-export type Conversation = {
-  id: string
-  type: 'private' | 'group'
-  initials: string
-  name: string
-  subtitle: string
-  preview: string
-  time: string
-  messages: Message[]
-}
-
-export const conversations: Conversation[] = [
+export const conversations: ChatConversation[] = [
   {
     id: 'ana',
     type: 'private',

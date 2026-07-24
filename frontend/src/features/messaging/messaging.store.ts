@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import type { Conversation, Message } from '@/features/conversations/conversations.mock'
 import { formatMessageTime } from '@/shared/date/formatMessageTime'
+import type { ChatConversation, ChatMessage } from '@/types/chat'
 
 import { listMessages } from './messaging.api'
 import type { ConversationUpdated, MessageSendError, PersistedMessage } from './messaging.contracts'
@@ -18,7 +18,7 @@ interface ConversationHistory {
 }
 
 interface RealtimeConversationState {
-  messages: Message[]
+  messages: ChatMessage[]
   preview: string
   time: string
   lastActivity: number
@@ -200,7 +200,7 @@ export const useMessagingStore = defineStore('messaging', () => {
       .map(([conversationId]) => conversationId),
   )
 
-  function decorate(conversation: Conversation): Conversation {
+  function decorate(conversation: ChatConversation): ChatConversation {
     const state = conversations.value[conversation.id]
 
     if (!state) {
@@ -215,7 +215,7 @@ export const useMessagingStore = defineStore('messaging', () => {
     }
   }
 
-  function sortByActivity(items: Conversation[]): Conversation[] {
+  function sortByActivity(items: ChatConversation[]): ChatConversation[] {
     return [...items].sort((a, b) => {
       const bActivity = conversations.value[b.id]?.lastActivity ?? 0
       const aActivity = conversations.value[a.id]?.lastActivity ?? 0
@@ -317,7 +317,7 @@ export const useMessagingStore = defineStore('messaging', () => {
     conversations.value = nextConversations
   }
 
-  function getMessages(conversationId: string): Message[] {
+  function getMessages(conversationId: string): ChatMessage[] {
     return conversations.value[conversationId]?.messages ?? []
   }
 
@@ -369,7 +369,7 @@ function dedupeMessages(messages: PersistedMessage[]): PersistedMessage[] {
   return deduped
 }
 
-function mergeConversationMessages(history: Message[], realtime: Message[]): Message[] {
+function mergeConversationMessages(history: ChatMessage[], realtime: ChatMessage[]): ChatMessage[] {
   const seenIds = new Set<string>()
 
   return [...history, ...realtime].filter((message) => {
@@ -390,7 +390,7 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-function toConversationMessage(message: PersistedMessage, currentUserId: string): Message {
+function toConversationMessage(message: PersistedMessage, currentUserId: string): ChatMessage {
   return {
     id: message.id,
     side: message.sender.id === currentUserId ? 'out' : 'in',

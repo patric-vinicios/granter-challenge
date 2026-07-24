@@ -2,11 +2,11 @@ import { render, screen } from '@testing-library/vue'
 import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
 
-import type { Conversation } from '@/features/conversations/conversations.mock'
+import type { ChatConversation } from '@/types/chat'
 
 import ChatPanel from './ChatPanel.vue'
 
-const conversation: Conversation = {
+const conversation: ChatConversation = {
   id: 'conversation-1',
   type: 'private',
   initials: 'AB',
