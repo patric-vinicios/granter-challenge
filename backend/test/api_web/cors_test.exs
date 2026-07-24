@@ -70,6 +70,22 @@ defmodule ApiWeb.CORSTest do
       rejected = preflight(conn, @vite_origin)
       refute header(rejected, "access-control-allow-origin") == @vite_origin
     end
+
+    test "the WebSocket origin callback uses the same allowlist" do
+      Application.put_env(:api, :cors_origins, ["https://app.example.com"])
+
+      assert ApiWeb.Endpoint.cors_origins(%URI{
+               scheme: "https",
+               host: "app.example.com",
+               port: 443
+             })
+
+      refute ApiWeb.Endpoint.cors_origins(%URI{
+               scheme: "http",
+               host: "localhost",
+               port: 5173
+             })
+    end
   end
 
   describe "actual requests" do
