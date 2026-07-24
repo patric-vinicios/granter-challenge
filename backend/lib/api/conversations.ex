@@ -403,7 +403,7 @@ defmodule Api.Conversations do
       :left_lateral,
       [conversation: c],
       lm in fragment(
-        "SELECT m.id AS id, m.body AS body, m.sender_id AS sender_id, m.inserted_at AS inserted_at FROM messages AS m WHERE m.conversation_id = ? ORDER BY m.inserted_at DESC, m.id DESC LIMIT 1",
+        "SELECT m.id AS id, m.body AS body, m.sender_id AS sender_id, m.inserted_at AS inserted_at FROM messages AS m WHERE m.conversation_id = ? ORDER BY m.inserted_at DESC, m.seq DESC LIMIT 1",
         c.id
       ),
       on: true,

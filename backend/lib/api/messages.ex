@@ -177,7 +177,7 @@ defmodule Api.Messages do
       [m],
       fragment("search_vector @@ websearch_to_tsquery('portuguese_unaccent', ?)", ^query)
     )
-    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> order_by([m], desc: m.inserted_at, desc: m.seq)
     |> limit(^(@search_cap + 1))
     |> join(:inner, [m], u in assoc(m, :sender))
     |> preload([m, u], sender: u)
@@ -230,7 +230,7 @@ defmodule Api.Messages do
     |> where([m], m.conversation_id == ^conversation_id)
     |> apply_bound(access)
     |> apply_cursor(cursor)
-    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> order_by([m], desc: m.inserted_at, desc: m.seq)
     |> limit(^(limit + 1))
     |> join(:inner, [m], u in assoc(m, :sender))
     |> preload([m, u], sender: u)
@@ -243,20 +243,18 @@ defmodule Api.Messages do
 
   defp apply_cursor(query, nil), do: query
 
-  # Written as a row constructor rather than the equivalent
-  # `inserted_at < ? OR (inserted_at = ? AND id < ?)`: the row form is what the
-  # planner recognises as a single range bound over the composite index, while
-  # the expanded form frequently plans as two scans and a merge.
-  defp apply_cursor(query, {inserted_at, id}) do
+  # A row constructor, so the planner reads it as a single range bound over the
+  # (inserted_at, seq) index rather than an OR that plans as two scans.
+  defp apply_cursor(query, {inserted_at, seq}) do
     where(
       query,
       [m],
       fragment(
         "(?, ?) < (?, ?)",
         m.inserted_at,
-        m.id,
+        m.seq,
         type(^inserted_at, :utc_datetime_usec),
-        type(^id, Ecto.UUID)
+        ^seq
       )
     )
   end

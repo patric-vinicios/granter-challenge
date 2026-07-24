@@ -163,6 +163,22 @@ defmodule Api.MessagesTest do
                Messages.list_messages(ana, thread.id)
     end
 
+    test "orders messages sharing a timestamp by insertion sequence, not by id", %{
+      ana: ana,
+      conversation: thread
+    } do
+      at = ~U[2026-07-22 12:00:00.000000Z]
+
+      for body <- ~w(primeiro segundo terceiro) do
+        {:ok, _} = Messages.create_message(ana, thread.id, %{body: body, inserted_at: at})
+      end
+
+      assert {:ok, page} = Messages.list_messages(ana, thread.id)
+      assert Enum.map(page.messages, & &1.body) == ~w(primeiro segundo terceiro)
+      seqs = Enum.map(page.messages, & &1.seq)
+      assert seqs == Enum.sort(seqs)
+    end
+
     test "paginates a 250-message conversation exactly once", %{ana: ana, conversation: thread} do
       seeded = seed(thread, ana, 250)
       expected = Enum.map(seeded, & &1.id)

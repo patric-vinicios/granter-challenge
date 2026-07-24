@@ -31,10 +31,10 @@ defmodule Api.Cursor do
   """
 
   @typedoc "What one cursor component holds."
-  @type component_type :: :datetime | :uuid | :string | {:nullable, component_type()}
+  @type component_type :: :datetime | :uuid | :string | :integer | {:nullable, component_type()}
 
   @typedoc "A decoded component."
-  @type component :: DateTime.t() | Ecto.UUID.t() | String.t() | nil
+  @type component :: DateTime.t() | Ecto.UUID.t() | String.t() | integer() | nil
 
   @separator "|"
   @absent "-"
@@ -51,6 +51,7 @@ defmodule Api.Cursor do
 
   defp encode_component(nil), do: @absent
   defp encode_component(%DateTime{} = at), do: DateTime.to_iso8601(at)
+  defp encode_component(value) when is_integer(value), do: Integer.to_string(value)
   defp encode_component(value) when is_binary(value), do: value
 
   @doc """
@@ -129,6 +130,13 @@ defmodule Api.Cursor do
   # `Ecto.UUID.cast/1` already answers in exactly the shape a component decoder
   # owes: `{:ok, uuid}` or `:error`.
   defp decode_component(part, :uuid), do: Ecto.UUID.cast(part)
+
+  defp decode_component(part, :integer) do
+    case Integer.parse(part) do
+      {n, ""} -> {:ok, n}
+      _ -> :error
+    end
+  end
 
   # A string component orders rows but names nothing, so the only thing that can
   # be wrong with it is being empty — an empty ordering key would compare before
