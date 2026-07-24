@@ -655,7 +655,8 @@ describe('InboxView', () => {
           searchHitResponse('message-2', 'Familia alinhou o cronograma', 2, [{ start: 0, length: 7 }]),
         ],
         total_matches: 2,
-        truncated: false,
+        next_cursor: null,
+        has_more: false,
       },
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -666,7 +667,7 @@ describe('InboxView', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://localhost:4000/api/conversations/ana/messages/search?q=cronograma',
+        'http://localhost:4000/api/conversations/ana/messages/search?q=cronograma&limit=100',
         expect.objectContaining({ method: 'GET' }),
       ),
     )
@@ -1249,7 +1250,8 @@ function mockAuthenticatedFetch(options: {
           options.searchResult ?? {
             messages: [],
             total_matches: 0,
-            truncated: false,
+            next_cursor: null,
+            has_more: false,
           },
         ),
       )

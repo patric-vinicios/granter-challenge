@@ -8,7 +8,7 @@ export function searchConversationMessages(
   token: string,
   signal?: AbortSignal,
 ): Promise<ConversationSearchResult> {
-  const params = new URLSearchParams({ q: query })
+  const params = new URLSearchParams({ q: query, limit: '100' })
 
   return requestJson(
     '/conversations/' + encodeURIComponent(conversationId) + '/messages/search?' + params.toString(),
