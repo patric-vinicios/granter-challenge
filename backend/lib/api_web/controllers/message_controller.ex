@@ -17,6 +17,7 @@ defmodule ApiWeb.MessageController do
   use ApiWeb, :controller
 
   alias Api.Messages
+  alias Ecto.Changeset
 
   action_fallback ApiWeb.FallbackController
 
@@ -50,41 +51,29 @@ defmodule ApiWeb.MessageController do
     end
   end
 
-  @limit_message "must be between 1 and #{@max_limit}"
-
-  # A non-numeric `limit` fails the cast and an out-of-range one the numeric
-  # bound. Both answer with the same sentence under `fields.limit`, so a client
-  # reads the accepted range off either failure rather than guessing the cap.
-  defp validate_page(params) do
-    {%{limit: @default_limit}, @page_types}
-    |> Ecto.Changeset.cast(params, Map.keys(@page_types), message: &cast_message/2)
-    |> Ecto.Changeset.validate_number(:limit,
-      greater_than_or_equal_to: 1,
-      less_than_or_equal_to: @max_limit,
-      message: @limit_message
-    )
-    |> Ecto.Changeset.apply_action(:insert)
-  end
-
-  defp cast_message(:limit, _meta), do: @limit_message
-  defp cast_message(_field, _meta), do: nil
+  defp validate_page(params),
+    do:
+      ApiWeb.Pagination.validate(params, @page_types,
+        default_limit: @default_limit,
+        max_limit: @max_limit
+      )
 
   @query_message "must be between #{@query_min} and #{@query_max} characters"
 
   # `q` is trimmed before it is measured, so trailing spaces neither pad a short
   # term to length nor overflow a full one. A blank or absent `q` fails the
   # required check; both failures render under `fields.q`.
-  @spec validate_query(map()) :: {:ok, %{q: String.t()}} | {:error, Ecto.Changeset.t()}
+  @spec validate_query(map()) :: {:ok, %{q: String.t()}} | {:error, Changeset.t()}
   defp validate_query(params) do
     {%{}, @search_types}
-    |> Ecto.Changeset.cast(params, [:q])
-    |> Ecto.Changeset.update_change(:q, &String.trim/1)
-    |> Ecto.Changeset.validate_required([:q], message: @query_message)
-    |> Ecto.Changeset.validate_length(:q,
+    |> Changeset.cast(params, [:q])
+    |> Changeset.update_change(:q, &String.trim/1)
+    |> Changeset.validate_required([:q], message: @query_message)
+    |> Changeset.validate_length(:q,
       min: @query_min,
       max: @query_max,
       message: @query_message
     )
-    |> Ecto.Changeset.apply_action(:insert)
+    |> Changeset.apply_action(:insert)
   end
 end
