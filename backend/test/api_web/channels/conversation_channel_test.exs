@@ -294,24 +294,21 @@ defmodule ApiWeb.ConversationChannelTest do
     socket = joined(creator, group)
     push(socket, "new_message", %{"body" => "novidades"})
 
-    assert_receive %Broadcast{
-      topic: "user:" <> _,
-      event: "conversation:updated",
-      payload: creator_payload
-    }
+    payloads =
+      for _ <- 1..3 do
+        assert_receive %Broadcast{topic: topic, event: "conversation:updated", payload: p}
+        {topic, p}
+      end
+
+    creator_topic = "user:#{creator.id}"
+    {^creator_topic, creator_payload} = Enum.find(payloads, fn {t, _} -> t == creator_topic end)
 
     assert creator_payload.conversation_id == group.id
     assert creator_payload.last_message.sender_id == creator.id
-
-    # Each of the three personal topics receives it; the sender's is read.
-    unreads =
-      for _ <- 1..2 do
-        assert_receive %Broadcast{event: "conversation:updated", payload: p}
-        p.unread
-      end
-
     assert creator_payload.unread == false
-    assert Enum.sort([creator_payload.unread | unreads]) == [false, true, true]
+
+    unreads = Enum.map(payloads, fn {_t, p} -> p.unread end)
+    assert Enum.sort(unreads) == [false, true, true]
   end
 
   test "truncates the preview at 120 characters, leaving the message body whole" do
@@ -332,7 +329,7 @@ defmodule ApiWeb.ConversationChannelTest do
 
   test "handles 5 concurrent senders of 20 messages each" do
     creator = insert(:user)
-    senders_users = for i <- 1..5, do: insert(:user)
+    senders_users = for _ <- 1..5, do: insert(:user)
     group = group_with(creator, senders_users)
 
     # The sockets must connect from the test process, so they are joined with
