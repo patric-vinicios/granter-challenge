@@ -31,3 +31,6 @@ api-*.tar
 # Data directory bind-mounted by the postgres-dev Compose service.
 /postgres_data/
 
+
+# Dialyzer PLTs
+/priv/plts/
