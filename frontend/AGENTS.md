@@ -1,74 +1,91 @@
-# Protocolo para agentes
+# AGENTS.md - Frontend (Vue.js)
 
-## Escopo e fontes
+**Project:** Granter Chat — Real-time messaging SPA.
 
-Preserve o trabalho existente. Antes de alterar uma fronteira, leia o código, este README, o PRD disponível e os contratos do backend. O código executável prevalece quando o README estiver desatualizado. Não altere o backend a partir deste diretório.
+## Project Overview
 
-O harness não autoriza mudanças no produto. Não altere arquivos existentes em `src/` sem um pedido explícito do usuário; arquivos `*.spec.ts` e helpers em `src/test/` são infraestrutura de teste, não implementação de feature.
+- **Main Stack**: Vue 3 (Composition API + `<script setup lang="ts">`), Vite, TypeScript 6.x, Pinia, Vue Router 4, Tailwind CSS 4, Phoenix WebSocket client.
+- **Architecture**: Vertical feature slices in `src/features/`, shared utilities in `src/shared/`. Views orchestrate, components focus on presentation.
+- **Goal**: Implement chat features (auth, contacts, conversations, realtime messages) while respecting the Elixir backend contracts.
+- **Key Rules**:
+  - Never change backend code from the frontend directory.
+  - Preserve existing code. Always read README, docs/, backend contracts and current implementation first.
+  - Only create new abstractions/stores/features when there is a real consumer.
+  - Always run `npm run verify` before finishing any task.
 
-## Fluxo obrigatório
+## Essential Commands
 
-Antes:
+| Purpose                   | Command                                          |
+|---------------------------|--------------------------------------------------|
+| Dev server + HMR          | `npm run dev`                                    |
+| Architecture gate         | `./scripts/architecture`                         |
+| Dependency graph gate     | `./scripts/dep-cruiser`                          |
+| Lint                      | `./scripts/eslint`                               |
+| Unused code/deps gate     | `./scripts/nip`                                  |
+| Type check                | `./scripts/tsc`                                  |
+| Tests (watch)             | `npm run test`                                   |
+| Automated tests           | `./scripts/tests`                                |
+| Affected tests            | `npm run test:changed -- <files>`                |
+| Full verification         | `./scripts/run-gate`                             |
+| Preview build             | `npm run preview`                                |
 
-- Execute `git status --short`, identifique arquivos do usuário e declare os arquivos que pretende alterar.
-- Rode o menor baseline relevante antes de editar.
+Always run `./scripts/run-gate && git diff --check` at the end. `npm run verify` remains a
+compatibility wrapper for the same full gate.
 
-Durante:
+## Vue Guidelines (Best Practices)
 
-- Faça mudanças pequenas e rode um teste direcionado após cada comportamento.
-- Não acesse backend ou rede real em testes unitários.
-- Não corrija nem reformate arquivo alheio ao escopo.
+- Use Composition API with `<script setup lang="ts">`.
+- **Reactivity**:
+  - `ref()` for primitives or full replacement.
+  - `reactive()` for cohesive objects.
+  - `computed()` for derived state (never duplicate state).
+- **Components**: `defineProps<T>()` (readonly), `defineEmits<T>()`, stable `:key` with IDs.
+- **Global State**: Pinia only for shared state. Use `storeToRefs()` when destructuring.
+- **Router**: `useRoute()`, `useRouter()`, navigation guards. Tests must use `createMemoryHistory`.
+- **Side Effects**: `watch` and lifecycle hooks only for external effects with proper cleanup.
+- **Composables**: Extract reusable logic with `use*` prefix.
+- **Testing**: Assert by `role`, `label`, or text. Stub `fetch`/WebSocket. Each test gets fresh Pinia + Router.
 
-Depois:
+See also: `docs/ai-harness/vue-guidelines.md`, `docs/architecture/frontend.md`, and the UI
+direction references in `docs/design-system/directions/`.
 
-- Execute `npm run verify` e `git diff --check`.
-- Revise o diff e registre falhas preexistentes separadamente.
+## Recommended Libraries for AI Agents in Vue.js
 
-## Arquitetura
+Current 2026 recommendations:
 
-Leia `docs/architecture/frontend.md` antes de implementar uma feature.
+1. **@ai-sdk/vue** (Vercel AI SDK) — Best for chat UI and streaming.
+   - `useChat`, `useCompletion`, `useObject` composables.
 
-- Organize novas implementações como vertical slices em `src/features/`.
-- Views orquestram features; não acessam HTTP ou WebSocket diretamente.
-- Transporte compartilhado fica em `src/shared/api/` e `src/shared/realtime/`.
-- Pinia guarda apenas estado compartilhado; estado de formulário permanece local.
-- REST faz bootstrap, histórico e recuperação; WebSocket aplica eventos incrementais.
-- O contrato executável do backend prevalece sobre documentação divergente.
-- Não crie uma camada, store ou abstração sem um consumidor real.
+2. **Eve by Vercel** — Full agent framework with excellent Vue support (`useEveAgent` composable).
 
-## Diretrizes Vue
+3. **vuejs-ai/skills** — Specialized skills for Vue 3 agents (highly recommended).
+   - Install: `npx skills add vuejs-ai/skills`
 
-- Use `ref` para valores primitivos ou substituíveis e `reactive` para objetos coesos; acesse `.value` no script, nunca no template.
-- Modele estado derivado com `computed`; não copie valores deriváveis para outro `ref`.
-- Use lifecycle e `watch` somente para efeitos externos, com cleanup explícito; não sincronize duas fontes de verdade com watchers.
-- Props são readonly via `defineProps<T>()`; componentes comunicam por `defineEmits<T>()` ou `v-model` tipado e nunca mutam props.
-- Use Pinia apenas para estado compartilhado; preserve reatividade com `storeToRefs` ao desestruturar estado ou getters e concentre mutações em actions.
-- Acesse navegação com `useRoute`/`useRouter`, guards e route params; testes sempre usam `createMemoryHistory`.
-- Extraia lógica reutilizável para composables `useX`; transporte fica em `src/api` e DTO/schema na fronteira, não em views ou stores.
+4. **Others**:
+   - **a2ui-vue**: For agents to render dynamic UIs via structured JSON.
+   - Official: Pinia + Vue Router (already in use).
 
-## Convenções Vue e fronteiras
+**Tip**: Prefix prompts with "use vue skill" or load skills via `.agents/skills/`.
 
-Use Composition API e `<script setup lang="ts">`. Mantenha estado local na view/componente, derivação em `computed` e efeitos em composables. Stores não acessam DOM/router implicitamente. A camada API não importa componente/store. Views orquestram; componentes apresentam.
+## Agent Workflow
 
-Toda entrada externa deve começar como `unknown` e ser validada na fronteira quando a integração for implementada; nunca use `as Type` para confiar nela. Não crie clientes ou schemas antes de existir um consumidor real.
+**Before editing**:
+- Run `git status --short`
+- Execute relevant baseline tests.
 
-Teste comportamento e acessibilidade por role, label e texto. Não selecione classes Tailwind, use snapshots grandes, rede/timer real ou singleton global. Cada teste de app cria Pinia e router próprios.
+**During**:
+- Make small changes + run targeted test after each behavior.
+- Never use real network in unit tests.
 
-## Comandos
+**After**:
+- Run `npm run verify`
+- Review diff and note any pre-existing failures separately.
 
-| Intenção          | Comando                                           |
-| ----------------- | ------------------------------------------------- |
-| Lint direcionado  | `npm run lint -- src/views/LoginView.vue`         |
-| Tipos             | `npm run typecheck`                               |
-| Testes em watch   | `npm run test`                                    |
-| Teste direcionado | `npm run test:run -- src/views/LoginView.spec.ts` |
-| Testes afetados   | `npm run test:changed -- <arquivos>`              |
-| Suíte rápida      | `npm run test:run`                                |
-| Build             | `npm run build`                                   |
-| Porta completa    | `npm run verify`                                  |
+## Boundaries & Safety
 
-`npm run verify` é obrigatório antes de concluir.
+- Do not implement adjacent features without explicit request.
+- Never silence lint, type, or test errors.
+- Treat all external input as `unknown` and validate at boundaries.
+- Keep clear separation: UI → Feature → Shared (API/Realtime).
 
-## Limites
-
-Não implemente feature adjacente nem adicione abstração sem consumidor. Não silencie lint, tipos ou testes. Não reformate arquivos fora do escopo.
+Follow Vue guidelines and project architecture strictly. Executable code + tests take precedence.

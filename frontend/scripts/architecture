@@ -1,0 +1,46 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT_DIR"
+
+violations=0
+
+if ./node_modules/.bin/depcruise --config dependency-cruiser.config.cjs --output-type err src; then
+  :
+else
+  violations=1
+fi
+
+check_no_import_matches() {
+  label=$1
+  paths=$2
+  pattern=$3
+
+  if rg -n "$pattern" $paths; then
+    printf '\nArchitecture violation: %s\n' "$label"
+    violations=1
+  fi
+}
+
+check_no_import_matches \
+  "src/shared must not import app, features, router, stores or views" \
+  "src/shared" \
+  "from ['\"]@/(app|features|router|stores|views)(/|['\"])|from ['\"]\\.\\.?/.*/(app|features|router|stores|views)(/|['\"])"
+
+if find src -name .gitkeep -print | grep -q .; then
+  printf '\nArchitecture violation: remove placeholder .gitkeep files from src\n'
+  find src -name .gitkeep -print
+  violations=1
+fi
+
+if rg -n --glob '*.api.ts' "from ['\"](@/(components|layouts|router|stores|views)|\\.\\.?/.*/(components|layouts|router|stores|views))(/|['\"])" src; then
+  printf '\nArchitecture violation: API modules must not import UI, router, stores or views\n'
+  violations=1
+fi
+
+if [ "$violations" -ne 0 ]; then
+  exit 1
+fi
+
+printf 'Architecture gate passed.\n'
