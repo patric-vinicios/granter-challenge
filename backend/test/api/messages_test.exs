@@ -148,7 +148,11 @@ defmodule Api.MessagesTest do
 
       bodies = Enum.map(page.messages, & &1.body)
       assert bodies == Enum.map(21..50, &"message #{&1}")
-      assert List.last(page.messages).id == List.last(seeded).id
+
+      # The page ends on the newest message, which is the last one seeded.
+      assert [newest_returned] = Enum.take(page.messages, -1)
+      assert [newest_seeded] = Enum.take(seeded, -1)
+      assert newest_returned.id == newest_seeded.id
     end
 
     test "returns an empty page for a conversation with no messages", %{

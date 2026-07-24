@@ -605,7 +605,7 @@ defmodule Api.ConversationsTest do
       group_with(caller)
       group_with(caller)
 
-      entries = Conversations.list_conversations(caller)
+      entries = inbox(caller)
 
       assert Enum.count(entries) == 4
       assert Enum.count(entries, &(&1.type == :private)) == 2
@@ -617,7 +617,7 @@ defmodule Api.ConversationsTest do
       other = insert(:user, name: "Carlos Eduardo")
       private_pair(caller, other)
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.title == "Carlos Eduardo"
       assert entry.counterpart.id == other.id
@@ -631,7 +631,7 @@ defmodule Api.ConversationsTest do
       seat(group, insert(:user))
       seat(group, insert(:user))
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.title == "Time de Produto"
       assert entry.member_count == 3
@@ -644,7 +644,7 @@ defmodule Api.ConversationsTest do
       b = messaged_pair(caller, ago(100))
       c = messaged_pair(caller, ago(200))
 
-      ids = caller |> Conversations.list_conversations() |> Enum.map(& &1.id)
+      ids = caller |> inbox() |> Enum.map(& &1.id)
 
       assert ids == [b.id, c.id, a.id]
     end
@@ -654,7 +654,7 @@ defmodule Api.ConversationsTest do
       messaged = messaged_pair(caller, ago(3600))
       empty = private_pair(caller, insert(:user), joined_at: ago(60))
 
-      ids = caller |> Conversations.list_conversations() |> Enum.map(& &1.id)
+      ids = caller |> inbox() |> Enum.map(& &1.id)
 
       assert ids == [messaged.id, empty.id]
     end
@@ -666,7 +666,7 @@ defmodule Api.ConversationsTest do
       newer = insert(:conversation, participant_key: pair_key(caller, insert(:user)))
       seat(newer, caller)
 
-      ids = caller |> Conversations.list_conversations() |> Enum.map(& &1.id)
+      ids = caller |> inbox() |> Enum.map(& &1.id)
 
       assert ids == [newer.id, older.id]
     end
@@ -687,7 +687,7 @@ defmodule Api.ConversationsTest do
           inserted_at: ago(10)
         )
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.last_message.id == newest.id
       assert entry.last_message.body == "the newest one"
@@ -709,7 +709,7 @@ defmodule Api.ConversationsTest do
       expected = Enum.max(ids)
 
       for _ <- 1..3 do
-        [entry] = Conversations.list_conversations(caller)
+        [entry] = inbox(caller)
         assert entry.last_message.id == expected
       end
     end
@@ -718,7 +718,7 @@ defmodule Api.ConversationsTest do
       caller = insert(:user)
       group_with(caller)
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.last_message == nil
       assert entry.unread_count == 0
@@ -734,7 +734,7 @@ defmodule Api.ConversationsTest do
 
       for _ <- 1..3, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 3
     end
@@ -746,7 +746,7 @@ defmodule Api.ConversationsTest do
 
       for _ <- 1..4, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(10))
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 4
     end
@@ -762,7 +762,7 @@ defmodule Api.ConversationsTest do
 
       for _ <- 1..2, do: insert(:message, conversation: conv, sender: other, inserted_at: ago(50))
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 2
     end
@@ -773,7 +773,7 @@ defmodule Api.ConversationsTest do
       conv = private_pair(caller, other)
       seed_unread(conv, other, 150)
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 99
       assert entry.unread_overflow == true
@@ -785,7 +785,7 @@ defmodule Api.ConversationsTest do
       conv = private_pair(caller, other)
       seed_unread(conv, other, 99)
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 99
       assert entry.unread_overflow == false
@@ -797,7 +797,7 @@ defmodule Api.ConversationsTest do
       conv = private_pair(caller, other)
       seed_unread(conv, other, 100)
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 99
       assert entry.unread_overflow == true
@@ -815,7 +815,7 @@ defmodule Api.ConversationsTest do
       for _ <- 1..3,
           do: insert(:message, conversation: group, sender: other, inserted_at: ago(50))
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 3
     end
@@ -832,7 +832,7 @@ defmodule Api.ConversationsTest do
       for _ <- 1..2,
           do: insert(:message, conversation: group, sender: other, inserted_at: ago(10))
 
-      [entry] = Conversations.list_conversations(caller)
+      [entry] = inbox(caller)
 
       assert entry.unread_count == 2
     end
@@ -849,7 +849,7 @@ defmodule Api.ConversationsTest do
         set: [left_at: ago(5)]
       )
 
-      assert Conversations.list_conversations(caller) == []
+      assert inbox(caller) == []
     end
 
     test "omits a conversation the caller was never in" do
@@ -857,7 +857,7 @@ defmodule Api.ConversationsTest do
       strangers = private_pair(insert(:user), insert(:user))
       insert(:message, conversation: strangers, sender: insert(:user), inserted_at: ago(10))
 
-      assert Conversations.list_conversations(caller) == []
+      assert inbox(caller) == []
     end
 
     test "caps the response at 200 conversations" do
@@ -868,7 +868,7 @@ defmodule Api.ConversationsTest do
         insert(:message, conversation: conv, sender: insert(:user), inserted_at: ago(1000 - n))
       end
 
-      assert Enum.count(Conversations.list_conversations(caller)) == 200
+      assert Enum.count(inbox(caller)) == 200
     end
 
     test "issues exactly one query regardless of conversation count" do
@@ -903,8 +903,8 @@ defmodule Api.ConversationsTest do
 
       {:ok, _} = Conversations.mark_read(caller, conv.id)
 
-      assert [%{unread_count: 0}] = Conversations.list_conversations(caller)
-      assert [%{unread_count: 0}] = Conversations.list_conversations(caller)
+      assert [%{unread_count: 0}] = inbox(caller)
+      assert [%{unread_count: 0}] = inbox(caller)
     end
 
     test "is idempotent" do
@@ -961,6 +961,13 @@ defmodule Api.ConversationsTest do
   end
 
   defp ago(seconds), do: DateTime.add(DateTime.utc_now(), -seconds, :second)
+
+  # The entries of one page, for the assertions that are about the entries and
+  # not about the paging around them.
+  defp inbox(caller, opts \\ %{}) do
+    %{conversations: conversations} = Conversations.list_conversations(caller, opts)
+    conversations
+  end
 
   defp pair_key(a, b), do: Enum.join(Enum.sort([a.id, b.id]), ":")
 

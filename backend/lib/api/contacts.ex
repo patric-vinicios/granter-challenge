@@ -19,12 +19,17 @@ defmodule Api.Contacts do
   alias Api.Accounts
   alias Api.Accounts.User
   alias Api.Contacts.Contact
+  alias Api.Contacts.Cursor
   alias Api.Repo
 
   # Bounds the response size and the unindexed sort behind `list_contacts/1`.
   # A soft guardrail: two adds racing at exactly 499 may both pass, and 501
   # rows harm neither, which is why no trigger defends the number.
   @contact_limit 500
+
+  # The page cap, matching the conversation inbox's so a client that paginates
+  # one list paginates the other with the same numbers.
+  @list_limit 200
 
   # The maximum username length, so an echoed name in an error detail can never
   # reflect an unbounded slice of the request body.
@@ -52,21 +57,97 @@ defmodule Api.Contacts do
   end
 
   @doc """
-  Every contact of `owner`, ascending by display name.
+  One page of `owner`'s contacts, ascending by display name, optionally narrowed
+  by a search term in `opts[:q]`.
 
   The ordering is a server obligation rather than a client one: sorting a
   JavaScript array with the default comparator places `Álvaro` after `Zoe`,
   so the fold happens here and every client renders the same order. `id` is the
-  tie-break, so two contacts sharing a display name still have a total order.
+  tie-break, so two contacts sharing a display name still have a total order,
+  and the pair is what the cursor bounds on.
+
+  The search is a server obligation for the same kind of reason. A list this
+  size is small enough to send whole, but "small enough to send" is not "small
+  enough to send on every keystroke", and a client that filters locally has to
+  hold every contact in memory to do it. Matching is `Api.Accounts.matching_user/1`,
+  the same condition the conversation inbox searches by, so a person found in
+  one list is never missed in the other.
+
+  Paging works exactly as the inbox's does — `:limit`, `:cursor`, and one row
+  read beyond the page so `has_more` is exact rather than inferred from a count
+  the client did not choose.
   """
-  @spec list_contacts(User.t()) :: [Contact.t()]
-  def list_contacts(%User{} = owner) do
-    Contact
-    |> where([c], c.owner_id == ^owner.id)
-    |> join(:inner, [c], u in assoc(c, :user))
-    |> order_by([c, u], asc: fragment("lower(unaccent(?))", u.name), asc: u.id)
-    |> preload([c, u], user: u)
-    |> Repo.all()
+  @spec list_contacts(User.t(), map()) ::
+          %{contacts: [Contact.t()], next_cursor: String.t() | nil, has_more: boolean()}
+          | {:error, :invalid_cursor}
+  def list_contacts(%User{} = owner, opts \\ %{}) do
+    limit = normalize_limit(get_opt(opts, :limit))
+
+    with {:ok, cursor} <- decode_cursor(get_opt(opts, :cursor)) do
+      Contact
+      |> where([c], c.owner_id == ^owner.id)
+      |> join(:inner, [c], u in assoc(c, :user), as: :user)
+      |> apply_name_filter(get_opt(opts, :q))
+      |> apply_cursor(cursor)
+      |> order_by([c, user: u], asc: fragment("lower(immutable_unaccent(?))", u.name), asc: u.id)
+      |> limit(^(limit + 1))
+      |> preload([c, user: u], user: u)
+      |> Repo.all()
+      |> assemble_page(limit)
+    end
+  end
+
+  # The controller hands over string keys and a direct caller atom ones.
+  defp get_opt(opts, key) when is_atom(key),
+    do: Map.get(opts, key) || Map.get(opts, Atom.to_string(key))
+
+  defp normalize_limit(nil), do: @list_limit
+  defp normalize_limit(limit) when is_integer(limit) and limit < 1, do: 1
+  defp normalize_limit(limit) when is_integer(limit) and limit > @list_limit, do: @list_limit
+  defp normalize_limit(limit) when is_integer(limit), do: limit
+  defp normalize_limit(_limit), do: @list_limit
+
+  defp decode_cursor(nil), do: {:ok, nil}
+  defp decode_cursor(""), do: {:ok, nil}
+  defp decode_cursor(cursor), do: Cursor.decode(cursor)
+
+  defp apply_name_filter(query, term) do
+    case Accounts.search_term(term) do
+      {:ok, trimmed} -> where(query, ^Accounts.matching_user(trimmed))
+      :none -> query
+    end
+  end
+
+  defp apply_cursor(query, nil), do: query
+
+  # A row constructor rather than the equivalent chain of ORs, for the reason
+  # `Api.Messages` gives: the row form is what the planner reads as a single
+  # range bound. The sort key is the folded name, so the cursor carries the
+  # folded name — comparing against the raw one would order by a different
+  # expression than the query sorts by and skip rows at every page boundary.
+  defp apply_cursor(query, {sort_name, id}) do
+    where(
+      query,
+      [c, user: u],
+      fragment(
+        "(lower(immutable_unaccent(?)), ?) > (?, ?)",
+        u.name,
+        u.id,
+        ^sort_name,
+        type(^id, Ecto.UUID)
+      )
+    )
+  end
+
+  defp assemble_page(rows, limit) do
+    has_more = Enum.count(rows) > limit
+    page = Enum.take(rows, limit)
+
+    %{
+      contacts: page,
+      next_cursor: if(has_more, do: page |> List.last() |> Cursor.encode()),
+      has_more: has_more
+    }
   end
 
   @doc """

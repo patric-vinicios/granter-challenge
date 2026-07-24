@@ -11,6 +11,7 @@ defmodule ApiWeb.AuthController do
 
   alias Api.Accounts
   alias Api.Accounts.Guardian
+  alias Ecto.Changeset
 
   action_fallback ApiWeb.FallbackController
 
@@ -45,11 +46,11 @@ defmodule ApiWeb.AuthController do
   # invalid_credentials there would tell a client its own bug looks like a
   # wrong password.
   @spec validate_login(map()) ::
-          {:ok, %{username: String.t(), password: String.t()}} | {:error, Ecto.Changeset.t()}
+          {:ok, %{username: String.t(), password: String.t()}} | {:error, Changeset.t()}
   defp validate_login(params) do
     {%{}, @login_types}
-    |> Ecto.Changeset.cast(params, Map.keys(@login_types))
-    |> Ecto.Changeset.validate_required([:username, :password])
-    |> Ecto.Changeset.apply_action(:insert)
+    |> Changeset.cast(params, Map.keys(@login_types))
+    |> Changeset.validate_required([:username, :password])
+    |> Changeset.apply_action(:insert)
   end
 end

@@ -87,7 +87,7 @@ defmodule ApiWeb.ContactControllerTest do
 
       carlos_conn = get(authenticate(json_conn(), carlos), ~p"/api/contacts")
 
-      assert json_response(carlos_conn, 200) == %{"contacts" => []}
+      assert json_response(carlos_conn, 200)["contacts"] == []
     end
   end
 
@@ -111,7 +111,82 @@ defmodule ApiWeb.ContactControllerTest do
     end
 
     test "returns an empty array for a new user", %{conn: conn} do
-      assert json_response(get(conn, ~p"/api/contacts"), 200) == %{"contacts" => []}
+      assert json_response(get(conn, ~p"/api/contacts"), 200)["contacts"] == []
+    end
+  end
+
+  describe "GET /api/contacts?q=" do
+    setup %{user: ana} do
+      for {name, username} <- [
+            {"Ana Paula", "anapaula"},
+            {"Bruno Álvares", "brunoalvares"},
+            {"Mariana Alves", "mariana_alves"}
+          ] do
+        insert(:contact, owner: ana, user: build(:user, name: name, username: username))
+      end
+
+      :ok
+    end
+
+    test "narrows the list to the matching contacts", %{conn: conn} do
+      assert %{"contacts" => contacts} = json_response(get(conn, ~p"/api/contacts?q=ana"), 200)
+
+      assert Enum.map(contacts, & &1["user"]["name"]) == ["Ana Paula", "Mariana Alves"]
+    end
+
+    test "matches a username accent- and case-insensitively", %{conn: conn} do
+      assert %{"contacts" => [contact]} =
+               json_response(get(conn, ~p"/api/contacts?q=ALVARES"), 200)
+
+      assert contact["user"]["name"] == "Bruno Álvares"
+    end
+
+    test "returns an empty array when nothing matches", %{conn: conn} do
+      assert json_response(get(conn, ~p"/api/contacts?q=zzzznada"), 200)["contacts"] == []
+    end
+
+    test "treats a blank term as no filter", %{conn: conn} do
+      assert %{"contacts" => contacts} = json_response(get(conn, ~p"/api/contacts?q=  "), 200)
+      assert Enum.count(contacts) == 3
+    end
+
+    test "pages through a filtered list with the cursor it was handed", %{conn: conn} do
+      assert %{"contacts" => first, "next_cursor" => cursor, "has_more" => true} =
+               json_response(get(conn, ~p"/api/contacts?q=a&limit=2"), 200)
+
+      assert Enum.map(first, & &1["user"]["name"]) == ["Ana Paula", "Bruno Álvares"]
+      assert is_binary(cursor)
+
+      assert %{"contacts" => second, "next_cursor" => nil, "has_more" => false} =
+               json_response(get(conn, ~p"/api/contacts?q=a&limit=2&cursor=#{cursor}"), 200)
+
+      assert Enum.map(second, & &1["user"]["name"]) == ["Mariana Alves"]
+    end
+  end
+
+  describe "GET /api/contacts pagination" do
+    test "reports no next page when the last one is exactly full", %{conn: conn, user: ana} do
+      for name <- ["Ana Paula", "Bruno Alves"] do
+        insert(:contact, owner: ana, user: build(:user, name: name))
+      end
+
+      assert %{"has_more" => false, "next_cursor" => nil} =
+               json_response(get(conn, ~p"/api/contacts?limit=2"), 200)
+    end
+
+    test "rejects a limit outside the accepted range", %{conn: conn} do
+      assert %{"errors" => %{"fields" => %{"limit" => [message]}}} =
+               json_response(get(conn, ~p"/api/contacts?limit=0"), 422)
+
+      assert message =~ "between 1 and 200"
+
+      assert %{"errors" => %{"fields" => %{"limit" => _}}} =
+               json_response(get(conn, ~p"/api/contacts?limit=abc"), 422)
+    end
+
+    test "rejects a malformed cursor", %{conn: conn} do
+      assert json_response(get(conn, ~p"/api/contacts?cursor=nope"), 400)["errors"]["code"] ==
+               "invalid_cursor"
     end
   end
 
@@ -122,7 +197,7 @@ defmodule ApiWeb.ContactControllerTest do
       deleted = delete(conn, ~p"/api/contacts/#{contact.id}")
 
       assert response(deleted, 204) == ""
-      assert json_response(get(conn, ~p"/api/contacts"), 200) == %{"contacts" => []}
+      assert json_response(get(conn, ~p"/api/contacts"), 200)["contacts"] == []
     end
 
     test "returns 404 for another user's contact", %{conn: conn, user: ana} do
