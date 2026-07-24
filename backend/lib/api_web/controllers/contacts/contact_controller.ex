@@ -1,4 +1,4 @@
-defmodule ApiWeb.ContactController do
+defmodule ApiWeb.Contacts.ContactController do
   @moduledoc """
   The three endpoints that maintain a user's contact list.
 
@@ -13,7 +13,7 @@ defmodule ApiWeb.ContactController do
 
   action_fallback ApiWeb.FallbackController
 
-  plug :put_view, json: ApiWeb.ContactJSON
+  plug :put_view, json: ApiWeb.Contacts.ContactJSON
 
   @add_types %{username: :string}
 

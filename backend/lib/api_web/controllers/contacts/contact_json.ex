@@ -1,8 +1,8 @@
-defmodule ApiWeb.ContactJSON do
+defmodule ApiWeb.Contacts.ContactJSON do
   @moduledoc """
   The contact shape: a row id and the user it lists.
 
-  The contacted user is embedded through `ApiWeb.UserJSON.data/1` rather than
+  The contacted user is embedded through `ApiWeb.Accounts.UserJSON.data/1` rather than
   flattened, so the client reuses one type across contacts, message senders and
   group members, and a field later added to the user object reaches this
   endpoint without a change here.
@@ -13,7 +13,7 @@ defmodule ApiWeb.ContactJSON do
   """
 
   alias Api.Contacts.Contact
-  alias ApiWeb.UserJSON
+  alias ApiWeb.Accounts.UserJSON
 
   @spec show(%{contact: Contact.t()}) :: map()
   def show(%{contact: contact}), do: %{contact: data(contact)}

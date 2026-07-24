@@ -1,4 +1,4 @@
-defmodule ApiWeb.MessageSearchControllerTest do
+defmodule ApiWeb.Conversations.MessageSearchControllerTest do
   use ApiWeb.ConnCase, async: true
 
   alias Api.Accounts.Guardian

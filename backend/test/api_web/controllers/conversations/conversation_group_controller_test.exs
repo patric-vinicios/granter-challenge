@@ -1,4 +1,4 @@
-defmodule ApiWeb.ConversationGroupControllerTest do
+defmodule ApiWeb.Conversations.ConversationGroupControllerTest do
   use ApiWeb.ConnCase, async: true
 
   alias Api.Accounts.Guardian

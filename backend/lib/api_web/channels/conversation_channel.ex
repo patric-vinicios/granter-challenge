@@ -37,9 +37,9 @@ defmodule ApiWeb.ConversationChannel do
   alias Api.Conversations
   alias Api.Messages
   alias ApiWeb.ChangesetJSON
-  alias ApiWeb.ConversationJSON
+  alias ApiWeb.Conversations.ConversationJSON
+  alias ApiWeb.Conversations.MessageJSON
   alias ApiWeb.Endpoint
-  alias ApiWeb.MessageJSON
   alias ApiWeb.Presence
   alias ApiWeb.RateLimiter
   alias Phoenix.Socket.Broadcast

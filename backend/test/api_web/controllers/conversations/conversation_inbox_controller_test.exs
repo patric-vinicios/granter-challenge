@@ -1,4 +1,4 @@
-defmodule ApiWeb.ConversationInboxControllerTest do
+defmodule ApiWeb.Conversations.ConversationInboxControllerTest do
   use ApiWeb.ConnCase, async: true
 
   import Ecto.Query

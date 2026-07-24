@@ -1,4 +1,4 @@
-defmodule ApiWeb.MessageController do
+defmodule ApiWeb.Conversations.MessageController do
   @moduledoc """
   Reading a conversation's history, one page at a time.
 
@@ -21,7 +21,7 @@ defmodule ApiWeb.MessageController do
 
   action_fallback ApiWeb.FallbackController
 
-  plug :put_view, json: ApiWeb.MessageJSON
+  plug :put_view, json: ApiWeb.Conversations.MessageJSON
 
   @page_types %{limit: :integer, before: :string}
   @default_limit 30

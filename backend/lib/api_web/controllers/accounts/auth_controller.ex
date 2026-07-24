@@ -1,4 +1,4 @@
-defmodule ApiWeb.AuthController do
+defmodule ApiWeb.Accounts.AuthController do
   @moduledoc """
   Registration, login and the current-user read.
 
@@ -16,7 +16,7 @@ defmodule ApiWeb.AuthController do
   action_fallback ApiWeb.FallbackController
 
   # The user shape is shared API-wide rather than owned by this controller.
-  plug :put_view, json: ApiWeb.UserJSON
+  plug :put_view, json: ApiWeb.Accounts.UserJSON
 
   @login_types %{username: :string, password: :string}
 

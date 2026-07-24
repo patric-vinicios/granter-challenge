@@ -1,19 +1,19 @@
-defmodule ApiWeb.ConversationJSON do
+defmodule ApiWeb.Conversations.ConversationJSON do
   @moduledoc """
   The conversation shape, dispatched on `type`.
 
   A private conversation renders the thread, the caller's own read marker and
   the other participant; a group renders its name, creator, active member count
   and the ordered member list. Both embed each user through
-  `ApiWeb.UserJSON.data/1`, so the client reuses one user type across contacts,
+  `ApiWeb.Accounts.UserJSON.data/1`, so the client reuses one user type across contacts,
   private counterparts and group members, and a field added to the user object
   reaches every one of them without a change here.
   """
 
   alias Api.Conversations.Conversation
   alias Api.Messages.Message
+  alias ApiWeb.Accounts.UserJSON
   alias ApiWeb.Presence
-  alias ApiWeb.UserJSON
 
   # The `conversation:updated` preview is a plain leading slice, not the
   # whole-word truncation the inbox list applies to its own payload: this event

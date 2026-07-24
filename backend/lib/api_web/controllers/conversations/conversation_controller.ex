@@ -1,4 +1,4 @@
-defmodule ApiWeb.ConversationController do
+defmodule ApiWeb.Conversations.ConversationController do
   @moduledoc """
   Opening a private conversation, creating a group, and changing a group's
   membership over time.
@@ -17,7 +17,7 @@ defmodule ApiWeb.ConversationController do
 
   action_fallback ApiWeb.FallbackController
 
-  plug :put_view, json: ApiWeb.ConversationJSON
+  plug :put_view, json: ApiWeb.Conversations.ConversationJSON
 
   @private_types %{user_id: :string}
 

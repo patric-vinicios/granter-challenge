@@ -1,4 +1,4 @@
-defmodule ApiWeb.MessageJSON do
+defmodule ApiWeb.Conversations.MessageJSON do
   @moduledoc """
   The one message shape the API returns.
 
@@ -7,14 +7,14 @@ defmodule ApiWeb.MessageJSON do
   client writes one message type, and a field added here reaches all three
   without a change at either call site.
 
-  The sender is embedded through `ApiWeb.UserJSON.data/1` rather than copied
+  The sender is embedded through `ApiWeb.Accounts.UserJSON.data/1` rather than copied
   into the message row. A renamed user therefore renders correctly in history
   written years earlier, and presence reaches message senders with no change
   here at all.
   """
 
   alias Api.Messages.Message
-  alias ApiWeb.UserJSON
+  alias ApiWeb.Accounts.UserJSON
 
   @doc """
   One page of history: the messages ascending by `(inserted_at, id)`, the cursor
