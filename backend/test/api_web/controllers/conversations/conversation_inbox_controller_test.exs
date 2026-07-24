@@ -230,6 +230,17 @@ defmodule ApiWeb.Conversations.ConversationInboxControllerTest do
 
       assert Enum.count(titles_for(conn, "")) == 2
     end
+
+    # The title of a private conversation is the counterpart's, so matching on the
+    # caller's own name or @username must not pull in their private threads.
+    test "does not match the caller's own name or @username", %{conn: conn, caller: caller} do
+      # caller is "Primary User" / @primary (see setup)
+      private_pair(caller, insert(:user, name: "Carlos Eduardo"))
+
+      assert titles_for(conn, "primary") == []
+      assert titles_for(conn, "Primary User") == []
+      assert titles_for(conn, "carlos") == ["Carlos Eduardo"]
+    end
   end
 
   describe "POST /api/conversations/:id/read" do

@@ -326,7 +326,7 @@ defmodule Api.Conversations do
     with {:ok, cursor} <- Api.Cursor.decode_or_nil(parsed.cursor, &Cursor.decode/1) do
       caller
       |> inbox_query()
-      |> apply_title_filter(parsed.query)
+      |> apply_title_filter(parsed.query, caller.id)
       |> apply_cursor(cursor)
       |> limit(^(parsed.limit + 1))
       |> Repo.all()
@@ -471,13 +471,13 @@ defmodule Api.Conversations do
   # same answer. The `ILIKE` operands are spelled exactly as the indexed
   # expressions are, since an expression index is only used when the query
   # writes the expression the same way.
-  defp apply_title_filter(query, term) do
+  defp apply_title_filter(query, term, caller_id) do
     case Accounts.search_term(term) do
       {:ok, trimmed} ->
         where(
           query,
           [conversation: c],
-          c.id in subquery(matching_private_query(trimmed)) or
+          c.id in subquery(matching_private_query(trimmed, caller_id)) or
             c.id in subquery(matching_group_query(trimmed))
         )
 
@@ -488,17 +488,20 @@ defmodule Api.Conversations do
 
   # Private conversations reached through a counterpart whose display name or
   # username matches. Restricted to `:private` so a group is never matched by a
-  # member's name — a group answers to its own name and nothing else. The
-  # condition is `Api.Accounts`', so this list and the contact list agree on
-  # what matching a person means.
-  defp matching_private_query(term) do
+  # member's name — a group answers to its own name and nothing else. The caller
+  # is excluded from the match: a private conversation's title is the *other*
+  # participant, so a term equal to the caller's own name or `@username` must not
+  # pull in every private thread they are part of. The condition is
+  # `Api.Accounts`', so this list and the contact list agree on what matching a
+  # person means.
+  defp matching_private_query(term, caller_id) do
     from(op in Participant,
       join: ou in User,
       as: :user,
       on: ou.id == op.user_id,
       join: oc in Conversation,
       on: oc.id == op.conversation_id,
-      where: oc.type == :private and is_nil(op.left_at),
+      where: oc.type == :private and is_nil(op.left_at) and op.user_id != ^caller_id,
       select: op.conversation_id
     )
     |> where(^Accounts.matching_user(term))
