@@ -629,8 +629,8 @@ graph TD
 - [X] `GET /api/auth/me` returns the authenticated user with a valid token, and 401 with `code: "unauthenticated"` without one
 - [X] A token signed with a different secret returns 401 and never resolves to a user
 - [X] An expired token returns 401 with `code: "token_expired"`, distinct from the generic unauthenticated code
-- [ ] The 11th failed login from one IP within 60 seconds returns 429 with a `Retry-After` header
-- [ ] After logout, the same token is rejected with 401 on both an HTTP request and a socket connect
+- [x] The 11th failed login from one IP within 60 seconds returns 429 with a `Retry-After` header
+- [x] After logout, the same token is rejected with 401 on both an HTTP request and a socket connect
 
 ### F03. Contact Management
 - [x] Adding an existing user by `@username` returns 201 with the contact record including user id, `@username` and display name

@@ -41,4 +41,13 @@ defmodule Api.Accounts.Guardian do
   end
 
   def resource_from_claims(_claims), do: {:error, :invalid_claims}
+
+  # Rejects a token whose jti was revoked at logout, on both the HTTP pipeline
+  # and the socket, since every verification path runs through here.
+  @impl Guardian
+  def verify_claims(claims, _opts) do
+    if Api.TokenRevocation.revoked?(claims["jti"]),
+      do: {:error, :token_revoked},
+      else: {:ok, claims}
+  end
 end

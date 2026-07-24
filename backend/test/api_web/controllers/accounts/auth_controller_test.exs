@@ -193,6 +193,31 @@ defmodule ApiWeb.Accounts.AuthControllerTest do
     end
   end
 
+  describe "DELETE /api/auth/session (logout)" do
+    test "revokes the token so the same one is rejected afterwards", %{conn: conn} do
+      {:ok, token, _} = Guardian.issue_token(insert(:user))
+
+      assert response(
+               delete(
+                 put_req_header(conn, "authorization", "Bearer #{token}"),
+                 ~p"/api/auth/session"
+               ),
+               204
+             )
+
+      reused =
+        json_conn()
+        |> put_req_header("authorization", "Bearer #{token}")
+        |> get(~p"/api/auth/me")
+
+      assert json_response(reused, 401)["errors"]["code"] == "unauthenticated"
+    end
+
+    test "requires a token", %{conn: conn} do
+      assert json_response(delete(conn, ~p"/api/auth/session"), 401)
+    end
+  end
+
   describe "credential leakage" do
     test "no auth response body contains a password or a hash", %{conn: conn} do
       register = post(conn, ~p"/api/auth/register", @valid_attrs)

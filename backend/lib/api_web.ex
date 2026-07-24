@@ -20,7 +20,9 @@ defmodule ApiWeb do
   reverse.
   """
 
-  use Boundary, deps: [Api], exports: [Endpoint, Presence, RateLimiter, Telemetry]
+  use Boundary,
+    deps: [Api],
+    exports: [Endpoint, LoginThrottle, Presence, RateLimiter, Telemetry]
 
   @spec router() :: Macro.t()
   def router do
