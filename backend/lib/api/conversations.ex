@@ -36,7 +36,6 @@ defmodule Api.Conversations do
   alias Api.Conversations.Preview
   alias Api.Repo
   alias Ecto.Changeset
-  alias Ecto.Multi
 
   # Creator plus at least one other member, up to a hard ceiling. The lower
   # bound is structural — a one-person group is a private conversation — and the
@@ -507,17 +506,22 @@ defmodule Api.Conversations do
   defp insert_pair(caller, target, key) do
     now = DateTime.utc_now()
 
-    multi =
-      Multi.new()
-      |> Multi.insert(:conversation, Conversation.private_changeset(%Conversation{}, key))
-      |> Multi.insert(:caller, &member_changeset(&1.conversation, caller, now))
-      |> Multi.insert(:target, &member_changeset(&1.conversation, target, now))
+    Repo.transaction(fn ->
+      case Repo.insert(Conversation.private_changeset(%Conversation{}, key)) do
+        {:ok, conversation} ->
+          Repo.insert!(member_changeset(conversation, caller, now))
+          Repo.insert!(member_changeset(conversation, target, now))
+          conversation
 
-    case Repo.transaction(multi) do
-      {:ok, %{conversation: conversation}} ->
+        {:error, %Ecto.Changeset{} = changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+    |> case do
+      {:ok, conversation} ->
         {:ok, :created, load(conversation)}
 
-      {:error, :conversation, %Ecto.Changeset{}, _changes} ->
+      {:error, %Ecto.Changeset{}} ->
         existing = Repo.get_by!(Conversation, participant_key: key, type: :private)
         {:ok, :existing, load(existing)}
     end
