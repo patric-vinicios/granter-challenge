@@ -133,10 +133,5 @@ defmodule ApiWeb.ConversationController do
   # A missing user_id is a malformed request, not an unknown user: answering
   # user_not_found there would tell a client its own bug looks like a typo.
   @spec validate_private(map()) :: {:ok, %{user_id: String.t()}} | {:error, Changeset.t()}
-  defp validate_private(params) do
-    {%{}, @private_types}
-    |> Changeset.cast(params, Map.keys(@private_types))
-    |> Changeset.validate_required([:user_id])
-    |> Changeset.apply_action(:insert)
-  end
+  defp validate_private(params), do: ApiWeb.Params.validate(params, @private_types)
 end

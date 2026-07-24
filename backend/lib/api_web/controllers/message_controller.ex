@@ -65,15 +65,15 @@ defmodule ApiWeb.MessageController do
   # required check; both failures render under `fields.q`.
   @spec validate_query(map()) :: {:ok, %{q: String.t()}} | {:error, Changeset.t()}
   defp validate_query(params) do
-    {%{}, @search_types}
-    |> Changeset.cast(params, [:q])
-    |> Changeset.update_change(:q, &String.trim/1)
-    |> Changeset.validate_required([:q], message: @query_message)
-    |> Changeset.validate_length(:q,
-      min: @query_min,
-      max: @query_max,
-      message: @query_message
+    ApiWeb.Params.validate(params, @search_types,
+      trim: [:q],
+      required_message: @query_message,
+      validate:
+        &Changeset.validate_length(&1, :q,
+          min: @query_min,
+          max: @query_max,
+          message: @query_message
+        )
     )
-    |> Changeset.apply_action(:insert)
   end
 end

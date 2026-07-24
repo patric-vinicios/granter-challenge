@@ -28,14 +28,17 @@ defmodule ApiWeb.Pagination do
     max = Keyword.fetch!(opts, :max_limit)
     message = "must be between 1 and #{max}"
 
-    {%{limit: default}, types}
-    |> Changeset.cast(params, Map.keys(types), message: &cast_message(&1, &2, message))
-    |> Changeset.validate_number(:limit,
-      greater_than_or_equal_to: 1,
-      less_than_or_equal_to: max,
-      message: message
+    ApiWeb.Params.validate(params, types,
+      defaults: %{limit: default},
+      required: [],
+      message: &cast_message(&1, &2, message),
+      validate:
+        &Changeset.validate_number(&1, :limit,
+          greater_than_or_equal_to: 1,
+          less_than_or_equal_to: max,
+          message: message
+        )
     )
-    |> Changeset.apply_action(:insert)
   end
 
   defp cast_message(:limit, _meta, message), do: message

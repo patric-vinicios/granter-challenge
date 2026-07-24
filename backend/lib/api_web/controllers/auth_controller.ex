@@ -47,10 +47,5 @@ defmodule ApiWeb.AuthController do
   # wrong password.
   @spec validate_login(map()) ::
           {:ok, %{username: String.t(), password: String.t()}} | {:error, Changeset.t()}
-  defp validate_login(params) do
-    {%{}, @login_types}
-    |> Changeset.cast(params, Map.keys(@login_types))
-    |> Changeset.validate_required([:username, :password])
-    |> Changeset.apply_action(:insert)
-  end
+  defp validate_login(params), do: ApiWeb.Params.validate(params, @login_types)
 end
