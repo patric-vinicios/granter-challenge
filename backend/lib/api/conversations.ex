@@ -194,13 +194,20 @@ defmodule Api.Conversations do
   @doc """
   Lets an active member leave by setting their own `left_at`.
 
-  The last active member — creator or not — cannot leave, so a group is never
-  emptied. The count is taken after locking the conversation's active rows, so
-  two last-ish members leaving at once can never both succeed. `creator_id` is
-  never rewritten, so a group keeps its recorded owner after the creator leaves.
+  Group semantics follow the messaging-app convention: a group may hold just its
+  creator, and a plain member may always leave. The creator, however, may leave
+  only once every other member is gone — while others remain they must remove
+  them first — so the creator never abandons a populated group. When the sole
+  remaining member leaves, the group has no one left and is deleted outright,
+  cascading its participants and messages.
+
+  A private conversation keeps the older rule: its last active participant cannot
+  leave, so a two-person thread is never half-emptied. The active count is taken
+  after locking the conversation's active rows, so two last-ish members leaving
+  at once can never both succeed.
   """
   @spec leave(User.t(), term()) ::
-          :ok | {:error, :invalid_id | :not_found | :last_member}
+          :ok | {:error, :invalid_id | :not_found | :last_member | :creator_has_members}
   def leave(%User{} = user, id) do
     with {:ok, uuid} <- UUID.cast(id) do
       commit_leave(uuid, user)
@@ -824,11 +831,36 @@ defmodule Api.Conversations do
   end
 
   defp resolve_leave(uuid, user) do
+    conversation = Repo.get(Conversation, uuid)
     active = active_participants_locked(uuid)
 
     cond do
-      not Enum.any?(active, &(&1.user_id == user.id)) -> Repo.rollback(:not_found)
-      match?([_], active) -> Repo.rollback(:last_member)
+      is_nil(conversation) or not Enum.any?(active, &(&1.user_id == user.id)) ->
+        Repo.rollback(:not_found)
+
+      conversation.type == :private ->
+        leave_private(active, uuid, user)
+
+      true ->
+        leave_group(conversation, active, uuid, user)
+    end
+  end
+
+  # A private thread is never half-emptied: its last participant cannot leave.
+  defp leave_private(active, uuid, user) do
+    if match?([_], active),
+      do: Repo.rollback(:last_member),
+      else: deactivate!(uuid, user.id)
+  end
+
+  # The sole member leaving deletes the group (cascading participants and
+  # messages); the creator may not leave while other members remain; any other
+  # member simply leaves. Order matters — the lone member is always the creator,
+  # so the delete branch must be checked before the creator guard.
+  defp leave_group(conversation, active, uuid, user) do
+    cond do
+      match?([_], active) -> Repo.delete!(conversation)
+      conversation.creator_id == user.id -> Repo.rollback(:creator_has_members)
       true -> deactivate!(uuid, user.id)
     end
   end

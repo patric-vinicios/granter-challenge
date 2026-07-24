@@ -338,19 +338,16 @@ defmodule ApiWeb.Conversations.ConversationInboxControllerTest do
            conn: conn,
            caller: caller
          } do
-      m1 = insert(:user)
+      # The caller is a plain member (not the creator) so leaving is unconditional.
+      creator = insert(:user)
       m2 = insert(:user)
-      insert(:contact, owner: caller, user: m1)
-      insert(:contact, owner: caller, user: m2)
+      insert(:contact, owner: creator, user: caller)
+      insert(:contact, owner: creator, user: m2)
 
-      group =
-        conn
-        |> post(~p"/api/conversations/groups", %{
-          "name" => "Time de Produto",
-          "member_ids" => [m1.id, m2.id]
-        })
-        |> json_response(201)
-        |> get_in(["conversation", "id"])
+      {:ok, group} =
+        Api.Conversations.create_group(creator, "Time de Produto", [caller.id, m2.id])
+
+      group = group.id
 
       [entry] =
         conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")

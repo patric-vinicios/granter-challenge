@@ -546,26 +546,22 @@ defmodule Api.ConversationsTest do
       refute Conversations.participant?(group.id, c1.id)
     end
 
-    test "lets the creator leave while others remain, keeping creator_id" do
+    test "rejects the creator leaving while other members remain" do
       {creator, [c1, c2]} = creator_with_contacts()
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id, c2.id])
 
-      assert :ok = Conversations.leave(creator, group.id)
-
-      reloaded = Repo.get!(Conversation, group.id)
-      assert reloaded.creator_id == creator.id
-      # Once the creator has left, no further membership change succeeds.
-      assert {:error, :not_found} = Conversations.add_members(creator, group.id, [c1.id])
+      assert {:error, :creator_has_members} = Conversations.leave(creator, group.id)
+      assert Conversations.participant?(group.id, creator.id)
     end
 
-    test "rejects the last active member" do
+    test "the sole remaining member leaving deletes the group" do
       {creator, [c1, _c2]} = creator_with_contacts()
       {:ok, group} = Conversations.create_group(creator, "Time", [c1.id])
 
       :ok = Conversations.leave(c1, group.id)
-
-      assert {:error, :last_member} = Conversations.leave(creator, group.id)
-      assert Conversations.participant?(group.id, creator.id)
+      # The creator is now alone; leaving empties and deletes the group.
+      assert :ok = Conversations.leave(creator, group.id)
+      refute Repo.get(Conversation, group.id)
     end
 
     test "rejects a non-member" do
