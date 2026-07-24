@@ -181,7 +181,7 @@
 
 <script setup lang="ts">
 import { ArrowLeft, ChevronDown, ChevronUp, Navigation, Search, UsersRound, X } from '@lucide/vue'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, useTemplateRef, watch } from 'vue'
 
 import MessageBubble from '@/components/MessageBubble.vue'
 import type { Conversation } from '@/features/conversations/conversations.mock'
@@ -208,15 +208,35 @@ const props = defineProps<{
   searchActiveMatchOffsets: SearchMatchOffset[]
 }>()
 
-const messageScroller = ref<HTMLElement | null>(null)
+const messageScroller = useTemplateRef<HTMLElement>('messageScroller')
+let previousScrollHeight = 0
 
 watch(
-  () => [props.conversation.id, props.conversation.messages.length, props.isLoadingHistory],
-  () => {
+  () => ({
+    conversationId: props.conversation.id,
+    messageIds: props.conversation.messages.map(messageIdentity),
+    isLoadingHistory: props.isLoadingHistory,
+  }),
+  (current, previous) => {
+    const shouldPreservePosition =
+      previous?.conversationId === current.conversationId &&
+      messagesWerePrepended(previous.messageIds, current.messageIds)
+    const previousScrollTop = messageScroller.value?.scrollTop ?? 0
+
     void nextTick(() => {
-      if (messageScroller.value) {
-        messageScroller.value.scrollTop = messageScroller.value.scrollHeight
+      const scroller = messageScroller.value
+
+      if (!scroller) {
+        return
       }
+
+      if (shouldPreservePosition) {
+        scroller.scrollTop = previousScrollTop + Math.max(0, scroller.scrollHeight - previousScrollHeight)
+      } else {
+        scroller.scrollTop = scroller.scrollHeight
+      }
+
+      previousScrollHeight = scroller.scrollHeight
     })
   },
   { flush: 'post', immediate: true },
@@ -259,4 +279,18 @@ const searchStatusLabel = computed(() => {
 
   return '0 / 0'
 })
+
+function messageIdentity(message: Conversation['messages'][number]): string {
+  return message.id ?? message.clientRef ?? `${message.side}:${message.time}:${message.author ?? ''}:${message.text}`
+}
+
+function messagesWerePrepended(previousIds: string[], currentIds: string[]): boolean {
+  const addedCount = currentIds.length - previousIds.length
+
+  if (addedCount <= 0) {
+    return false
+  }
+
+  return previousIds.every((id, index) => currentIds[addedCount + index] === id)
+}
 </script>

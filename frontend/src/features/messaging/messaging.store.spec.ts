@@ -113,6 +113,46 @@ describe('messages.store', () => {
 
     expect(conversation.messages.map((message) => message.id)).toEqual(['message-1', 'message-2'])
   })
+
+  it('does not duplicate a realtime message already present in the REST history', () => {
+    const store = useMessagingStore()
+    const message = persistedMessage('message-1', 'mensagem recebida')
+
+    store.receiveMessage(message, 'user-current')
+
+    const conversation = store.decorate({
+      id: 'conversation-1',
+      type: 'private',
+      initials: 'AB',
+      name: 'Ana Beatriz',
+      subtitle: '',
+      preview: '',
+      time: '',
+      messages: [
+        {
+          id: message.id,
+          side: 'in',
+          author: message.sender.name,
+          text: message.body,
+          time: '10:48',
+        },
+      ],
+    })
+
+    expect(conversation.messages.map((item) => item.id)).toEqual(['message-1'])
+  })
+
+  it('exposes pending refresh coordination through Pinia state', () => {
+    const store = useMessagesStore()
+
+    expect(store.$state).toHaveProperty('pendingRefreshIds')
+  })
+
+  it('exposes realtime conversation state through Pinia state', () => {
+    const store = useMessagingStore()
+
+    expect(store.$state).toHaveProperty('conversations')
+  })
 })
 
 function messageResponse(id: string, body: string) {

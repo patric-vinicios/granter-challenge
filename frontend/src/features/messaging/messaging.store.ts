@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import type { Conversation, Message } from '@/features/conversations/conversations.mock'
+import { formatMessageTime } from '@/shared/date/formatMessageTime'
 
 import { listMessages } from './messaging.api'
 import type { ConversationUpdated, MessageSendError, PersistedMessage } from './messaging.contracts'
@@ -180,6 +181,7 @@ export const useMessagesStore = defineStore('messages', () => {
 
   return {
     histories,
+    pendingRefreshIds,
     historyByConversationId,
     loadInitial,
     loadOlder,
@@ -209,7 +211,7 @@ export const useMessagingStore = defineStore('messaging', () => {
       ...conversation,
       preview: state.preview || conversation.preview,
       time: state.time || conversation.time,
-      messages: [...conversation.messages, ...state.messages],
+      messages: mergeConversationMessages(conversation.messages, state.messages),
     }
   }
 
@@ -335,6 +337,7 @@ export const useMessagingStore = defineStore('messaging', () => {
   }
 
   return {
+    conversations,
     pendingErrors,
     revokedConversationIds,
     addOptimisticMessage,
@@ -366,6 +369,23 @@ function dedupeMessages(messages: PersistedMessage[]): PersistedMessage[] {
   return deduped
 }
 
+function mergeConversationMessages(history: Message[], realtime: Message[]): Message[] {
+  const seenIds = new Set<string>()
+
+  return [...history, ...realtime].filter((message) => {
+    if (!message.id) {
+      return true
+    }
+
+    if (seenIds.has(message.id)) {
+      return false
+    }
+
+    seenIds.add(message.id)
+    return true
+  })
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
@@ -383,17 +403,4 @@ function toConversationMessage(message: PersistedMessage, currentUserId: string)
 
 function previewFor(message: PersistedMessage, currentUserId: string): string {
   return `${message.sender.id === currentUserId ? 'Voce: ' : ''}${message.body}`
-}
-
-function formatMessageTime(value: string): string {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return ''
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
 }
