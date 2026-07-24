@@ -342,6 +342,14 @@ defmodule Api.MessagesTest do
       assert hit.match_offsets == [%{start: 2, length: 10}]
     end
 
+    test "highlights the inflected form a stemmed query matched", %{ana: ana, conversation: thread} do
+      write(thread, ana, "Eu corri ontem", ago(10))
+
+      assert {:ok, %{messages: [hit]}} = Messages.search_messages(ana, thread.id, "correr")
+      assert hit.match_offsets == [%{start: 3, length: 5}]
+      assert String.slice(hit.message.body, 3, 5) == "corri"
+    end
+
     test "paginates a match set larger than one page", %{ana: ana, conversation: thread} do
       bulk(thread, ana, "cronograma", 101)
 

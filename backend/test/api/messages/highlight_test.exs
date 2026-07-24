@@ -3,38 +3,50 @@ defmodule Api.Messages.HighlightTest do
 
   alias Api.Messages.Highlight
 
-  describe "offsets/2" do
-    test "returns the offset of a plain term" do
-      assert Highlight.offsets("O cronograma novo", "cronograma") == [%{start: 2, length: 10}]
-    end
+  @start "\x02"
+  @stop "\x03"
 
-    test "matches accent- and case-insensitively" do
-      assert Highlight.offsets("Reunião da Família amanhã", "familia") == [
-               %{start: 11, length: 7}
+  defp mark(text),
+    do:
+      String.replace(text, ["[", "]"], fn
+        "[" -> @start
+        "]" -> @stop
+      end)
+
+  describe "offsets_from_headline/1" do
+    test "returns the span of a single highlight" do
+      assert Highlight.offsets_from_headline(mark("O [cronograma] novo")) == [
+               %{start: 2, length: 10}
              ]
     end
 
-    test "returns an offset per occurrence" do
-      assert Highlight.offsets("bug aqui e bug ali", "bug") == [
+    test "returns a span per highlight, in order" do
+      assert Highlight.offsets_from_headline(mark("[bug] aqui e [bug] ali")) == [
                %{start: 0, length: 3},
                %{start: 11, length: 3}
              ]
     end
 
-    test "handles multi-token queries" do
-      offsets = Highlight.offsets("novo cronograma final", "novo final")
-
-      assert %{start: 0, length: 4} in offsets
-      assert %{start: 16, length: 5} in offsets
-      assert Enum.count(offsets) == 2
+    test "measures offsets in the original text, not counting markers" do
+      assert Highlight.offsets_from_headline(mark("Reunião da [Família] amanhã")) == [
+               %{start: 11, length: 7}
+             ]
     end
 
-    test "returns an empty list when nothing matches" do
-      assert Highlight.offsets("nada por aqui", "cronograma") == []
+    test "returns an empty list when nothing is highlighted" do
+      assert Highlight.offsets_from_headline("nada por aqui") == []
     end
 
-    test "returns an empty list for a blank query" do
-      assert Highlight.offsets("qualquer corpo", "   ") == []
+    test "returns an empty list for a nil headline" do
+      assert Highlight.offsets_from_headline(nil) == []
+    end
+  end
+
+  describe "headline_opts/0" do
+    test "declares the control-character markers to ts_headline" do
+      assert Highlight.headline_opts() =~ "HighlightAll=TRUE"
+      assert Highlight.headline_opts() =~ @start
+      assert Highlight.headline_opts() =~ @stop
     end
   end
 end
