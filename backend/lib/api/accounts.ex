@@ -21,6 +21,7 @@ defmodule Api.Accounts do
   than a raised constraint error, so the client receives a 422 naming the field
   instead of a 500.
   """
+  @spec register_user(map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t(User.t())}
   def register_user(attrs) do
     %User{}
     |> User.registration_changeset(attrs)
@@ -34,6 +35,7 @@ defmodule Api.Accounts do
   unknown-username branch runs `no_user_verify/0` so response time does not
   disclose whether an account exists.
   """
+  @spec authenticate(term(), term()) :: {:ok, User.t()} | {:error, :invalid_credentials}
   def authenticate(username, password) when is_binary(username) and is_binary(password) do
     case get_user_by_username(username) do
       %User{} = user ->
@@ -57,6 +59,7 @@ defmodule Api.Accounts do
   Token subjects and path params both arrive as untrusted strings, so a
   malformed id has to be an absent user rather than a cast exception.
   """
+  @spec get_user(term()) :: User.t() | nil
   def get_user(id) when is_binary(id) do
     case Ecto.UUID.cast(id) do
       {:ok, uuid} -> Repo.get(User, uuid)
@@ -71,6 +74,7 @@ defmodule Api.Accounts do
   accepted. The `citext` column makes the comparison index-backed without a
   `lower()` wrapper.
   """
+  @spec get_user_by_username(term()) :: User.t() | nil
   def get_user_by_username(username) when is_binary(username),
     do: Repo.get_by(User, username: User.normalize_username(username))
 
@@ -86,6 +90,7 @@ defmodule Api.Accounts do
   must never raise or block the leave that triggered it — so the answer is
   always `:ok`.
   """
+  @spec update_last_seen(term(), term()) :: :ok
   def update_last_seen(user_id, %DateTime{} = at) when is_binary(user_id) do
     case Ecto.UUID.cast(user_id) do
       {:ok, uuid} ->

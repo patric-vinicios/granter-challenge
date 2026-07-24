@@ -37,6 +37,30 @@ defmodule Api.Conversations do
   alias Api.Repo
   alias Ecto.Changeset
 
+  @typedoc "How much of a conversation a user may read: all of it, or up to the moment they left."
+  @type read_scope :: :active | {:until, DateTime.t()}
+
+  @typedoc "The last-message preview carried by one inbox entry."
+  @type last_message :: %{
+          id: Ecto.UUID.t(),
+          body: String.t(),
+          sender_id: Ecto.UUID.t(),
+          inserted_at: DateTime.t()
+        }
+
+  @typedoc "One inbox entry: a conversation with its title, preview and unread state."
+  @type summary :: %{
+          id: Ecto.UUID.t(),
+          type: Conversation.kind(),
+          title: String.t() | nil,
+          counterpart: User.t() | nil,
+          member_count: non_neg_integer() | nil,
+          last_message: last_message() | nil,
+          unread_count: non_neg_integer(),
+          unread_overflow: boolean(),
+          last_read_at: DateTime.t() | nil
+        }
+
   # Creator plus at least one other member, up to a hard ceiling. The lower
   # bound is structural — a one-person group is a private conversation — and the
   # upper bound is the PRD's stated limit.
@@ -65,6 +89,9 @@ defmodule Api.Conversations do
   the backstop that turns two genuinely concurrent creates into one winner and
   one caught error re-read as the existing row, never a duplicate or a 500.
   """
+  @spec create_private_conversation(User.t(), term()) ::
+          {:ok, :created | :existing, Conversation.t()}
+          | {:error, :self_conversation | :user_not_found | :not_a_contact}
   def create_private_conversation(%User{} = caller, target_id) do
     with :ok <- refute_self(caller, target_id),
          {:ok, target} <- resolve_target(target_id),
@@ -87,6 +114,10 @@ defmodule Api.Conversations do
   complaint), then the size, and only then are the rows written. A failure at
   any step inserts nothing.
   """
+  @spec create_group(User.t(), term(), term()) ::
+          {:ok, Conversation.t()}
+          | {:error, Changeset.t()}
+          | {:error, :not_a_contact, String.t()}
   def create_group(%User{} = creator, name, member_ids) do
     with {:ok, name, members} <- validate_create(creator, name, member_ids),
          :ok <- Contacts.reject_non_contacts(creator, members) do
@@ -105,6 +136,8 @@ defmodule Api.Conversations do
   outsider or a departed group member — gets one indistinguishable `:not_found`,
   so a conversation's existence is never disclosed.
   """
+  @spec get_conversation(User.t(), term()) ::
+          {:ok, Conversation.t()} | {:error, :not_found | :invalid_id}
   def get_conversation(%User{} = caller, id) do
     with {:ok, uuid} <- cast_id(id),
          %Conversation{} = conversation <- Repo.get(Conversation, uuid) || {:error, :not_found} do
@@ -120,6 +153,11 @@ defmodule Api.Conversations do
   `:not_group_creator`. A supplied id already active is rejected; one who
   previously left is reactivated in place with a fresh `joined_at`.
   """
+  @spec add_members(User.t(), term(), term()) ::
+          {:ok, Conversation.t()}
+          | {:error, Changeset.t()}
+          | {:error, :invalid_id | :not_found | :not_group_creator | :already_member}
+          | {:error, :not_a_contact, String.t()}
   def add_members(%User{} = creator, id, member_ids) do
     with {:ok, uuid} <- cast_id(id),
          {:ok, conversation} <- load_manageable(creator, uuid),
@@ -139,6 +177,9 @@ defmodule Api.Conversations do
   `/members/me` so the last-member rule has a single home. A target who is not an
   active member is answered `:not_found`, disclosing nothing.
   """
+  @spec remove_member(User.t(), term(), term()) ::
+          :ok
+          | {:error, :invalid_id | :not_found | :not_group_creator | :cannot_remove_self}
   def remove_member(%User{} = creator, id, user_id) do
     with {:ok, uuid} <- cast_id(id),
          {:ok, target_id} <- cast_id(user_id),
@@ -156,6 +197,8 @@ defmodule Api.Conversations do
   two last-ish members leaving at once can never both succeed. `creator_id` is
   never rewritten, so a group keeps its recorded owner after the creator leaves.
   """
+  @spec leave(User.t(), term()) ::
+          :ok | {:error, :invalid_id | :not_found | :last_member}
   def leave(%User{} = user, id) do
     with {:ok, uuid} <- cast_id(id) do
       commit_leave(uuid, user)
@@ -169,6 +212,7 @@ defmodule Api.Conversations do
   Active means a participant row with `left_at` null. Evaluated at request time
   by every caller, so a leave or removal takes effect on the very next call.
   """
+  @spec participant?(Conversation.t() | term(), User.t() | term()) :: boolean()
   def participant?(%Conversation{id: id}, user), do: participant?(id, user)
   def participant?(conversation_id, %User{id: id}), do: participant?(conversation_id, id)
 
@@ -190,6 +234,7 @@ defmodule Api.Conversations do
   raising, so a conversation deleted between a message's insert and its fan-out
   cannot crash a channel that has already replied.
   """
+  @spec participant_ids(Conversation.t() | term()) :: [Ecto.UUID.t()]
   def participant_ids(%Conversation{id: id}), do: participant_ids(id)
 
   def participant_ids(conversation_id) do
@@ -221,6 +266,8 @@ defmodule Api.Conversations do
   An outsider and an unknown conversation share one answer, so the existence of
   a conversation is never disclosed by the difference between them.
   """
+  @spec read_access(Conversation.t() | term(), User.t() | term()) ::
+          {:ok, read_scope()} | {:error, :not_found | :invalid_id}
   def read_access(%Conversation{id: id}, user), do: read_access(id, user)
   def read_access(conversation_id, %User{id: id}), do: read_access(conversation_id, id)
 
@@ -259,6 +306,7 @@ defmodule Api.Conversations do
   filtered list with the component it already has. A blank or absent term is no
   filter at all.
   """
+  @spec list_conversations(User.t(), map()) :: [summary()]
   def list_conversations(%User{} = caller, opts \\ %{}) do
     caller
     |> inbox_query()
@@ -276,6 +324,9 @@ defmodule Api.Conversations do
   `:not_a_participant` rather than the `:not_found` an outsider gets — they
   already know the conversation exists, so 404 would conceal nothing.
   """
+  @spec mark_read(User.t(), term()) ::
+          {:ok, %{conversation_id: Ecto.UUID.t(), last_read_at: DateTime.t()}}
+          | {:error, :invalid_id | :not_found | :not_a_participant}
   def mark_read(%User{} = caller, id) do
     with {:ok, uuid} <- cast_id(id) do
       case read_access(uuid, caller) do

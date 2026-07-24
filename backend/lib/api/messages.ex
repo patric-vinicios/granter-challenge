@@ -40,6 +40,27 @@ defmodule Api.Messages do
   # full result set is told apart from a truncated one without a second count.
   @search_cap 100
 
+  @typedoc "One page of history: the messages ascending, the cursor before them, and whether more exist."
+  @type page :: %{
+          messages: [Message.t()],
+          next_cursor: String.t() | nil,
+          has_more: boolean()
+        }
+
+  @typedoc "One search hit: the message, its 1-based position and the spans of the term in its body."
+  @type hit :: %{
+          message: Message.t(),
+          position: pos_integer(),
+          match_offsets: [Highlight.span()]
+        }
+
+  @typedoc "A capped set of search hits with the total-match count."
+  @type search_page :: %{
+          messages: [hit()],
+          total_matches: non_neg_integer(),
+          truncated: boolean()
+        }
+
   @doc """
   Persists a message from `sender` into the conversation named by
   `conversation_id`.
@@ -53,6 +74,10 @@ defmodule Api.Messages do
   caller that merely forwards a request body is structurally incapable of
   setting one.
   """
+  @spec create_message(User.t(), term(), map() | keyword()) ::
+          {:ok, Message.t()}
+          | {:error, Ecto.Changeset.t(Message.t())}
+          | {:error, :invalid_id | :not_found}
   def create_message(%User{} = sender, conversation_id, attrs \\ %{}) do
     attrs = Map.new(attrs)
 
@@ -79,6 +104,8 @@ defmodule Api.Messages do
   history they are allowed to see and never leak, through a page count, that
   the conversation carried on without them.
   """
+  @spec list_messages(User.t(), term(), map() | keyword()) ::
+          {:ok, page()} | {:error, :invalid_id | :not_found | :invalid_cursor}
   def list_messages(%User{} = caller, conversation_id, opts \\ %{}) do
     opts = Map.new(opts)
     limit = opts |> Map.get(:limit) |> normalize_limit()
@@ -109,6 +136,8 @@ defmodule Api.Messages do
   #{@search_cap}; beyond it `total_matches` reports #{@search_cap} and `truncated`
   is true.
   """
+  @spec search_messages(User.t(), term(), String.t()) ::
+          {:ok, search_page()} | {:error, :invalid_id | :not_found}
   def search_messages(%User{} = caller, conversation_id, query) when is_binary(query) do
     with {:ok, cid} <- cast_id(conversation_id),
          {:ok, access} <- Conversations.read_access(cid, caller) do

@@ -22,11 +22,15 @@ defmodule Api.Messages.Cursor do
 
   alias Api.Messages.Message
 
+  @typedoc "The `(inserted_at, id)` pair a cursor encodes."
+  @type position :: {DateTime.t(), Ecto.UUID.t()}
+
   @separator "|"
 
   @doc """
   The opaque position of `message` in its conversation.
   """
+  @spec encode(Message.t() | position()) :: String.t()
   def encode(%Message{inserted_at: inserted_at, id: id}), do: encode({inserted_at, id})
 
   def encode({%DateTime{} = inserted_at, id}) do
@@ -39,6 +43,7 @@ defmodule Api.Messages.Cursor do
   Reads a cursor back into the `(inserted_at, id)` pair the keyset query bounds
   on, or `{:error, :invalid_cursor}` if any step of it fails.
   """
+  @spec decode(term()) :: {:ok, position()} | {:error, :invalid_cursor}
   def decode(cursor) when is_binary(cursor) do
     with {:ok, raw} <- Base.url_decode64(cursor, padding: false),
          [timestamp, id] <- String.split(raw, @separator),

@@ -37,6 +37,11 @@ defmodule Api.Contacts do
   a caller who is both at the limit and re-adding an existing contact is told
   the truth rather than being asked to prune their list.
   """
+  @spec add_contact(User.t(), String.t()) ::
+          {:ok, Contact.t()}
+          | {:error, :self_contact}
+          | {:error, :user_not_found | :contact_already_exists | :contact_limit_reached,
+             String.t()}
   def add_contact(%User{} = owner, username) when is_binary(username) do
     with {:ok, target} <- resolve_target(username),
          :ok <- refute_self(owner, target),
@@ -54,6 +59,7 @@ defmodule Api.Contacts do
   so the fold happens here and every client renders the same order. `id` is the
   tie-break, so two contacts sharing a display name still have a total order.
   """
+  @spec list_contacts(User.t()) :: [Contact.t()]
   def list_contacts(%User{} = owner) do
     Contact
     |> where([c], c.owner_id == ^owner.id)
@@ -72,6 +78,7 @@ defmodule Api.Contacts do
   but unknown, already deleted or somebody else's gets one indistinguishable
   answer, so contact ownership is never disclosed.
   """
+  @spec delete_contact(User.t(), term()) :: :ok | {:error, :not_found | :invalid_id}
   def delete_contact(%User{} = owner, id) do
     with {:ok, uuid} <- cast_id(id) do
       case Repo.get_by(Contact, id: uuid, owner_id: owner.id) do
@@ -91,6 +98,7 @@ defmodule Api.Contacts do
   Evaluated at request time by every caller, so removing a contact takes effect
   on the very next call rather than on the next session.
   """
+  @spec contact?(User.t(), User.t() | term()) :: boolean()
   def contact?(%User{} = owner, %User{} = user), do: contact?(owner, user.id)
 
   def contact?(%User{} = owner, user_id) do
@@ -112,6 +120,8 @@ defmodule Api.Contacts do
   offenders' `@username`s so the 403 can list them. `id`s are assumed already
   cast to UUIDs by the caller.
   """
+  @spec reject_non_contacts(User.t(), [Ecto.UUID.t()]) ::
+          :ok | {:error, :not_a_contact, String.t()}
   def reject_non_contacts(%User{} = owner, ids) when is_list(ids) do
     requested = MapSet.new(ids)
 
