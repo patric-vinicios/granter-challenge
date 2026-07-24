@@ -75,7 +75,7 @@ graph TD
 | `lib/api_web/controllers/error_json.ex` | Status-to-code table for endpoint-level failures |
 | `lib/api_web/channels/user_socket.ex` | Socket mount path `/socket`, `token` connect param, socket id convention |
 | `lib/api_web/channels/conversation_channel.ex` | `conversation:<id>` join rule, `new_message` inbound, `message:new`, `presence:state`, `presence:diff`, `conversation:membership_revoked` outbound, reply/error shapes |
-| `lib/api_web/channels/user_channel.ex` | `user:<id>` join rule, `conversation:updated` outbound |
+| `lib/api_web/channels/user_channel.ex` | `user:<id>` join rule, `conversation:updated` and `conversation:added` outbound |
 | `test/api_web/controllers/*_test.exs`, `test/api_web/channels/*_test.exs` | Verified request/response and event payload examples to transcribe |
 
 ## Section 5: Documentation Coverage Contract
@@ -104,7 +104,7 @@ Each entry must carry: method, path, authentication requirement, path/query para
 | 14 | DELETE | `/api/conversations/:id/members/me` | Bearer | 204; 422 `last_member` |
 | 15 | DELETE | `/api/conversations/:id/members/:user_id` | Bearer | 204; 403 `not_group_creator`; 422 `cannot_remove_self` |
 | 16 | GET | `/api/conversations/:id/messages` | Bearer | query `limit` (≤100), `before` cursor; 200 `{messages,next_cursor,has_more}`; 400 `invalid_cursor`; 422 range; 404 `not_found` |
-| 17 | GET | `/api/conversations/:id/messages/search` | Bearer | query `q` (2–100 chars); 200 `{results,total_matches,truncated}`; 422; 404 `not_found` |
+| 17 | GET | `/api/conversations/:id/messages/search` | Bearer | query `q` (2–100 chars); 200 `{messages,total_matches,truncated}` (each hit is the canonical message object plus `position` and `match_offsets`); 422; 404 `not_found` |
 
 ### WebSocket contract to document
 
@@ -117,6 +117,7 @@ Each entry must carry: method, path, authentication requirement, path/query para
 - **Outbound events (payload example each):**
   - `message:new` (on `conversation:<id>`) — the persisted message record.
   - `conversation:updated` (on `user:<id>`) — conversation id, last-message preview, timestamp, sender id, unread indicator.
+  - `conversation:added` (on `user:<id>`) — pushed to a user just added to a group, carrying at least the conversation id, so their session can fetch the conversation and update the inbox without a reload.
   - `presence:state` (on `conversation:<id>` join) — current presence snapshot of the conversation's participants.
   - `presence:diff` (on `conversation:<id>`) — joins/leaves diff.
   - `conversation:membership_revoked` (on `conversation:<id>`) — pushed to a removed member before their channel is closed.
