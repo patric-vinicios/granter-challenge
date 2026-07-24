@@ -30,6 +30,7 @@ defmodule Api.Messages do
   alias Api.Messages.Highlight
   alias Api.Messages.Message
   alias Api.Repo
+  alias Api.UUID
 
   # What a page holds when the caller asks for no particular size, and the
   # ceiling the endpoint enforces before the query is ever built.
@@ -81,7 +82,7 @@ defmodule Api.Messages do
   def create_message(%User{} = sender, conversation_id, attrs \\ %{}) do
     attrs = Map.new(attrs)
 
-    with {:ok, cid} <- cast_id(conversation_id),
+    with {:ok, cid} <- UUID.cast(conversation_id),
          :ok <- refute_non_participant(cid, sender) do
       %Message{conversation_id: cid, sender_id: sender.id}
       |> Message.changeset(attrs)
@@ -110,7 +111,7 @@ defmodule Api.Messages do
     opts = Map.new(opts)
     limit = opts |> Map.get(:limit) |> normalize_limit()
 
-    with {:ok, cid} <- cast_id(conversation_id),
+    with {:ok, cid} <- UUID.cast(conversation_id),
          {:ok, access} <- Conversations.read_access(cid, caller),
          {:ok, cursor} <- decode_cursor(Map.get(opts, :before)) do
       cid
@@ -139,7 +140,7 @@ defmodule Api.Messages do
   @spec search_messages(User.t(), term(), String.t()) ::
           {:ok, search_page()} | {:error, :invalid_id | :not_found}
   def search_messages(%User{} = caller, conversation_id, query) when is_binary(query) do
-    with {:ok, cid} <- cast_id(conversation_id),
+    with {:ok, cid} <- UUID.cast(conversation_id),
          {:ok, access} <- Conversations.read_access(cid, caller) do
       {matches, total_matches, truncated} =
         cid
@@ -278,12 +279,5 @@ defmodule Api.Messages do
       next_cursor: if(has_more, do: page |> List.last() |> Cursor.encode()),
       has_more: has_more
     }
-  end
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :invalid_id}
-    end
   end
 end

@@ -36,6 +36,7 @@ defmodule Api.Conversations do
   alias Api.Conversations.Participant
   alias Api.Conversations.Preview
   alias Api.Repo
+  alias Api.UUID
   alias Ecto.Changeset
 
   @typedoc "How much of a conversation a user may read: all of it, or up to the moment they left."
@@ -140,7 +141,7 @@ defmodule Api.Conversations do
   @spec get_conversation(User.t(), term()) ::
           {:ok, Conversation.t()} | {:error, :not_found | :invalid_id}
   def get_conversation(%User{} = caller, id) do
-    with {:ok, uuid} <- cast_id(id),
+    with {:ok, uuid} <- UUID.cast(id),
          %Conversation{} = conversation <- Repo.get(Conversation, uuid) || {:error, :not_found} do
       authorize_read(load(conversation), caller)
     end
@@ -160,7 +161,7 @@ defmodule Api.Conversations do
           | {:error, :invalid_id | :not_found | :not_group_creator | :already_member}
           | {:error, :not_a_contact, String.t()}
   def add_members(%User{} = creator, id, member_ids) do
-    with {:ok, uuid} <- cast_id(id),
+    with {:ok, uuid} <- UUID.cast(id),
          {:ok, conversation} <- load_manageable(creator, uuid),
          {:ok, ids} <- validate_member_ids(member_ids),
          :ok <- Contacts.reject_non_contacts(creator, ids),
@@ -182,8 +183,8 @@ defmodule Api.Conversations do
           :ok
           | {:error, :invalid_id | :not_found | :not_group_creator | :cannot_remove_self}
   def remove_member(%User{} = creator, id, user_id) do
-    with {:ok, uuid} <- cast_id(id),
-         {:ok, target_id} <- cast_id(user_id),
+    with {:ok, uuid} <- UUID.cast(id),
+         {:ok, target_id} <- UUID.cast(user_id),
          {:ok, conversation} <- load_manageable(creator, uuid),
          :ok <- refute_self_removal(creator, target_id) do
       deactivate(conversation.id, target_id)
@@ -201,7 +202,7 @@ defmodule Api.Conversations do
   @spec leave(User.t(), term()) ::
           :ok | {:error, :invalid_id | :not_found | :last_member}
   def leave(%User{} = user, id) do
-    with {:ok, uuid} <- cast_id(id) do
+    with {:ok, uuid} <- UUID.cast(id) do
       commit_leave(uuid, user)
     end
   end
@@ -218,8 +219,8 @@ defmodule Api.Conversations do
   def participant?(conversation_id, %User{id: id}), do: participant?(conversation_id, id)
 
   def participant?(conversation_id, user_id) do
-    with {:ok, cid} <- cast_id(conversation_id),
-         {:ok, uid} <- cast_id(user_id) do
+    with {:ok, cid} <- UUID.cast(conversation_id),
+         {:ok, uid} <- UUID.cast(user_id) do
       Repo.exists?(active_member_row(cid, uid))
     else
       {:error, :invalid_id} -> false
@@ -239,7 +240,7 @@ defmodule Api.Conversations do
   def participant_ids(%Conversation{id: id}), do: participant_ids(id)
 
   def participant_ids(conversation_id) do
-    case cast_id(conversation_id) do
+    case UUID.cast(conversation_id) do
       {:ok, cid} ->
         Repo.all(
           from p in Participant,
@@ -273,8 +274,8 @@ defmodule Api.Conversations do
   def read_access(conversation_id, %User{id: id}), do: read_access(conversation_id, id)
 
   def read_access(conversation_id, user_id) do
-    with {:ok, cid} <- cast_id(conversation_id),
-         {:ok, uid} <- cast_id(user_id) do
+    with {:ok, cid} <- UUID.cast(conversation_id),
+         {:ok, uid} <- UUID.cast(user_id) do
       case Repo.one(member_row(cid, uid)) do
         nil -> {:error, :not_found}
         %{left_at: nil} -> {:ok, :active}
@@ -382,7 +383,7 @@ defmodule Api.Conversations do
           {:ok, %{conversation_id: Ecto.UUID.t(), last_read_at: DateTime.t()}}
           | {:error, :invalid_id | :not_found | :not_a_participant}
   def mark_read(%User{} = caller, id) do
-    with {:ok, uuid} <- cast_id(id) do
+    with {:ok, uuid} <- UUID.cast(id) do
       case read_access(uuid, caller) do
         {:ok, :active} -> write_marker(uuid, caller.id)
         {:ok, {:until, _left_at}} -> {:error, :not_a_participant}
@@ -429,11 +430,6 @@ defmodule Api.Conversations do
       as: :counterpart
     )
     |> join(:left_lateral, [], mc in subquery(member_count_query()), on: true, as: :members)
-    # `COALESCE(..., '-infinity')` rather than a leading `lm.id IS NULL` term:
-    # both sort a never-used conversation last, because Postgres orders NULLs
-    # first under DESC and `-infinity` last, but only the collapsed form is a
-    # single expression the keyset cursor can bound on. Three components, and
-    # the last of them unique, is what makes the bound total.
     |> order_by([conversation: c, last_message: lm],
       desc: fragment("COALESCE(?.inserted_at, '-infinity')", lm),
       desc: c.inserted_at,
@@ -912,11 +908,4 @@ defmodule Api.Conversations do
 
   defp member_error(changeset, message),
     do: Changeset.add_error(changeset, :member_ids, message)
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :invalid_id}
-    end
-  end
 end

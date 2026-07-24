@@ -22,6 +22,7 @@ defmodule Api do
       Cursor,
       Health,
       Repo,
-      Schema
+      Schema,
+      UUID
     ]
 end

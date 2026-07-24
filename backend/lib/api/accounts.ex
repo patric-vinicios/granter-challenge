@@ -13,6 +13,7 @@ defmodule Api.Accounts do
 
   alias Api.Accounts.User
   alias Api.Repo
+  alias Api.UUID
 
   @doc """
   Creates an account from registration params.
@@ -61,9 +62,9 @@ defmodule Api.Accounts do
   """
   @spec get_user(term()) :: User.t() | nil
   def get_user(id) when is_binary(id) do
-    case Ecto.UUID.cast(id) do
+    case UUID.cast(id) do
       {:ok, uuid} -> Repo.get(User, uuid)
-      :error -> nil
+      {:error, :invalid_id} -> nil
     end
   end
 
@@ -92,12 +93,12 @@ defmodule Api.Accounts do
   """
   @spec update_last_seen(term(), term()) :: :ok
   def update_last_seen(user_id, %DateTime{} = at) when is_binary(user_id) do
-    case Ecto.UUID.cast(user_id) do
+    case UUID.cast(user_id) do
       {:ok, uuid} ->
         Repo.update_all(from(u in User, where: u.id == ^uuid), set: [last_seen_at: at])
         :ok
 
-      :error ->
+      {:error, :invalid_id} ->
         :ok
     end
   end
