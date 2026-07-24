@@ -691,22 +691,18 @@ defmodule Api.ConversationsTest do
       assert entry.last_message.inserted_at == newest.inserted_at
     end
 
-    test "breaks a timestamp tie on message id" do
+    test "breaks a timestamp tie by insertion sequence, not by id" do
       caller = insert(:user)
       other = insert(:user)
       conv = private_pair(caller, other)
       tie = ago(30)
 
-      ids =
-        for _ <- 1..2 do
-          insert(:message, conversation: conv, sender: other, inserted_at: tie).id
-        end
-
-      expected = Enum.max(ids)
+      _first = insert(:message, conversation: conv, sender: other, inserted_at: tie)
+      last = insert(:message, conversation: conv, sender: other, inserted_at: tie)
 
       for _ <- 1..3 do
         [entry] = inbox(caller)
-        assert entry.last_message.id == expected
+        assert entry.last_message.id == last.id
       end
     end
 

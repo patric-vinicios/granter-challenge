@@ -46,7 +46,8 @@ defmodule ApiWeb.Conversations.MessageController do
   @spec search(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def search(conn, %{"id" => id} = params) do
     with {:ok, %{q: q}} <- validate_query(params),
-         {:ok, result} <- Messages.search_messages(conn.assigns.current_user, id, q) do
+         {:ok, page_params} <- validate_page(params),
+         {:ok, result} <- Messages.search_messages(conn.assigns.current_user, id, q, page_params) do
       render(conn, :search, result)
     end
   end

@@ -71,7 +71,8 @@ defmodule ApiWeb.Conversations.MessageSearchControllerTest do
       body = conn |> search(thread.id, "cronograma") |> json_response(200)
 
       assert body["total_matches"] == 2
-      assert body["truncated"] == false
+      assert body["has_more"] == false
+      assert body["next_cursor"] == nil
 
       [first | _] = body["messages"]
       assert first["id"] == newest.id
@@ -80,14 +81,24 @@ defmodule ApiWeb.Conversations.MessageSearchControllerTest do
       assert first["match_offsets"] == [%{"start" => 0, "length" => 10}]
     end
 
-    test "returns 100 with truncated for a broad term", %{conn: conn, ana: ana, thread: thread} do
+    test "paginates a broad term beyond the first page", %{conn: conn, ana: ana, thread: thread} do
       bulk(thread, ana, "cronograma", 101)
 
       body = conn |> search(thread.id, "cronograma") |> json_response(200)
 
-      assert body["truncated"] == true
-      assert Enum.count(body["messages"]) == 100
-      assert body["total_matches"] == 100
+      assert body["total_matches"] == 101
+      assert Enum.count(body["messages"]) == 30
+      assert body["has_more"] == true
+      assert body["next_cursor"]
+
+      page2 =
+        get(conn, ~p"/api/conversations/#{thread.id}/messages/search", %{
+          "q" => "cronograma",
+          "before" => body["next_cursor"]
+        })
+        |> json_response(200)
+
+      assert List.first(page2["messages"])["position"] == 31
     end
 
     test "matches familia against Família", %{conn: conn, ana: ana, thread: thread} do

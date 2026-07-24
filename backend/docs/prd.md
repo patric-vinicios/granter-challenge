@@ -429,8 +429,8 @@ All three audiences interact with the same contract from different distances, an
 - `GET /api/conversations/:id/messages/search?q=<term>` searching the messages of one conversation, restricted to participants by the same predicate as F06
 - Full-text search over a generated `search_vector` column (`to_tsvector('portuguese', body)`) with a GIN index; the query uses `websearch_to_tsquery('portuguese', q)` so multi-word and quoted phrases behave as users expect
 - Query length: minimum 2 characters after trimming, maximum 100 characters; queries outside that range are rejected rather than executed
-- Results are capped at 100 matches ordered by `inserted_at` descending, and each hit carries message id, conversation id, sender id, full body, `inserted_at`, and `position` (1-based index within the result set)
-- The response includes `total_matches` (exact when at or below 100, otherwise reported as 100 with `truncated: true`), so the client can render the "1 / N" counter and previous/next navigation shown in the reference screen
+- Results are paginated by the same `(inserted_at, seq)` keyset history uses (`limit` default 30, maximum 100; `before` cursor), ordered newest-first, and each hit carries message id, conversation id, sender id, full body, `inserted_at`, and `position` (global 1-based index, 1 = newest, contiguous across pages)
+- The response includes `total_matches` (the true count across every page), `next_cursor` and `has_more`, so the client can render the "position / N" counter and page through previous/next matches even when a term matches thousands of messages
 - Each hit also carries `match_offsets`, a list of `{start, length}` character positions of the matched terms within the body, so the client can highlight without re-running the match
 - Because the hit carries the message id, the client can page history around it via the F06 cursor and scroll the match into view
 - `GET /api/conversations?q=<term>` filters the conversation list (F08) by display title — counterpart display name or `@username` for private conversations, group name for groups — using a case-insensitive, accent-insensitive `ILIKE` match with `unaccent`; it returns the same entry shape as the unfiltered list
@@ -721,7 +721,7 @@ graph TD
 - [ ] Searching a conversation for a term present in 3 messages returns those 3 messages with `total_matches: 3`
 - [ ] Results are ordered by `inserted_at` descending and each hit carries a 1-based `position` from 1 to `total_matches`
 - [ ] Each hit carries the message id and `match_offsets` whose start/length values correctly delimit the matched term in the body
-- [ ] A search matching more than 100 messages returns 100 hits with `truncated: true`
+- [ ] A search matching more than one page returns the first page with `has_more: true`, `next_cursor` set and the true `total_matches`, and paging with `before` reaches every match with contiguous positions
 - [ ] Search is accent- and case-insensitive: querying `familia` matches a message containing `Família`
 - [ ] A query shorter than 2 characters returns 422 and executes no database scan
 - [ ] Searching a conversation the caller does not participate in returns 404 with no message content

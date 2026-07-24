@@ -45,12 +45,12 @@ defmodule Api.MessagesVolumeTest do
       test "finds a needle in the middle of #{scale} messages", %{caller: caller} do
         conv = Volume.seed_history(caller, @scale, needle_at: div(@scale, 2))
 
-        # One query authorizes the read (participation), one runs the GIN search;
-        # the count is fixed, never a function of history size.
+        # Fixed query count regardless of history size: authorize the read, count
+        # the total, fetch the page. Never a function of how big the history is.
         assert count_queries(fn ->
                  Messages.search_messages(caller, conv, Volume.needle_word())
                end) ==
-                 2
+                 3
 
         {ms, {:ok, page}} =
           measure(fn -> Messages.search_messages(caller, conv, Volume.needle_word()) end)
@@ -90,25 +90,29 @@ defmodule Api.MessagesVolumeTest do
         conv = Volume.seed_history(caller, 10_000, matches: @k)
 
         {ms, {:ok, page}} =
-          measure(fn -> Messages.search_messages(caller, conv, Volume.match_word()) end)
+          measure(fn ->
+            Messages.search_messages(caller, conv, Volume.match_word(), %{limit: 100})
+          end)
 
         report("result size", @k, ms, length(page.messages))
 
         assert page.total_matches == @k
-        assert page.truncated == false
-        assert length(page.messages) == @k
+        assert page.has_more == false
+        assert Enum.count(page.messages) == @k
         assert Enum.map(page.messages, & &1.position) == Enum.to_list(1..@k)
       end
     end
 
-    test "caps at 100 and flags truncated when more than 100 match", %{caller: caller} do
-      conv = Volume.seed_history(caller, 10_000, matches: 250)
+    test "pages through 1000 matches, reporting the true total across pages", %{caller: caller} do
+      conv = Volume.seed_history(caller, 100_000, matches: 1_000)
 
-      {:ok, page} = Messages.search_messages(caller, conv, Volume.match_word())
+      {ms, hits} = measure(fn -> walk_search(caller, conv, Volume.match_word(), 100) end)
+      report("search 1000", 1_000, ms, length(hits))
 
-      assert page.total_matches == 100
-      assert page.truncated == true
-      assert Enum.count(page.messages) == 100
+      assert Enum.count(hits) == 1_000
+      assert Enum.count(Enum.uniq(Enum.map(hits, & &1.message.id))) == 1_000
+      # positions are global and contiguous from the newest match to the oldest
+      assert Enum.map(hits, & &1.position) == Enum.to_list(1..1_000)
     end
   end
 
@@ -196,5 +200,21 @@ defmodule Api.MessagesVolumeTest do
   defp ascending?(messages) do
     times = Enum.map(messages, & &1.inserted_at)
     times == Enum.sort(times, {:asc, DateTime})
+  end
+
+  # Pages search newest-first via the `before` cursor, collecting every hit in
+  # order across pages.
+  defp walk_search(caller, conv_id, term, limit),
+    do: walk_search(caller, conv_id, term, limit, nil, [])
+
+  defp walk_search(caller, conv_id, term, limit, cursor, acc) do
+    {:ok, page} = Messages.search_messages(caller, conv_id, term, %{limit: limit, before: cursor})
+    acc = acc ++ page.messages
+
+    if page.has_more and page.next_cursor do
+      walk_search(caller, conv_id, term, limit, page.next_cursor, acc)
+    else
+      acc
+    end
   end
 end

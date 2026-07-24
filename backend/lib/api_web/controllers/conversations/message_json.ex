@@ -38,11 +38,17 @@ defmodule ApiWeb.Conversations.MessageJSON do
   a search result with the same message type it reads everywhere else.
   """
   @spec search(Api.Messages.search_page()) :: map()
-  def search(%{messages: messages, total_matches: total_matches, truncated: truncated}) do
+  def search(%{
+        messages: messages,
+        total_matches: total_matches,
+        next_cursor: next_cursor,
+        has_more: has_more
+      }) do
     %{
       messages: Enum.map(messages, &hit/1),
       total_matches: total_matches,
-      truncated: truncated
+      next_cursor: next_cursor,
+      has_more: has_more
     }
   end
 
