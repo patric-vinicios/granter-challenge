@@ -34,3 +34,12 @@ export function getCurrentUser(token: string, signal?: AbortSignal): Promise<Aut
     decode: decodeCurrentUser,
   })
 }
+
+export function logout(token: string, signal?: AbortSignal): Promise<void> {
+  return requestJson('/auth/session', {
+    method: 'DELETE',
+    token,
+    signal,
+    decode: () => undefined,
+  })
+}

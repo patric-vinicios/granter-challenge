@@ -18,7 +18,8 @@ describe('search.api', () => {
           },
         ],
         total_matches: 1,
-        truncated: false,
+        next_cursor: null,
+        has_more: false,
       }),
     )
     vi.stubGlobal('fetch', fetchMock)
@@ -26,7 +27,7 @@ describe('search.api', () => {
     const result = await searchConversationMessages('conversation-ana', 'cronograma final', 'jwt-token')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:4000/api/conversations/conversation-ana/messages/search?q=cronograma+final',
+      'http://localhost:4000/api/conversations/conversation-ana/messages/search?q=cronograma+final&limit=100',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({

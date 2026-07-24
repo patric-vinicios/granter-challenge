@@ -1,12 +1,12 @@
-import type { ContactUser } from '@/features/contacts/contacts.contracts'
 import type {
   ConversationRecord,
   InboxConversationSummary,
 } from '@/features/conversations/conversations.contracts'
-import type { Conversation, Message } from '@/features/conversations/conversations.mock'
-import type { PersistedMessage } from '@/features/messaging/messaging.contracts'
 import type { ConversationSearchHit } from '@/features/search/search.contracts'
 import { formatMessageTime } from '@/shared/date/formatMessageTime'
+import type { ChatConversation, ChatMessage } from '@/types/chat'
+import type { PersistedMessage } from '@/types/message'
+import type { ChatUser } from '@/types/user'
 
 interface ConversationHistory {
   messages: readonly PersistedMessage[]
@@ -16,13 +16,13 @@ export interface InboxPresenterContext {
   currentUserId: string | null
   histories: Readonly<Record<string, ConversationHistory>>
   initialsFor: (name: string) => string
-  presenceSubtitleFor: (user: ContactUser) => string
+  presenceSubtitleFor: (user: ChatUser) => string
 }
 
 export function toConversationItem(
   conversation: ConversationRecord,
   context: InboxPresenterContext,
-): Conversation {
+): ChatConversation {
   const messages =
     context.histories[conversation.id]?.messages.map((message) =>
       toMessageItem(message, context.currentUserId),
@@ -56,7 +56,7 @@ export function toConversationItem(
 export function toInboxConversationItem(
   conversation: InboxConversationSummary,
   context: InboxPresenterContext,
-): Conversation & { unreadLabel?: string } {
+): ChatConversation & { unreadLabel?: string } {
   const messages =
     context.histories[conversation.id]?.messages.map((message) =>
       toMessageItem(message, context.currentUserId),
@@ -106,7 +106,7 @@ export function unreadLabel(conversation: InboxConversationSummary): string | un
 export function toMessageItem(
   message: PersistedMessage,
   currentUserId: string | null,
-): Message {
+): ChatMessage {
   return {
     id: message.id,
     side: message.sender.id === currentUserId ? 'out' : 'in',
@@ -118,10 +118,10 @@ export function toMessageItem(
 }
 
 export function withActiveSearchHit(
-  conversation: Conversation,
+  conversation: ChatConversation,
   hit: ConversationSearchHit | null,
   currentUserId: string | null,
-): Conversation {
+): ChatConversation {
   if (!hit || hit.message.conversationId !== conversation.id) {
     return conversation
   }

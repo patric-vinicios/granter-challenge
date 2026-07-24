@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import type { ConversationUpdated } from '@/types/realtime'
+
 import {
   addGroupMembers,
   createGroupConversation,
@@ -12,7 +14,6 @@ import {
   removeGroupMember,
 } from './conversations.api'
 import type { ConversationRecord, InboxConversationSummary } from './conversations.contracts'
-import type { ConversationUpdated } from '@/features/messaging/messaging.contracts'
 
 type LoadState = 'idle' | 'loading' | 'success' | 'error'
 

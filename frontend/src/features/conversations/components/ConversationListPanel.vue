@@ -99,9 +99,9 @@
 import { LogOut, Search, UserRound, UserRoundPlus } from '@lucide/vue'
 import { computed } from 'vue'
 
-import type { Conversation } from '../conversations.mock'
+import type { ChatConversation } from '@/types/chat'
 
-type ConversationListItem = Conversation & {
+type ConversationListItem = ChatConversation & {
   unreadLabel?: string
 }
 

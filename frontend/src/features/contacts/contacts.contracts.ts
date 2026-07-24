@@ -1,15 +1,8 @@
-export interface ContactUser {
-  id: string
-  username: string
-  name: string
-  lastSeenAt: string | null
-  online: boolean
-}
+import type { Contact } from '@/types/contact'
+import type { ChatUser } from '@/types/user'
 
-export interface Contact {
-  id: string
-  user: ContactUser
-}
+export type ContactUser = ChatUser
+export type { Contact } from '@/types/contact'
 
 export interface ContactGroup {
   initial: string

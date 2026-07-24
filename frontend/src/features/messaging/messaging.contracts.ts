@@ -1,12 +1,9 @@
-import type { ContactUser } from '@/features/contacts/contacts.contracts'
+import type { PersistedMessage } from '@/types/message'
+import type { ConversationUpdated } from '@/types/realtime'
+import type { ChatUser } from '@/types/user'
 
-export interface PersistedMessage {
-  id: string
-  conversationId: string
-  body: string
-  insertedAt: string
-  sender: ContactUser
-}
+export type { PersistedMessage } from '@/types/message'
+export type { ConversationUpdated } from '@/types/realtime'
 
 export interface MessageHistoryPage {
   messages: PersistedMessage[]
@@ -26,16 +23,6 @@ export interface MessageSendError {
   clientRef: string | null
   fields?: Record<string, string[]>
   retryAfterMs?: number
-}
-
-export interface ConversationUpdated {
-  conversationId: string
-  lastMessage: {
-    preview: string
-    senderId: string
-    insertedAt: string
-  }
-  unread: boolean
 }
 
 export interface MembershipRevoked {
@@ -117,7 +104,7 @@ export function decodeMembershipRevoked(payload: unknown): MembershipRevoked {
   }
 }
 
-function decodeUser(payload: unknown): ContactUser {
+function decodeUser(payload: unknown): ChatUser {
   const data = requireRecord(payload)
 
   return {

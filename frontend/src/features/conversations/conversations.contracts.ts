@@ -1,10 +1,10 @@
-import type { ContactUser } from '@/features/contacts/contacts.contracts'
+import type { ChatUser } from '@/types/user'
 
 export interface PrivateConversation {
   id: string
   type: 'private'
   lastReadAt: string | null
-  counterpart: ContactUser
+  counterpart: ChatUser
 }
 
 export interface GroupConversation {
@@ -14,7 +14,7 @@ export interface GroupConversation {
   creatorId: string
   memberCount: number
   lastReadAt: string | null
-  members: ContactUser[]
+  members: ChatUser[]
 }
 
 export type ConversationRecord = PrivateConversation | GroupConversation
@@ -30,7 +30,7 @@ export interface InboxConversationSummary {
   id: string
   type: 'private' | 'group'
   title: string
-  counterpart: ContactUser | null
+  counterpart: ChatUser | null
   memberCount: number | null
   lastMessage: InboxLastMessage | null
   unreadCount: number
@@ -105,7 +105,7 @@ function decodeConversationRecord(payload: unknown): ConversationRecord {
   throw new Error('Unsupported conversation type')
 }
 
-function decodeUser(payload: unknown): ContactUser {
+function decodeUser(payload: unknown): ChatUser {
   const data = requireRecord(payload)
 
   return {

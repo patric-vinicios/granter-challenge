@@ -1,9 +1,8 @@
-import { decodePersistedMessage, type PersistedMessage } from '@/features/messaging/messaging.contracts'
+import { decodePersistedMessage } from '@/features/messaging/messaging.contracts'
+import type { PersistedMessage } from '@/types/message'
+import type { SearchMatchOffset } from '@/types/search'
 
-export interface SearchMatchOffset {
-  start: number
-  length: number
-}
+export type { SearchMatchOffset } from '@/types/search'
 
 export interface ConversationSearchHit {
   message: PersistedMessage
@@ -28,7 +27,9 @@ export function decodeConversationSearchResult(payload: unknown): ConversationSe
   return {
     matches: messages.map(decodeConversationSearchHit),
     totalMatches: requireNumber(data.total_matches),
-    truncated: requireBoolean(data.truncated),
+    // The backend paginates search; requesting the max page (100), `has_more`
+    // means more matches exist than are shown — the truncated indicator.
+    truncated: requireBoolean(data.has_more),
   }
 }
 

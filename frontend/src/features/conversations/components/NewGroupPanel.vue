@@ -130,8 +130,8 @@
 import { ArrowLeft, Check, Search, UsersRound, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
-import type { Contact } from '@/features/contacts/contacts.contracts'
 import { contactInitials } from '@/features/contacts/contacts.store'
+import type { Contact } from '@/types/contact'
 
 const props = defineProps<{
   contacts: Contact[]

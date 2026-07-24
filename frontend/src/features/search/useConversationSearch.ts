@@ -1,9 +1,11 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 
+import type { ConversationSearchStatus } from '@/types/search'
+
 import { searchConversationMessages } from './search.api'
 import type { ConversationSearchHit, ConversationSearchResult } from './search.contracts'
 
-export type ConversationSearchStatus = 'idle' | 'loading' | 'validation' | 'success' | 'error'
+export type { ConversationSearchStatus } from '@/types/search'
 
 interface UseConversationSearchOptions {
   token: Ref<string | null>
