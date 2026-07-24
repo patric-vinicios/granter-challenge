@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-- **Main Stack**: Vue 3 (Composition API + `<script setup lang="ts">`), Vite, TypeScript 6.x, Pinia, Vue Router 4, Tailwind CSS 4, Phoenix WebSocket client.
+- **Main Stack**: Vue 3 (Composition API + `<script setup lang="ts">`), Vite, TypeScript 6.x, Pinia, Vue Router 5.2, Tailwind CSS 4, Phoenix WebSocket client.
 - **Architecture**: Vertical feature slices in `src/features/`, shared utilities in `src/shared/`. Views orchestrate, components focus on presentation.
 - **Goal**: Implement chat features (auth, contacts, conversations, realtime messages) while respecting the Elixir backend contracts.
 - **Key Rules**:

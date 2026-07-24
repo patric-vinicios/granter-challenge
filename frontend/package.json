@@ -10,10 +10,13 @@
     "lint:fix": "eslint . --fix --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "test:run": "./scripts/tests",
     "test:changed": "vitest related --run",
     "typecheck": "./scripts/tsc",
-    "verify": "./scripts/run-gate"
+    "verify": "./scripts/run-gate",
+    "verify:all": "./scripts/run-gate && playwright test"
   },
   "dependencies": {
     "@lucide/vue": "^1.25.0",
@@ -25,11 +28,13 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/user-event": "^14.6.1",
     "@testing-library/vue": "^8.1.0",
     "@types/node": "^24.13.2",
     "@types/phoenix": "^1.6.7",
     "@vitejs/plugin-vue": "^6.0.7",
+    "@vitest/coverage-v8": "^4.1.10",
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",

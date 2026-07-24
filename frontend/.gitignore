@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
+playwright-report
+test-results
 *.local
 
 # Env local (o .env.example fica versionado)
@@ -27,3 +30,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.agents

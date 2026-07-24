@@ -102,10 +102,13 @@ git diff --check
 | --- | --- |
 | `npm run dev` | Start the Vite development server with HMR |
 | `npm run test` | Run Vitest in watch mode |
+| `npm run test:coverage` | Run Vitest once and enforce the global coverage floor |
+| `npm run test:e2e` | Run Playwright browser tests in desktop and mobile Chromium |
 | `npm run test:changed -- <files>` | Run tests related to the provided files |
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Serve the production build locally |
 | `npm run verify` | Compatibility wrapper for `./scripts/run-gate` |
+| `npm run verify:all` | Run the full gate followed by desktop/mobile Playwright tests |
 
 ## Project Structure
 
@@ -168,6 +171,23 @@ Testing conventions:
 - Use a fresh Pinia and memory router per test.
 - Avoid large snapshots and Tailwind class selectors.
 - Keep tests close to the behavior they protect.
+- Split broad route-level workflows by feature and share only transport fixtures and render helpers.
+- Keep browser-dependent behavior such as focus management in the Playwright suite.
+
+The full gate runs Vitest with coverage and enforces the current baseline:
+
+- 90% statements
+- 84% branches
+- 92% functions
+- 90% lines
+
+The HTML report is generated in `coverage/`. Before the first browser run, install the Chromium
+binary managed by Playwright:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
 
 For Vue-specific engineering guidance, read
 [`docs/ai-harness/vue-guidelines.md`](docs/ai-harness/vue-guidelines.md).
