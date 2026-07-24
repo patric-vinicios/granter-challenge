@@ -82,6 +82,71 @@ describe('auth store', () => {
     expect(window.localStorage.getItem('granter.session')).toBeNull()
   })
 
+  it('revokes the token server-side on a user-initiated logout', async () => {
+    window.localStorage.setItem(
+      'granter.session',
+      JSON.stringify({
+        user: { id: 'user-1', username: 'anabeatriz', name: 'Ana Beatriz', lastSeenAt: null },
+        token: 'jwt-token',
+        expiresAt: '2026-07-30T12:00:00Z',
+      }),
+    )
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/me')) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: { id: 'user-1', username: 'anabeatriz', name: 'Ana Beatriz', last_seen_at: null },
+          }),
+        )
+      }
+
+      return Promise.resolve(new Response(null, { status: 204 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    await auth.bootstrap()
+
+    auth.logout({ revoke: true })
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/auth/session',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+    expect(auth.isAuthenticated).toBe(false)
+    expect(window.localStorage.getItem('granter.session')).toBeNull()
+  })
+
+  it('does not call the server on a forced logout without revoke', async () => {
+    window.localStorage.setItem(
+      'granter.session',
+      JSON.stringify({
+        user: { id: 'user-1', username: 'anabeatriz', name: 'Ana Beatriz', lastSeenAt: null },
+        token: 'jwt-token',
+        expiresAt: '2026-07-30T12:00:00Z',
+      }),
+    )
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse(200, {
+          user: { id: 'user-1', username: 'anabeatriz', name: 'Ana Beatriz', last_seen_at: null },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = useAuthStore()
+    await auth.bootstrap()
+    fetchMock.mockClear()
+
+    auth.logout()
+    await Promise.resolve()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(auth.isAuthenticated).toBe(false)
+  })
+
   it('exposes the complete bootstrap lifecycle through Pinia state', () => {
     const auth = useAuthStore()
 

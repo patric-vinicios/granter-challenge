@@ -115,7 +115,7 @@ import { useAddContactDialog } from '@/features/contacts/useAddContactDialog'
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
 import GroupDetailsPanel from '@/features/conversations/components/GroupDetailsPanel.vue'
 import NewGroupPanel from '@/features/conversations/components/NewGroupPanel.vue'
-import { type Conversation, conversations as mockConversations } from '@/features/conversations/conversations.mock'
+import { conversations as mockConversations } from '@/features/conversations/conversations.mock'
 import { conversationErrorMessage } from '@/features/conversations/conversations.error'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import { useCreateGroup } from '@/features/conversations/useCreateGroup'
@@ -129,6 +129,7 @@ import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { useConversationPresence } from '@/features/presence/useConversationPresence'
 import { useConversationSearchPanel } from '@/features/search/useConversationSearchPanel'
 import { useAuthStore } from '@/stores/auth.store'
+import type { ChatConversation } from '@/types/chat'
 import {
   toConversationItem,
   toInboxConversationItem,
@@ -189,7 +190,7 @@ const {
   applyState: applyPresenceState,
   subtitleFor: presenceSubtitle,
 } = useConversationPresence()
-const emptyConversation: Conversation = {
+const emptyConversation: ChatConversation = {
   id: 'empty',
   type: 'private',
   initials: '--',
@@ -338,7 +339,7 @@ function logout() {
   conversationsStore.reset()
   messagingStore.reset()
   messagesStore.reset()
-  authStore.logout()
+  authStore.logout({ revoke: true })
   router.push('/')
 }
 

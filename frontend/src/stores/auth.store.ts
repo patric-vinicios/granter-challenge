@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { getCurrentUser, login as loginRequest, register as registerRequest } from '@/features/auth/auth.api'
+import {
+  getCurrentUser,
+  login as loginRequest,
+  logout as logoutRequest,
+  register as registerRequest,
+} from '@/features/auth/auth.api'
 import { clearSession, readSession, writeSession } from '@/features/auth/auth.storage'
 import { type AuthSession, type AuthUser, type LoginRequest, type RegisterRequest } from '@/features/auth/auth.contracts'
 import { isApiError, type ApiError } from '@/shared/api/errors'
@@ -69,7 +74,15 @@ export const useAuthStore = defineStore('auth', () => {
     didBootstrap.value = true
   }
 
-  function logout(): void {
+  function logout(options: { revoke?: boolean } = {}): void {
+    const currentToken = token.value
+
+    // Revoke the token server-side only on a user-initiated logout; the forced
+    // paths (expired/invalid token) already hold a token the server rejects.
+    if (options.revoke && currentToken) {
+      void logoutRequest(currentToken).catch(() => {})
+    }
+
     user.value = null
     token.value = null
     expiresAt.value = null
