@@ -82,6 +82,29 @@ describe('auth store', () => {
     expect(window.localStorage.getItem('granter.session')).toBeNull()
   })
 
+  it('keeps the stored session available during a transient bootstrap failure', async () => {
+    const storedSession = {
+      user: {
+        id: 'user-1',
+        username: 'anabeatriz',
+        name: 'Ana Beatriz',
+        lastSeenAt: null,
+      },
+      token: 'jwt-token',
+      expiresAt: '2026-07-30T12:00:00Z',
+    }
+    window.localStorage.setItem('granter.session', JSON.stringify(storedSession))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+
+    const auth = useAuthStore()
+    await auth.bootstrap()
+
+    expect(auth.isAuthenticated).toBe(true)
+    expect(auth.user?.name).toBe('Ana Beatriz')
+    expect(auth.didBootstrap).toBe(true)
+    expect(auth.isBootstrapping).toBe(false)
+  })
+
   it('revokes the token server-side on a user-initiated logout', async () => {
     window.localStorage.setItem(
       'granter.session',
