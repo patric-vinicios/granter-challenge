@@ -81,6 +81,12 @@ describe('auth store', () => {
     expect(auth.isAuthenticated).toBe(false)
     expect(window.localStorage.getItem('granter.session')).toBeNull()
   })
+
+  it('exposes the complete bootstrap lifecycle through Pinia state', () => {
+    const auth = useAuthStore()
+
+    expect(auth.$state).toHaveProperty('didBootstrap')
+  })
 })
 
 function jsonResponse(status: number, body: unknown): Response {
