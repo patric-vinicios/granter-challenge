@@ -8,8 +8,9 @@ import {
   decodeMessageAck,
   decodeMessageSendError,
   decodePersistedMessage,
+  type ConversationUpdated,
 } from './messaging.contracts'
-import { useMessagingStore } from './messaging.store'
+import { useMessagesStore, useMessagingStore } from './messaging.store'
 
 interface UseRealtimeMessagingOptions {
   token: Ref<string | null>
@@ -18,6 +19,9 @@ interface UseRealtimeMessagingOptions {
   socketFactory?: RealtimeSocketFactory
   onPresenceState?: (payload: unknown) => void
   onPresenceDiff?: (payload: unknown) => void
+  onConversationUpdated?: (update: ConversationUpdated) => void
+  onMembershipRevoked?: (conversationId: string) => void
+  onReconnect?: () => void
 }
 
 export function useRealtimeMessaging({
@@ -27,8 +31,12 @@ export function useRealtimeMessaging({
   socketFactory = createRealtimeSocket,
   onPresenceState,
   onPresenceDiff,
+  onConversationUpdated,
+  onMembershipRevoked,
+  onReconnect,
 }: UseRealtimeMessagingOptions) {
   const store = useMessagingStore()
+  const messagesStore = useMessagesStore()
   const socket = ref<RealtimeSocket | null>(null)
   const userChannel = ref<RealtimeChannel | null>(null)
   const userChannelHandlers = ref<Array<{ event: string; ref: number }>>([])
@@ -53,6 +61,26 @@ export function useRealtimeMessaging({
       const nextSocket = socketFactory(currentToken)
       socket.value = nextSocket
       status.value = 'connecting'
+      let didOpen = false
+      const socketStateRefs = [
+        nextSocket.onOpen(() => {
+          status.value = 'connected'
+
+          if (didOpen) {
+            onReconnect?.()
+          }
+
+          didOpen = true
+        }),
+        nextSocket.onClose(() => {
+          status.value = 'error'
+          error.value = 'Não foi possível manter a conexão em tempo real.'
+        }),
+        nextSocket.onError(() => {
+          status.value = 'error'
+          error.value = 'Não foi possível manter a conexão em tempo real.'
+        }),
+      ]
       nextSocket.connect()
       userChannel.value = nextSocket.channel(`user:${currentUserId}`)
       userChannelHandlers.value = [
@@ -69,7 +97,10 @@ export function useRealtimeMessaging({
       })
 
       joinConversation(selectedConversationId.value)
-      onCleanup(disconnect)
+      onCleanup(() => {
+        nextSocket.off(socketStateRefs)
+        disconnect()
+      })
     },
     { immediate: true },
   )
@@ -131,6 +162,7 @@ export function useRealtimeMessaging({
         ref: channel.on('conversation:membership_revoked', (payload) => {
           const revoked = decodeMembershipRevoked(payload)
           store.revokeConversation(revoked.conversationId)
+          onMembershipRevoked?.(revoked.conversationId)
           error.value = 'Voce saiu desta conversa.'
           leaveConversation()
         }),
@@ -200,9 +232,16 @@ export function useRealtimeMessaging({
 
   function handleConversationUpdated(payload: unknown): void {
     const currentUserId = userId.value
+    const update = decodeConversationUpdated(payload)
 
     if (currentUserId) {
-      store.applyConversationUpdate(decodeConversationUpdated(payload), currentUserId)
+      store.applyConversationUpdate(update, currentUserId)
+    }
+
+    onConversationUpdated?.(update)
+
+    if (token.value && update.conversationId === selectedConversationId.value) {
+      void messagesStore.loadInitial(update.conversationId, token.value, undefined, { force: true, silent: true })
     }
   }
 

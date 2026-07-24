@@ -10,6 +10,12 @@ interface HttpRequestOptions<T> {
   decode: (payload: unknown) => T
 }
 
+let terminalAuthFailureHandler: (() => void) | null = null
+
+export function setTerminalAuthFailureHandler(handler: (() => void) | null): void {
+  terminalAuthFailureHandler = handler
+}
+
 export async function requestJson<T>(
   path: string,
   { method = 'GET', body, token, signal, decode }: HttpRequestOptions<T>,
@@ -23,7 +29,11 @@ export async function requestJson<T>(
       headers: buildHeaders(body, token),
       body: body === undefined ? undefined : JSON.stringify(body),
     })
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
+
     throw networkError()
   }
 
@@ -31,6 +41,10 @@ export async function requestJson<T>(
 
   if (!response.ok) {
     const apiError = decodeApiError(payload)
+    if (token && response.status === 401 && (apiError?.code === 'token_expired' || apiError?.code === 'unauthenticated')) {
+      terminalAuthFailureHandler?.()
+    }
+
     throw new ApiError(
       apiError ?? { code: 'invalid_response', detail: 'A resposta de erro do servidor e invalida.' },
       response.status,
@@ -70,4 +84,8 @@ async function readJson(response: Response): Promise<unknown> {
   } catch {
     return null
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
 }

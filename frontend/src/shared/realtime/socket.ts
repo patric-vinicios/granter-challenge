@@ -17,6 +17,10 @@ export interface RealtimeChannel {
 export interface RealtimeSocket {
   connect(): void
   disconnect(): void
+  onOpen(callback: () => void): string
+  onClose(callback: () => void): string
+  onError(callback: (reason: unknown) => void): string
+  off(refs: string | string[]): void
   channel(topic: string, payload?: Record<string, unknown>): RealtimeChannel
 }
 
@@ -28,6 +32,10 @@ export const createRealtimeSocket: RealtimeSocketFactory = (token: string) => {
   return {
     connect: () => socket.connect(),
     disconnect: () => socket.disconnect(),
+    onOpen: (callback) => socket.onOpen(callback),
+    onClose: (callback) => socket.onClose(callback),
+    onError: (callback) => socket.onError(callback),
+    off: (refs) => socket.off(Array.isArray(refs) ? refs : [refs]),
     channel: (topic, payload = {}) => wrapChannel(socket.channel(topic, payload)),
   }
 }

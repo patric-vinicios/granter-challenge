@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import {
   addGroupMembers,
   createGroupConversation,
+  getConversation,
   leaveGroup,
   listInboxConversations,
   markConversationRead,
@@ -11,6 +12,7 @@ import {
   removeGroupMember,
 } from './conversations.api'
 import type { ConversationRecord, InboxConversationSummary } from './conversations.contracts'
+import type { ConversationUpdated } from '@/features/messaging/messaging.contracts'
 
 type LoadState = 'idle' | 'loading' | 'success' | 'error'
 
@@ -65,6 +67,26 @@ export const useConversationsStore = defineStore('conversations', () => {
     }
   }
 
+  function applyRealtimeUnread(update: ConversationUpdated): void {
+    inboxSummaries.value = inboxSummaries.value.map((conversation) => {
+      if (conversation.id !== update.conversationId) {
+        return conversation
+      }
+
+      if (!update.unread) {
+        return { ...conversation, unreadCount: 0, unreadOverflow: false }
+      }
+
+      const unreadCount = Math.min(conversation.unreadCount + 1, 100)
+
+      return {
+        ...conversation,
+        unreadCount,
+        unreadOverflow: conversation.unreadOverflow || unreadCount >= 100,
+      }
+    })
+  }
+
   async function openPrivate(userId: string, token: string): Promise<ConversationRecord> {
     pendingPrivateUserIds.value = new Set(pendingPrivateUserIds.value).add(userId)
 
@@ -78,6 +100,12 @@ export const useConversationsStore = defineStore('conversations', () => {
       nextIds.delete(userId)
       pendingPrivateUserIds.value = nextIds
     }
+  }
+
+  async function loadConversation(conversationId: string, token: string): Promise<ConversationRecord> {
+    const conversation = await getConversation(conversationId, token)
+    upsertConversation(conversation)
+    return conversation
   }
 
   async function createGroup(name: string, memberIds: string[], token: string): Promise<ConversationRecord> {
@@ -117,9 +145,15 @@ export const useConversationsStore = defineStore('conversations', () => {
     }
   }
 
-  async function leave(conversationId: string, currentUserId: string, token: string): Promise<void> {
+  async function leave(conversationId: string, token: string): Promise<void> {
     await leaveGroup(conversationId, token)
-    removeMemberLocally(conversationId, currentUserId)
+    conversations.value = conversations.value.filter((conversation) => conversation.id !== conversationId)
+    inboxSummaries.value = inboxSummaries.value.filter((conversation) => conversation.id !== conversationId)
+  }
+
+  function removeConversation(conversationId: string): void {
+    conversations.value = conversations.value.filter((conversation) => conversation.id !== conversationId)
+    inboxSummaries.value = inboxSummaries.value.filter((conversation) => conversation.id !== conversationId)
   }
 
   function reset(): void {
@@ -179,7 +213,10 @@ export const useConversationsStore = defineStore('conversations', () => {
     pendingReadIds,
     loadInbox,
     markRead,
+    applyRealtimeUnread,
     openPrivate,
+    loadConversation,
+    removeConversation,
     createGroup,
     addMembers,
     removeMember,

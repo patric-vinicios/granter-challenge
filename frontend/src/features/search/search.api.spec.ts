@@ -10,9 +10,9 @@ describe('search.api', () => {
   it('searches conversation messages with the documented request and response shape', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, {
-        matches: [
+        messages: [
           {
-            message: messageResponse('message-1', 'Ajustei o cronograma final'),
+            ...messageResponse('message-1', 'Ajustei o cronograma final'),
             position: 1,
             match_offsets: [{ start: 10, length: 10 }],
           },

@@ -38,17 +38,35 @@ function emptyHistory(): ConversationHistory {
 
 export const useMessagesStore = defineStore('messages', () => {
   const histories = ref<Record<string, ConversationHistory>>({})
+  const pendingRefreshIds = ref<Set<string>>(new Set())
 
   const historyByConversationId = computed(() => histories.value)
 
-  async function loadInitial(conversationId: string, token: string, signal?: AbortSignal): Promise<void> {
+  async function loadInitial(
+    conversationId: string,
+    token: string,
+    signal?: AbortSignal,
+    options: { force?: boolean; silent?: boolean } = {},
+  ): Promise<void> {
     const current = ensureHistory(conversationId)
 
-    if (current.isLoadingInitial || current.didLoadInitial) {
+    if (current.isLoadingInitial) {
+      if (options.force) {
+        pendingRefreshIds.value = new Set(pendingRefreshIds.value).add(conversationId)
+      }
+
       return
     }
 
-    setHistory(conversationId, { ...current, isLoadingInitial: true, error: null })
+    if (current.didLoadInitial && !options.force) {
+      return
+    }
+
+    setHistory(conversationId, {
+      ...current,
+      isLoadingInitial: !options.silent,
+      error: null,
+    })
 
     try {
       const page = await listMessages(conversationId, token, { limit: 30, signal })
@@ -61,8 +79,36 @@ export const useMessagesStore = defineStore('messages', () => {
         didLoadInitial: true,
         error: null,
       })
+
+      if (pendingRefreshIds.value.has(conversationId)) {
+        const nextPendingRefreshIds = new Set(pendingRefreshIds.value)
+        nextPendingRefreshIds.delete(conversationId)
+        pendingRefreshIds.value = nextPendingRefreshIds
+        void loadInitial(conversationId, token, signal, { force: true, silent: true })
+      }
     } catch (error) {
+      if (pendingRefreshIds.value.has(conversationId)) {
+        const nextPendingRefreshIds = new Set(pendingRefreshIds.value)
+        nextPendingRefreshIds.delete(conversationId)
+        pendingRefreshIds.value = nextPendingRefreshIds
+      }
+
       if (isAbortError(error)) {
+        setHistory(conversationId, {
+          ...ensureHistory(conversationId),
+          isLoadingInitial: false,
+          didLoadInitial: false,
+          error: null,
+        })
+        return
+      }
+
+      if (options.silent) {
+        setHistory(conversationId, {
+          ...ensureHistory(conversationId),
+          isLoadingInitial: false,
+          error: null,
+        })
         return
       }
 
@@ -108,6 +154,17 @@ export const useMessagesStore = defineStore('messages', () => {
 
   function reset(): void {
     histories.value = {}
+    pendingRefreshIds.value = new Set()
+  }
+
+  function removeConversation(conversationId: string): void {
+    const nextHistories = { ...histories.value }
+    delete nextHistories[conversationId]
+    histories.value = nextHistories
+
+    const nextPendingRefreshIds = new Set(pendingRefreshIds.value)
+    nextPendingRefreshIds.delete(conversationId)
+    pendingRefreshIds.value = nextPendingRefreshIds
   }
 
   function ensureHistory(conversationId: string): ConversationHistory {
@@ -126,6 +183,7 @@ export const useMessagesStore = defineStore('messages', () => {
     historyByConversationId,
     loadInitial,
     loadOlder,
+    removeConversation,
     reset,
   }
 })
@@ -169,6 +227,8 @@ export const useMessagingStore = defineStore('messaging', () => {
       messages: [
         ...getMessages(conversationId),
         {
+          id: clientRef,
+          clientRef,
           side: 'out',
           text: body,
           time: 'Enviando',
@@ -185,15 +245,13 @@ export const useMessagingStore = defineStore('messaging', () => {
   function confirmMessage(message: PersistedMessage, currentUserId: string, clientRef: string | null): void {
     const nextMessage = toConversationMessage(message, currentUserId)
     const current = getMessages(message.conversationId)
-    const messages =
-      clientRef === null
-        ? [...current, nextMessage]
-        : current.map((item) => (item.time === 'Enviando' && item.text === message.body ? nextMessage : item))
+    const wasReconciled = clientRef !== null && current.some((item) => item.clientRef === clientRef)
+    const messages = wasReconciled
+      ? current.map((item) => (item.clientRef === clientRef ? nextMessage : item))
+      : current
 
     upsertState(message.conversationId, {
-      messages: messages.some((item) => item.time === nextMessage.time && item.text === nextMessage.text)
-        ? messages
-        : [...messages, nextMessage],
+      messages: messages.some((item) => item.id === nextMessage.id) ? messages : [...messages, nextMessage],
       preview: previewFor(message, currentUserId),
       time: formatMessageTime(message.insertedAt),
       lastActivity: Date.parse(message.insertedAt),
@@ -207,7 +265,7 @@ export const useMessagingStore = defineStore('messaging', () => {
   function receiveMessage(message: PersistedMessage, currentUserId: string): void {
     const current = getMessages(message.conversationId)
 
-    if (current.some((item) => item.time === formatMessageTime(message.insertedAt) && item.text === message.body)) {
+    if (current.some((item) => item.id === message.id)) {
       return
     }
 
@@ -251,6 +309,12 @@ export const useMessagingStore = defineStore('messaging', () => {
     pendingErrors.value = {}
   }
 
+  function removeConversation(conversationId: string): void {
+    const nextConversations = { ...conversations.value }
+    delete nextConversations[conversationId]
+    conversations.value = nextConversations
+  }
+
   function getMessages(conversationId: string): Message[] {
     return conversations.value[conversationId]?.messages ?? []
   }
@@ -279,6 +343,7 @@ export const useMessagingStore = defineStore('messaging', () => {
     decorate,
     failMessage,
     receiveMessage,
+    removeConversation,
     reset,
     revokeConversation,
     sortByActivity,

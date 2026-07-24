@@ -19,14 +19,14 @@ export interface ConversationSearchResult {
 
 export function decodeConversationSearchResult(payload: unknown): ConversationSearchResult {
   const data = requireRecord(payload)
-  const matches = data.matches
+  const messages = data.messages
 
-  if (!Array.isArray(matches)) {
-    throw new Error('Expected matches array')
+  if (!Array.isArray(messages)) {
+    throw new Error('Expected messages array')
   }
 
   return {
-    matches: matches.map(decodeConversationSearchHit),
+    matches: messages.map(decodeConversationSearchHit),
     totalMatches: requireNumber(data.total_matches),
     truncated: requireBoolean(data.truncated),
   }
@@ -41,7 +41,7 @@ function decodeConversationSearchHit(payload: unknown): ConversationSearchHit {
   }
 
   return {
-    message: decodePersistedMessage(data.message),
+    message: decodePersistedMessage(data),
     position: requireNumber(data.position),
     matchOffsets: offsets.map(decodeSearchMatchOffset),
   }
