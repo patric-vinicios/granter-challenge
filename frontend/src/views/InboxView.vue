@@ -1,9 +1,12 @@
 <template>
-  <main class="h-full bg-[#f7f7f7]">
+  <main class="h-full min-h-0 overflow-hidden bg-[#f7f7f7]">
     <div
-      class="grid h-full overflow-hidden bg-white min-[860px]:grid-cols-[418px_minmax(0,1fr)]"
+      class="grid h-full min-h-0 overflow-hidden bg-white min-[860px]:grid-cols-[418px_minmax(0,1fr)]"
     >
-      <aside class="border-r border-[#e8e8e8] bg-white max-[859px]:hidden">
+      <aside
+        class="min-h-0 border-r border-[#e8e8e8] bg-white"
+        :class="isMobileListVisible ? 'max-[859px]:grid' : 'max-[859px]:hidden'"
+      >
         <ConversationListPanel
           v-if="sidebarMode === 'inbox'"
           v-model:search-query="inboxSearchQuery"
@@ -11,7 +14,7 @@
           :error="inboxLoadError"
           :is-empty="isInboxEmpty"
           :is-loading="isInboxLoading"
-          :selected-conversation-id="selectedConversationId"
+          :selected-conversation-id="selectedConversation?.id ?? ''"
           @create-group="sidebarMode = 'new-group'"
           @open-contacts="sidebarMode = 'contacts'"
           @logout="logout"
@@ -77,6 +80,7 @@
         :search-total-matches="searchTotalMatches"
         :search-truncated="searchTruncated"
         @close-search="closeSearch"
+        @close-conversation="showMobileConversationList"
         @load-older-messages="loadOlderMessages"
         @next-search-result="selectNextSearchResult"
         @open-group-details="openGroupDetails"
@@ -84,6 +88,7 @@
         @previous-search-result="selectPreviousSearchResult"
         @search-focusout="closeSearchOnFocusOut"
         @send-message="sendMessage"
+        :class="{ 'max-[859px]:hidden': isMobileListVisible }"
       />
     </div>
 
@@ -115,7 +120,7 @@ import type {
   GroupConversation,
   InboxConversationSummary,
 } from '@/features/conversations/conversations.contracts'
-import { type Conversation, conversations, type Message } from '@/features/conversations/conversations.mock'
+import { type Conversation, conversations as mockConversations, type Message } from '@/features/conversations/conversations.mock'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import ChatPanel from '@/features/messaging/components/ChatPanel.vue'
 import type { PersistedMessage } from '@/features/messaging/messaging.contracts'
@@ -127,7 +132,7 @@ import { useConversationSearch } from '@/features/search/useConversationSearch'
 import { isApiError } from '@/shared/api/errors'
 import { useAuthStore } from '@/stores/auth.store'
 
-const selectedConversationId = ref('ana')
+const selectedConversationId = ref<string | null>(null)
 const router = useRouter()
 const authStore = useAuthStore()
 const contactsStore = useContactsStore()
@@ -149,6 +154,7 @@ const {
 } = storeToRefs(conversationsStore)
 const { historyByConversationId } = storeToRefs(messagesStore)
 const sidebarMode = ref<'inbox' | 'new-group' | 'contacts' | 'group-details'>('inbox')
+const isMobileListVisible = ref(true)
 const isSearching = ref(false)
 const isAddContactOpen = ref(false)
 const isAddingContact = ref(false)
@@ -197,6 +203,9 @@ const {
   selectedConversationId: selectedConversationIdRef,
   onPresenceState: applyPresenceState,
   onPresenceDiff: applyPresenceDiff,
+  onConversationUpdated: conversationsStore.applyRealtimeUnread,
+  onMembershipRevoked: handleMembershipRevoked,
+  onReconnect: recoverAfterReconnect,
 })
 
 const searchActivePosition = computed(() => activeSearchHit.value?.position ?? null)
@@ -214,7 +223,7 @@ const selectedConversation = computed(() => {
 
 const conversationItems = computed(() => {
   if (!token.value) {
-    return conversations.map(messagingStore.decorate)
+    return mockConversations.map(messagingStore.decorate)
   }
 
   const summaries = inboxSummaries.value.map(toInboxConversationItem).map(messagingStore.decorate)
@@ -231,9 +240,22 @@ const isInboxEmpty = computed(
   () => Boolean(token.value) && inboxLoadState.value === 'success' && conversationItems.value.length === 0,
 )
 
-const selectedBackendConversation = computed(() =>
-  openedConversations.value.find((conversation) => conversation.id === selectedConversation.value.id) ?? null,
-)
+const selectedPersistedConversationId = computed(() => {
+  const conversationId = selectedConversationId.value
+
+  if (!conversationId) {
+    return null
+  }
+
+  if (
+    openedConversations.value.some((conversation) => conversation.id === conversationId) ||
+    inboxSummaries.value.some((conversation) => conversation.id === conversationId)
+  ) {
+    return conversationId
+  }
+
+  return null
+})
 const selectedHistoryState = computed(() => {
   const history = historyByConversationId.value[selectedConversation.value.id]
 
@@ -288,8 +310,23 @@ watch(
   { immediate: true },
 )
 
+watch(
+  [conversationItems, token],
+  ([items, currentToken]) => {
+    if (!currentToken || items.length === 0) {
+      return
+    }
+
+    if (!items.some((item) => item.id === selectedConversationId.value)) {
+      selectedConversationId.value = items[0].id
+    }
+  },
+  { immediate: true },
+)
+
 async function selectConversation(conversationId: string) {
   selectedConversationId.value = conversationId
+  isMobileListVisible.value = false
 
   const currentToken = token.value
   const summary = inboxSummaries.value.find((conversation) => conversation.id === conversationId)
@@ -306,14 +343,14 @@ async function selectConversation(conversationId: string) {
 }
 
 watch(
-  [selectedBackendConversation, token],
-  ([conversation, currentToken], _previous, onCleanup) => {
-    if (!conversation || !currentToken) {
+  [selectedPersistedConversationId, token],
+  ([conversationId, currentToken], _previous, onCleanup) => {
+    if (!conversationId || !currentToken) {
       return
     }
 
     const controller = new AbortController()
-    messagesStore.loadInitial(conversation.id, currentToken, controller.signal)
+    messagesStore.loadInitial(conversationId, currentToken, controller.signal)
     onCleanup(() => controller.abort())
   },
   { immediate: true },
@@ -341,6 +378,11 @@ function closeSearchOnFocusOut(event: FocusEvent) {
   closeSearch()
 }
 
+function showMobileConversationList(): void {
+  isMobileListVisible.value = true
+  sidebarMode.value = 'inbox'
+}
+
 function sendMessage() {
   const body = messageDraft.value.trim()
 
@@ -353,6 +395,23 @@ function sendMessage() {
   }
 
   messageDraft.value = ''
+}
+
+function recoverAfterReconnect(): void {
+  const currentToken = token.value
+
+  if (!currentToken) {
+    return
+  }
+
+  void conversationsStore.loadInbox(currentToken, undefined, inboxSearchQuery.value)
+
+  if (selectedPersistedConversationId.value) {
+    void messagesStore.loadInitial(selectedPersistedConversationId.value, currentToken, undefined, {
+      force: true,
+      silent: true,
+    })
+  }
 }
 
 function loadOlderMessages() {
@@ -412,6 +471,7 @@ async function createGroup() {
       currentToken,
     )
     selectedConversationId.value = conversation.id
+    isMobileListVisible.value = false
     selectedGroupContactIds.value = new Set()
     groupName.value = ''
     sidebarMode.value = 'inbox'
@@ -420,10 +480,28 @@ async function createGroup() {
   }
 }
 
-function openGroupDetails() {
-  if (selectedGroupConversation.value) {
+async function openGroupDetails() {
+  const currentToken = token.value
+  const selectedGroup = selectedGroupConversation.value
+
+  if (selectedGroup) {
     groupError.value = null
     sidebarMode.value = 'group-details'
+    isMobileListVisible.value = true
+    return
+  }
+
+  if (!currentToken || selectedConversation.value.type !== 'group') {
+    return
+  }
+
+  try {
+    await conversationsStore.loadConversation(selectedConversation.value.id, currentToken)
+    groupError.value = null
+    sidebarMode.value = 'group-details'
+    isMobileListVisible.value = true
+  } catch (error) {
+    groupError.value = conversationErrorMessage(error)
   }
 }
 
@@ -469,13 +547,30 @@ async function leaveSelectedGroup() {
   }
 
   try {
-    await conversationsStore.leave(group.id, userId, currentToken)
+    await conversationsStore.leave(group.id, currentToken)
+    removeConversationCaches(group.id)
     sidebarMode.value = 'inbox'
-    selectedConversationId.value = conversations[0].id
+    selectedConversationId.value = conversationItems.value[0]?.id ?? null
     groupError.value = null
   } catch (error) {
     groupError.value = conversationErrorMessage(error)
   }
+}
+
+function handleMembershipRevoked(conversationId: string): void {
+  removeConversationCaches(conversationId)
+  sidebarMode.value = 'inbox'
+  isMobileListVisible.value = true
+
+  if (selectedConversationId.value === conversationId) {
+    selectedConversationId.value = conversationItems.value.find((conversation) => conversation.id !== conversationId)?.id ?? null
+  }
+}
+
+function removeConversationCaches(conversationId: string): void {
+  conversationsStore.removeConversation(conversationId)
+  messagesStore.removeConversation(conversationId)
+  messagingStore.removeConversation(conversationId)
 }
 
 async function openPrivateConversation(userId: string) {
@@ -488,6 +583,7 @@ async function openPrivateConversation(userId: string) {
   try {
     const conversation = await conversationsStore.openPrivate(userId, currentToken)
     selectedConversationId.value = conversation.id
+    isMobileListVisible.value = false
     sidebarMode.value = 'inbox'
   } catch (error) {
     loadError.value = conversationErrorMessage(error)

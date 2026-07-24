@@ -2,8 +2,8 @@
 
 Single-page application de mensagens construída com Vue 3, TypeScript e Vite.
 
-> **Estado atual:** protótipo navegável com login, cadastro, inbox, contatos, grupos e busca simulados.
-> A integração REST/WebSocket ainda não foi implementada; os dados exibidos são locais.
+> **Estado atual:** SPA funcional com login, cadastro, inbox, contatos, grupos, busca, histórico
+> persistido e mensagens realtime integrados aos contratos REST/WebSocket do backend.
 
 ## Requisitos
 
@@ -48,16 +48,15 @@ Definidas em `.env` (veja `.env.example`) e tipadas em [`src/env.d.ts`](src/env.
 
 ```
 src/
-├── api/          # clientes HTTP e socket, um módulo por recurso da API
-├── assets/       # imagens e fontes processadas pelo Vite
+├── features/     # slices verticais por domínio: auth, contatos, conversas, mensagens e busca
+├── shared/       # clientes HTTP, socket, configuração e utilitários compartilhados
 ├── components/   # componentes de UI reutilizáveis
-├── composables/  # lógica reaproveitável (Composition API)
 ├── layouts/      # esqueletos de página
 ├── router/       # rotas e navigation guards
 ├── stores/       # estado global (Pinia)
-├── types/        # tipos do contrato da API
-├── utils/        # helpers puros (datas, formatação, etc.)
-└── views/        # componentes de rota
+├── test/         # harness e helpers de teste
+├── views/        # componentes de rota
+└── style.css     # estilos globais e tokens visuais
 ```
 
 O alias `@` aponta para `src/`, configurado em `vite.config.ts` e `tsconfig.app.json`.

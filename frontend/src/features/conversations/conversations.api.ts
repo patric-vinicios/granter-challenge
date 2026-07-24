@@ -45,6 +45,14 @@ export function markConversationRead(
   })
 }
 
+export function getConversation(conversationId: string, token: string, signal?: AbortSignal): Promise<ConversationRecord> {
+  return requestJson('/conversations/' + encodeURIComponent(conversationId), {
+    token,
+    signal,
+    decode: decodeConversation,
+  })
+}
+
 export function openPrivateConversation(
   userId: string,
   token: string,

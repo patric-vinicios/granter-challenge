@@ -1,5 +1,5 @@
 <template>
-  <section class="grid min-w-0 grid-rows-[64px_minmax(0,1fr)_72px] bg-[#fbfbfb]">
+  <section class="grid h-full min-h-0 min-w-0 grid-rows-[64px_minmax(0,1fr)_72px] bg-[#fbfbfb]">
     <header class="border-b border-[#e8e8e8] bg-white px-5">
       <div
         v-if="isSearching"
@@ -63,6 +63,14 @@
       </div>
 
       <div v-else class="flex h-full items-center gap-3">
+        <button
+          class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5] min-[860px]:hidden"
+          type="button"
+          aria-label="Voltar para conversas"
+          @click="$emit('closeConversation')"
+        >
+          <ArrowLeft :size="18" :stroke-width="2" aria-hidden="true" />
+        </button>
         <span
           class="grid h-[40px] w-[40px] place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
         >
@@ -96,7 +104,12 @@
       </div>
     </header>
 
-    <div class="overflow-auto px-6 py-7 min-[860px]:px-[150px]">
+    <div
+      ref="messageScroller"
+      aria-label="Mensagens da conversa"
+      role="log"
+      class="min-h-0 overflow-y-auto overflow-x-hidden px-6 py-7 min-[860px]:px-[150px]"
+    >
       <div
         class="mx-auto mb-7 w-max rounded-full border border-[#e8e8e8] bg-white px-3 py-1 text-[12px] text-[#a3a3a3]"
       >
@@ -141,7 +154,7 @@
 
     <form
       class="grid grid-cols-[minmax(0,1fr)_44px] gap-3 border-t border-[#e8e8e8] bg-white px-5 py-4"
-      @submit.prevent
+      @submit.prevent="$emit('sendMessage')"
     >
       <label class="sr-only" for="message">Mensagem</label>
       <textarea
@@ -156,10 +169,9 @@
       <button
         class="grid h-12 w-11 place-items-center rounded-lg border border-black bg-black text-white hover:bg-[#222222]"
         :class="{ 'opacity-50': !canSendMessage }"
-        type="button"
+        type="submit"
         aria-label="Enviar mensagem"
         :disabled="!canSendMessage"
-        @click="$emit('sendMessage')"
       >
         <Navigation fill="currentColor" :size="18" :stroke-width="2" aria-hidden="true" />
       </button>
@@ -168,8 +180,8 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, ChevronUp, Navigation, Search, UsersRound, X } from '@lucide/vue'
-import { computed } from 'vue'
+import { ArrowLeft, ChevronDown, ChevronUp, Navigation, Search, UsersRound, X } from '@lucide/vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import MessageBubble from '@/components/MessageBubble.vue'
 import type { Conversation } from '@/features/conversations/conversations.mock'
@@ -196,8 +208,23 @@ const props = defineProps<{
   searchActiveMatchOffsets: SearchMatchOffset[]
 }>()
 
+const messageScroller = ref<HTMLElement | null>(null)
+
+watch(
+  () => [props.conversation.id, props.conversation.messages.length, props.isLoadingHistory],
+  () => {
+    void nextTick(() => {
+      if (messageScroller.value) {
+        messageScroller.value.scrollTop = messageScroller.value.scrollHeight
+      }
+    })
+  },
+  { flush: 'post', immediate: true },
+)
+
 defineEmits<{
   closeSearch: []
+  closeConversation: []
   openGroupDetails: []
   openSearch: []
   loadOlderMessages: []

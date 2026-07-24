@@ -92,6 +92,32 @@ describe('conversations.store inbox state', () => {
     })
     expect(store.pendingReadIds.has('conversation-ana')).toBe(false)
   })
+
+  it('increments unread from a realtime update and caps the overflow badge', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          conversations: [inboxSummaryResponse({ unreadCount: 99, unreadOverflow: false })],
+        }),
+      ),
+    )
+
+    const store = useConversationsStore()
+    await store.loadInbox('jwt-token')
+
+    store.applyRealtimeUnread({
+      conversationId: 'conversation-ana',
+      lastMessage: {
+        preview: 'nova mensagem',
+        senderId: 'user-ana',
+        insertedAt: '2026-07-23T14:00:00Z',
+      },
+      unread: true,
+    })
+
+    expect(store.inboxSummaries[0]).toMatchObject({ unreadCount: 100, unreadOverflow: true })
+  })
 })
 
 function inboxSummaryResponse(options: { unreadCount: number; unreadOverflow?: boolean }) {

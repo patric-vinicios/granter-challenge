@@ -18,13 +18,12 @@
     <section class="grid gap-2 px-3 py-5">
       <label class="text-[12px] font-bold text-[#737373]" for="group-name">Nome do grupo</label>
       <div class="grid grid-cols-[44px_minmax(0,1fr)] gap-3">
-        <button
+        <span
           class="grid h-11 w-11 place-items-center rounded-lg border border-[#e8e8e8] bg-[#fbfbfb] text-[#a3a3a3]"
-          type="button"
-          aria-label="Imagem do grupo"
+          aria-hidden="true"
         >
           <UsersRound :size="18" :stroke-width="2" aria-hidden="true" />
-        </button>
+        </span>
         <input
           id="group-name"
           :value="groupName"
@@ -64,6 +63,7 @@
         />
         <input
           id="contact-search"
+          v-model="contactSearchQuery"
           class="h-10 w-full rounded-lg border border-[#e8e8e8] bg-white pl-9 pr-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
           placeholder="Buscar contato"
           type="text"
@@ -72,7 +72,7 @@
 
       <div class="max-h-full overflow-auto">
         <label
-          v-for="contact in contacts"
+          v-for="contact in filteredContacts"
           :key="contact.id"
           class="grid min-h-[59px] grid-cols-[44px_minmax(0,1fr)_24px] items-center gap-3 text-[#171717]"
         >
@@ -127,7 +127,7 @@
 
 <script setup lang="ts">
 import { ArrowLeft, Check, Search, UsersRound, X } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import type { Contact } from '@/features/contacts/contacts.contracts'
 import { contactInitials } from '@/features/contacts/contacts.store'
@@ -140,7 +140,20 @@ const props = defineProps<{
   groupName: string
 }>()
 
+const contactSearchQuery = ref('')
 const selectedContacts = computed(() => props.contacts.filter((contact) => props.selectedContactIds.has(contact.user.id)))
+const filteredContacts = computed(() => {
+  const query = contactSearchQuery.value.trim().toLocaleLowerCase()
+
+  if (!query) {
+    return props.contacts
+  }
+
+  return props.contacts.filter((contact) => {
+    const searchable = `${contact.user.name} ${contact.user.username}`.toLocaleLowerCase()
+    return searchable.includes(query)
+  })
+})
 
 defineEmits<{
   close: []

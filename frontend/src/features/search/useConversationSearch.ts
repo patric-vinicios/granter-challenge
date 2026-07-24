@@ -7,7 +7,7 @@ export type ConversationSearchStatus = 'idle' | 'loading' | 'validation' | 'succ
 
 interface UseConversationSearchOptions {
   token: Ref<string | null>
-  conversationId: ComputedRef<string>
+  conversationId: ComputedRef<string | null>
   query: ComputedRef<string>
 }
 
@@ -51,6 +51,11 @@ export function useConversationSearch({ token, conversationId, query }: UseConve
         result.value = null
         status.value = 'validation'
         error.value = 'Entre para buscar no servidor.'
+        return
+      }
+
+      if (!currentConversationId) {
+        reset()
         return
       }
 

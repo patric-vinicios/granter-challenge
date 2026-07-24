@@ -1,9 +1,12 @@
 <template>
   <div
+    ref="dialogElement"
     class="fixed inset-0 grid place-items-center bg-black/30 p-6"
     role="dialog"
     aria-modal="true"
     aria-labelledby="add-contact-title"
+    tabindex="-1"
+    @keydown="handleKeydown"
   >
     <form
       class="w-full max-w-[430px] overflow-hidden rounded-[10px] border border-[#e8e8e8] bg-white shadow-[0_24px_72px_rgba(0,0,0,0.24)]"
@@ -93,6 +96,7 @@
 
 <script setup lang="ts">
 import { ArrowLeft, Check, X } from '@lucide/vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import type { AddContactFeedback } from '../contacts.contracts'
 
@@ -102,9 +106,56 @@ defineProps<{
   isSubmitting: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:username': [username: string]
   addContact: []
   close: []
 }>()
+
+const dialogElement = ref<HTMLElement | null>(null)
+let previousActiveElement: HTMLElement | null = null
+
+onMounted(() => {
+  previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  void nextTick(() => document.getElementById('add-contact-username')?.focus())
+})
+
+onBeforeUnmount(() => {
+  previousActiveElement?.focus()
+})
+
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('close')
+    return
+  }
+
+  if (event.key !== 'Tab' || !dialogElement.value) {
+    return
+  }
+
+  const focusable = Array.from(
+    dialogElement.value.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  )
+
+  if (focusable.length === 0) {
+    event.preventDefault()
+    dialogElement.value.focus()
+    return
+  }
+
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
 </script>

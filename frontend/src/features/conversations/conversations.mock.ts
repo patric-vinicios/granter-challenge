@@ -5,6 +5,7 @@ export type Message = {
   time: string
   wide?: boolean
   author?: string
+  clientRef?: string
 }
 
 export type Conversation = {

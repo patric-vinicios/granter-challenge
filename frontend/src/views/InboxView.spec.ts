@@ -73,6 +73,11 @@ describe('InboxView', () => {
 
     expect(screen.getByText('Contatos')).toBeTruthy()
     expect(await screen.findByText('@rafaelalves')).toBeTruthy()
+    const contactSearch = screen.getByLabelText(/buscar contato/i)
+    await user.type(contactSearch, 'ana')
+    expect(screen.getByText('@anabeatriz')).toBeTruthy()
+    expect(screen.queryByText('@rafaelalves')).toBeNull()
+    await user.clear(contactSearch)
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:4000/api/contacts',
       expect.objectContaining({
@@ -87,6 +92,7 @@ describe('InboxView', () => {
 
     const dialog = screen.getByRole('dialog', { name: /adicionar contato/i })
     const usernameInput = within(dialog).getByLabelText(/usuario/i)
+    expect(document.activeElement).toBe(usernameInput)
 
     fetchMock.mockResolvedValueOnce(
       jsonResponse(201, {
@@ -111,7 +117,8 @@ describe('InboxView', () => {
     )
     expect(screen.getByText('@carlos')).toBeTruthy()
 
-    await user.click(within(dialog).getByRole('button', { name: /voltar/i }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: /adicionar contato/i })).toBeNull()
     await user.click(screen.getByRole('button', { name: /adicionar/i }))
 
     const reopenedDialog = screen.getByRole('dialog', { name: /adicionar contato/i })
@@ -241,6 +248,46 @@ describe('InboxView', () => {
     expect(screen.queryByRole('button', { name: /carregar mensagens anteriores/i })).toBeNull()
   })
 
+  it('loads persisted history for conversations restored from the authenticated inbox', async () => {
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        inboxSummaryResponse({
+          id: 'conversation-ana',
+          title: 'Ana Beatriz',
+          senderId: 'user-current',
+          body: 'Preview antes do reload',
+          unreadCount: 0,
+        }),
+      ],
+      historyMessages: [
+        historyMessageResponse(
+          'message-after-reload',
+          'Mensagem recuperada depois do reload',
+          'user-current',
+          'Patric',
+          '2026-07-22T13:49:00Z',
+        ),
+      ],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    authenticate(pinia)
+
+    expect(await screen.findByText('Mensagem recuperada depois do reload')).toBeTruthy()
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:4000/api/conversations/conversation-ana/messages?limit=30',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer jwt-token',
+          }),
+        }),
+      ),
+    )
+  })
+
   it('shows a history load error for a backend conversation', async () => {
     const user = userEvent.setup()
 
@@ -282,6 +329,7 @@ describe('InboxView', () => {
     vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
+    await screen.findAllByText('Ana Beatriz')
     sockets[0].channelFor('user:user-current').okJoin()
     sockets[0].channelFor('conversation:ana').okJoin()
 
@@ -333,6 +381,40 @@ describe('InboxView', () => {
     expect(screen.queryByText('Time de Produto')).toBeNull()
   })
 
+  it('loads group members when opening details from an inbox summary', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        inboxSummaryResponse({
+          id: 'group-product',
+          type: 'group',
+          title: 'Time de Produto',
+          senderId: 'user-rafael',
+          body: 'Mensagem do grupo',
+          unreadCount: 0,
+          memberCount: 3,
+        }),
+      ],
+      conversationDetails: groupResponse(),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(await screen.findByRole('button', { name: /time de produto/i }))
+    await user.click(screen.getByRole('button', { name: /gerenciar grupo/i }))
+
+    expect(await screen.findByText('@anabeatriz')).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/group-product',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
+      }),
+    )
+  })
+
   it('searches messages in the selected conversation and navigates returned matches', async () => {
     const user = userEvent.setup()
 
@@ -340,7 +422,7 @@ describe('InboxView', () => {
     const fetchMock = mockAuthenticatedFetch({
       conversations: [defaultAnaInboxSummary()],
       searchResult: {
-        matches: [
+        messages: [
           searchHitResponse('message-1', 'Ajustei o cronograma final', 1, [{ start: 10, length: 10 }]),
           searchHitResponse('message-2', 'Familia alinhou o cronograma', 2, [{ start: 0, length: 7 }]),
         ],
@@ -376,6 +458,7 @@ describe('InboxView', () => {
     vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
+    await screen.findAllByText('Ana Beatriz')
     const socket = sockets[0]
     socket.channelFor('user:user-current').okJoin()
     const conversationChannel = socket.channelFor('conversation:ana')
@@ -416,6 +499,7 @@ describe('InboxView', () => {
     vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
+    await screen.findAllByText('Ana Beatriz')
     const socket = sockets[0]
     const conversationChannel = socket.channelFor('conversation:ana')
     const userChannel = socket.channelFor('user:user-current')
@@ -513,6 +597,11 @@ describe('InboxView', () => {
       }),
     )
     expect(await screen.findByText('@leticia')).toBeTruthy()
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(204, null))
+    await user.click(screen.getByRole('button', { name: /sair do grupo/i }))
+
+    expect(screen.queryByText('Time de Produto')).toBeNull()
   })
 
   it('loads authenticated inbox summaries, renders unread badges, and marks a selected conversation read', async () => {
@@ -596,6 +685,7 @@ describe('InboxView', () => {
     )
     authenticate(pinia)
     await waitFor(() => expect(sockets).toHaveLength(1))
+    await screen.findAllByText('Ana Beatriz')
 
     const socket = sockets[0]
     const conversationChannel = socket.channelFor('conversation:ana')
@@ -792,6 +882,8 @@ function mockAuthenticatedFetch(options: {
   contacts?: unknown[]
   conversations?: unknown[]
   filteredConversations?: unknown[]
+  historyMessages?: unknown[]
+  conversationDetails?: unknown
   searchResult?: unknown
 }) {
   const conversations = options.conversations ?? []
@@ -813,16 +905,34 @@ function mockAuthenticatedFetch(options: {
       return Promise.resolve(jsonResponse(200, { conversations: filteredConversations }))
     }
 
+    if (href === 'http://localhost:4000/api/conversations/group-product' && method === 'GET') {
+      return Promise.resolve(jsonResponse(200, { conversation: options.conversationDetails ?? groupResponse() }))
+    }
+
     if (href.startsWith('http://localhost:4000/api/conversations/ana/messages/search?') && method === 'GET') {
       return Promise.resolve(
         jsonResponse(
           200,
           options.searchResult ?? {
-            matches: [],
+            messages: [],
             total_matches: 0,
             truncated: false,
           },
         ),
+      )
+    }
+
+    if (
+      href.startsWith('http://localhost:4000/api/conversations/') &&
+      href.includes('/messages?') &&
+      method === 'GET'
+    ) {
+      return Promise.resolve(
+        jsonResponse(200, {
+          messages: options.historyMessages ?? [],
+          next_cursor: null,
+          has_more: false,
+        }),
       )
     }
 
@@ -846,7 +956,7 @@ function searchHitResponse(
   matchOffsets: Array<{ start: number; length: number }>,
 ) {
   return {
-    message: realtimeMessageResponse({
+    ...realtimeMessageResponse({
       id,
       body,
       senderId: 'user-ana',
@@ -950,6 +1060,8 @@ class FakeSocket {
   disconnected = false
   channels = new Map<string, FakeChannel>()
   token: string
+  private nextStateRef = 0
+  private stateCallbacks = new Map<string, () => void>()
 
   constructor(token: string) {
     this.token = token
@@ -961,6 +1073,24 @@ class FakeSocket {
 
   disconnect(): void {
     this.disconnected = true
+  }
+
+  onOpen(callback: () => void): string {
+    return this.registerStateCallback(callback)
+  }
+
+  onClose(callback: () => void): string {
+    return this.registerStateCallback(callback)
+  }
+
+  onError(callback: (reason: unknown) => void): string {
+    return this.registerStateCallback(() => callback(new Error('socket error')))
+  }
+
+  off(refs: string | string[]): void {
+    for (const ref of Array.isArray(refs) ? refs : [refs]) {
+      this.stateCallbacks.delete(ref)
+    }
   }
 
   channel(topic: string): FakeChannel {
@@ -983,5 +1113,11 @@ class FakeSocket {
     }
 
     return channel
+  }
+
+  private registerStateCallback(callback: () => void): string {
+    const ref = `socket-ref-${++this.nextStateRef}`
+    this.stateCallbacks.set(ref, callback)
+    return ref
   }
 }

@@ -1,7 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useMessagesStore } from './messaging.store'
+import { useMessagesStore, useMessagingStore } from './messaging.store'
+import type { PersistedMessage } from './messaging.contracts'
 
 describe('messages.store', () => {
   beforeEach(() => {
@@ -90,6 +91,28 @@ describe('messages.store', () => {
       error: 'O recurso solicitado não foi encontrado.',
     })
   })
+
+  it('reconciles equal message bodies by client reference and keeps both persisted ids', () => {
+    const store = useMessagingStore()
+
+    store.addOptimisticMessage('conversation-1', 'ok', 'client-1')
+    store.addOptimisticMessage('conversation-1', 'ok', 'client-2')
+    store.confirmMessage(persistedMessage('message-1', 'ok'), 'user-ana', 'client-1')
+    store.confirmMessage(persistedMessage('message-2', 'ok'), 'user-ana', 'client-2')
+
+    const conversation = store.decorate({
+      id: 'conversation-1',
+      type: 'private',
+      initials: 'AB',
+      name: 'Ana Beatriz',
+      subtitle: '',
+      preview: '',
+      time: '',
+      messages: [],
+    })
+
+    expect(conversation.messages.map((message) => message.id)).toEqual(['message-1', 'message-2'])
+  })
 })
 
 function messageResponse(id: string, body: string) {
@@ -103,6 +126,22 @@ function messageResponse(id: string, body: string) {
       username: 'anabeatriz',
       name: 'Ana Beatriz',
       last_seen_at: null,
+    },
+  }
+}
+
+function persistedMessage(id: string, body: string): PersistedMessage {
+  return {
+    id,
+    conversationId: 'conversation-1',
+    body,
+    insertedAt: '2026-07-22T13:48:17.123456Z',
+    sender: {
+      id: 'user-ana',
+      username: 'anabeatriz',
+      name: 'Ana Beatriz',
+      lastSeenAt: null,
+      online: false,
     },
   }
 }
