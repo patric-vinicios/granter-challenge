@@ -109,11 +109,11 @@ defmodule Api.Messages do
           {:ok, page()} | {:error, :invalid_id | :not_found | :invalid_cursor}
   def list_messages(%User{} = caller, conversation_id, opts \\ %{}) do
     opts = Map.new(opts)
-    limit = opts |> Map.get(:limit) |> normalize_limit()
+    limit = Api.Cursor.normalize_limit(Map.get(opts, :limit), @default_limit, @max_limit)
 
     with {:ok, cid} <- UUID.cast(conversation_id),
          {:ok, access} <- Conversations.read_access(cid, caller),
-         {:ok, cursor} <- decode_cursor(Map.get(opts, :before)) do
+         {:ok, cursor} <- Api.Cursor.decode_or_nil(Map.get(opts, :before), &Cursor.decode/1) do
       cid
       |> history_query(access, cursor, limit)
       |> Repo.all()
@@ -220,15 +220,6 @@ defmodule Api.Messages do
   defp preload_sender(other, _sender), do: other
 
   # --- Read internals -----------------------------------------------------
-
-  defp normalize_limit(nil), do: @default_limit
-  defp normalize_limit(limit) when limit < 1, do: 1
-  defp normalize_limit(limit) when limit > @max_limit, do: @max_limit
-  defp normalize_limit(limit), do: limit
-
-  defp decode_cursor(nil), do: {:ok, nil}
-  defp decode_cursor(""), do: {:ok, nil}
-  defp decode_cursor(cursor), do: Cursor.decode(cursor)
 
   # One row beyond the page is what makes `has_more` exact: a conversation
   # holding precisely `limit` messages must report false, which comparing the

@@ -82,9 +82,9 @@ defmodule Api.Contacts do
           %{contacts: [Contact.t()], next_cursor: String.t() | nil, has_more: boolean()}
           | {:error, :invalid_cursor}
   def list_contacts(%User{} = owner, opts \\ %{}) do
-    limit = normalize_limit(get_opt(opts, :limit))
+    limit = Api.Cursor.normalize_limit(get_opt(opts, :limit), @list_limit, @list_limit)
 
-    with {:ok, cursor} <- decode_cursor(get_opt(opts, :cursor)) do
+    with {:ok, cursor} <- Api.Cursor.decode_or_nil(get_opt(opts, :cursor), &Cursor.decode/1) do
       Contact
       |> where([c], c.owner_id == ^owner.id)
       |> join(:inner, [c], u in assoc(c, :user), as: :user)
@@ -101,16 +101,6 @@ defmodule Api.Contacts do
   # The controller hands over string keys and a direct caller atom ones.
   defp get_opt(opts, key) when is_atom(key),
     do: Map.get(opts, key) || Map.get(opts, Atom.to_string(key))
-
-  defp normalize_limit(nil), do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit) and limit < 1, do: 1
-  defp normalize_limit(limit) when is_integer(limit) and limit > @list_limit, do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit), do: limit
-  defp normalize_limit(_limit), do: @list_limit
-
-  defp decode_cursor(nil), do: {:ok, nil}
-  defp decode_cursor(""), do: {:ok, nil}
-  defp decode_cursor(cursor), do: Cursor.decode(cursor)
 
   defp apply_name_filter(query, term) do
     case Accounts.search_term(term) do

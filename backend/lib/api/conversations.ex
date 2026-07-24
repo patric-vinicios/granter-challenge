@@ -323,7 +323,7 @@ defmodule Api.Conversations do
   def list_conversations(%User{} = caller, opts \\ %{}) do
     parsed = parse_opts(opts)
 
-    with {:ok, cursor} <- decode_cursor(parsed.cursor) do
+    with {:ok, cursor} <- Api.Cursor.decode_or_nil(parsed.cursor, &Cursor.decode/1) do
       caller
       |> inbox_query()
       |> apply_title_filter(parsed.query)
@@ -338,23 +338,13 @@ defmodule Api.Conversations do
     %{
       query: get_opt(opts, :query) || get_opt(opts, :q),
       cursor: get_opt(opts, :cursor),
-      limit: normalize_limit(get_opt(opts, :limit))
+      limit: Api.Cursor.normalize_limit(get_opt(opts, :limit), @list_limit, @list_limit)
     }
   end
 
   defp get_opt(opts, key) when is_atom(key) do
     Map.get(opts, key) || Map.get(opts, Atom.to_string(key))
   end
-
-  defp normalize_limit(nil), do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit) and limit < 1, do: 1
-  defp normalize_limit(limit) when is_integer(limit) and limit > @list_limit, do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit), do: limit
-  defp normalize_limit(_limit), do: @list_limit
-
-  defp decode_cursor(nil), do: {:ok, nil}
-  defp decode_cursor(""), do: {:ok, nil}
-  defp decode_cursor(cursor), do: Cursor.decode(cursor)
 
   defp assemble_page(rows, limit) do
     has_more = length(rows) > limit
