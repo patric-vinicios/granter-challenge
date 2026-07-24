@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    "src/**/*.spec.ts",
+    "scripts/*",
+    "dependency-cruiser.config.cjs"
+  ],
+  "project": [
+    "src/**/*.{ts,vue,css}",
+    "*.config.{js,ts,cjs}",
+    "scripts/*"
+  ],
+  "ignoreFiles": [
+    "src/features/contacts/contacts.mock.ts"
+  ],
+  "ignoreDependencies": [
+    "@vue/test-utils"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    "src/features/conversations/conversations.contracts.ts": ["types"],
+    "src/features/messaging/messaging.contracts.ts": ["types"],
+    "src/shared/realtime/socket.ts": ["types"],
+    "src/stores/auth.store.ts": ["types"]
+  }
+}

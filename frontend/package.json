@@ -6,14 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "./scripts/eslint",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run",
+    "test:run": "./scripts/tests",
     "test:changed": "vitest related --run",
-    "typecheck": "vue-tsc --build --force",
-    "verify": "npm run lint && npm run typecheck && npm run test:run && npm run build"
+    "typecheck": "./scripts/tsc",
+    "verify": "./scripts/run-gate"
   },
   "dependencies": {
     "@lucide/vue": "^1.25.0",
@@ -33,9 +33,11 @@
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",
+    "dependency-cruiser": "^18.1.0",
     "eslint": "^10.7.0",
     "eslint-plugin-vue": "^10.10.0",
     "jsdom": "^29.1.1",
+    "knip": "^6.29.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10",

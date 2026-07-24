@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+"$ROOT_DIR/scripts/architecture"
+"$ROOT_DIR/scripts/dep-cruiser"
+"$ROOT_DIR/scripts/eslint"
+"$ROOT_DIR/scripts/nip"
+"$ROOT_DIR/scripts/tsc"
+"$ROOT_DIR/scripts/tests"
+"$ROOT_DIR/node_modules/.bin/vite" build
