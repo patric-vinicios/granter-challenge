@@ -10,6 +10,7 @@ defmodule ApiWeb.ErrorController do
   use ApiWeb, :controller
 
   # Rendered directly: with no pipeline, no format was negotiated for render/2.
+  @spec not_found(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def not_found(conn, _params) do
     conn
     |> put_status(:not_found)

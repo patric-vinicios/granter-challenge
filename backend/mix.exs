@@ -12,7 +12,21 @@ defmodule Api.MixProject do
       aliases: aliases(),
       deps: deps(),
       listeners: [Phoenix.CodeReloader],
-      test_coverage: [tool: ExCoveralls]
+      test_coverage: [tool: ExCoveralls],
+      dialyzer: dialyzer()
+    ]
+  end
+
+  # The PLT is cached under `priv/plts` (git-ignored) so a rebuild is only paid
+  # when dependencies or the Erlang/Elixir version change. `mix dialyzer` stays a
+  # manual task rather than part of `precommit`, because that first build costs
+  # minutes while the rest of the gate runs in seconds.
+  defp dialyzer do
+    [
+      plt_local_path: "priv/plts",
+      plt_core_path: "priv/plts",
+      plt_add_apps: [:mix, :ex_unit],
+      flags: [:error_handling, :extra_return, :missing_return]
     ]
   end
 

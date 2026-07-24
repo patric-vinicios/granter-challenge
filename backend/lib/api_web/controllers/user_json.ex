@@ -13,12 +13,14 @@ defmodule ApiWeb.UserJSON do
   @doc """
   Response for an authenticated read of the caller's own account.
   """
+  @spec show(%{user: User.t()}) :: map()
   def show(%{user: user}), do: %{user: data(user)}
 
   @doc """
   Response for registration and login: the account plus the credential the
   client needs for its next request, so neither needs a second round trip.
   """
+  @spec token(%{user: User.t(), token: String.t(), expires_at: DateTime.t()}) :: map()
   def token(%{user: user, token: token, expires_at: expires_at}) do
     %{user: data(user), token: token, expires_at: expires_at}
   end
@@ -27,6 +29,7 @@ defmodule ApiWeb.UserJSON do
   The canonical user object. `last_seen_at` is null until presence tracking
   writes it.
   """
+  @spec data(User.t()) :: map()
   def data(%User{} = user) do
     %{
       id: user.id,

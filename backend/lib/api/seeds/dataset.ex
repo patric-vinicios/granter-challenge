@@ -168,5 +168,11 @@ defmodule Api.Seeds.Dataset do
   The whole dataset as a map: `:password`, `:primary`, `:users` and
   `:conversations`. Pure data — no database access, no context aliased.
   """
+  @spec all() :: %{
+          password: String.t(),
+          primary: String.t(),
+          users: [map()],
+          conversations: [map()]
+        }
   def all, do: @dataset
 end

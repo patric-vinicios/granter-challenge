@@ -15,10 +15,13 @@ defmodule ApiWeb.ContactJSON do
   alias Api.Contacts.Contact
   alias ApiWeb.UserJSON
 
+  @spec show(%{contact: Contact.t()}) :: map()
   def show(%{contact: contact}), do: %{contact: data(contact)}
 
+  @spec index(%{contacts: [Contact.t()]}) :: map()
   def index(%{contacts: contacts}), do: %{contacts: Enum.map(contacts, &data/1)}
 
+  @spec data(Contact.t()) :: map()
   def data(%Contact{} = contact) do
     %{
       id: contact.id,

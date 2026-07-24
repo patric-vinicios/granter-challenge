@@ -18,6 +18,7 @@ defmodule Api.Health do
   Takes the repo to probe so a test can point it at an unreachable database;
   callers use `check/0`.
   """
+  @spec check(Ecto.Repo.t()) :: :ok | {:error, term()}
   def check(repo \\ Repo) do
     case SQL.query(repo, "SELECT 1", [], timeout: @timeout) do
       {:ok, _result} -> :ok

@@ -20,9 +20,11 @@ defmodule ApiWeb.ConversationJSON do
   # only tells a client which thread moved and roughly what it now says.
   @preview_limit 120
 
+  @spec show(%{conversation: Conversation.t(), caller: Api.Accounts.User.t()}) :: map()
   def show(%{conversation: conversation, caller: caller}),
     do: %{conversation: data(conversation, caller)}
 
+  @spec index(%{conversations: [Api.Conversations.summary()]}) :: map()
   def index(%{conversations: conversations}),
     do: %{conversations: Enum.map(conversations, &summary/1)}
 
@@ -32,6 +34,7 @@ defmodule ApiWeb.ConversationJSON do
   object or null so "never used" is a single check. The body arrives already
   truncated from the context.
   """
+  @spec summary(Api.Conversations.summary()) :: map()
   def summary(entry) do
     %{
       id: entry.id,
@@ -46,6 +49,7 @@ defmodule ApiWeb.ConversationJSON do
     }
   end
 
+  @spec read(%{result: %{conversation_id: Ecto.UUID.t(), last_read_at: DateTime.t()}}) :: map()
   def read(%{result: %{conversation_id: id, last_read_at: last_read_at}}),
     do: %{conversation_id: id, last_read_at: last_read_at, unread_count: 0}
 
@@ -58,6 +62,7 @@ defmodule ApiWeb.ConversationJSON do
   to the inbox feature, so this event carries the boolean it actually knows and
   couples to none of that feature's `last_read_at` semantics.
   """
+  @spec updated(%{message: Message.t(), recipient_id: Ecto.UUID.t()}) :: map()
   def updated(%{message: %Message{} = message, recipient_id: recipient_id}) do
     %{
       conversation_id: message.conversation_id,
@@ -87,6 +92,7 @@ defmodule ApiWeb.ConversationJSON do
       else: body
   end
 
+  @spec data(Conversation.t(), Api.Accounts.User.t()) :: map()
   def data(%Conversation{type: :private} = conversation, caller) do
     mine = Enum.find(conversation.participants, &(&1.user_id == caller.id))
     counterpart = Enum.find(conversation.participants, &(&1.user_id != caller.id))

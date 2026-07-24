@@ -19,6 +19,8 @@ defmodule Api.Accounts.Guardian do
   `expires_at` a client stores can never disagree with the `exp` the server
   will enforce.
   """
+  @spec issue_token(Accounts.User.t()) ::
+          {:ok, String.t(), DateTime.t()} | {:error, atom() | term()}
   def issue_token(user) do
     with {:ok, token, %{"exp" => exp}} <- __MODULE__.encode_and_sign(user),
          {:ok, expires_at} <- DateTime.from_unix(exp) do

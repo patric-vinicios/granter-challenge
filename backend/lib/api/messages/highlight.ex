@@ -18,6 +18,9 @@ defmodule Api.Messages.Highlight do
   spans: it marks the term the caller typed, not every word that shares its stem.
   """
 
+  @typedoc "One occurrence of a search term: a 0-based grapheme offset and a grapheme count."
+  @type span :: %{start: non_neg_integer(), length: pos_integer()}
+
   @doc """
   The `%{start, length}` grapheme spans of each whitespace-delimited token of
   `query` found in `body`, one entry per occurrence, ordered by position.
@@ -25,6 +28,7 @@ defmodule Api.Messages.Highlight do
   `start` is a 0-based grapheme offset into `body`; `length` counts graphemes.
   Returns `[]` when no token occurs.
   """
+  @spec offsets(String.t(), String.t()) :: [span()]
   def offsets(body, query) when is_binary(body) and is_binary(query) do
     normalized_body = normalize_graphemes(body)
     tokens = query |> String.split(~r/\s+/u, trim: true) |> Enum.map(&normalize_graphemes/1)

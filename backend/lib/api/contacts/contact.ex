@@ -15,6 +15,15 @@ defmodule Api.Contacts.Contact do
 
   alias Api.Accounts.User
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          owner_id: Ecto.UUID.t() | nil,
+          owner: User.t() | Ecto.Association.NotLoaded.t() | nil,
+          contact_user_id: Ecto.UUID.t() | nil,
+          user: User.t() | Ecto.Association.NotLoaded.t() | nil,
+          inserted_at: DateTime.t() | nil
+        }
+
   schema "contacts" do
     belongs_to :owner, User
     belongs_to :user, User, foreign_key: :contact_user_id
@@ -31,6 +40,7 @@ defmodule Api.Contacts.Contact do
   The duplicate case matters most: two devices adding the same contact at once
   race past the context's pre-check and must still answer 409, not 500.
   """
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(contact, attrs \\ %{}) do
     contact
     |> cast(attrs, [])

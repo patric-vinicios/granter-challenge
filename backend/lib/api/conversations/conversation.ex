@@ -26,6 +26,20 @@ defmodule Api.Conversations.Conversation do
 
   @name_length [min: 1, max: 60]
 
+  @type kind :: :private | :group
+
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          type: kind() | nil,
+          name: String.t() | nil,
+          participant_key: String.t() | nil,
+          creator_id: Ecto.UUID.t() | nil,
+          creator: User.t() | Ecto.Association.NotLoaded.t() | nil,
+          participants: [Participant.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "conversations" do
     field :type, Ecto.Enum, values: [:private, :group]
     field :name, :string
@@ -45,6 +59,7 @@ defmodule Api.Conversations.Conversation do
   constraint. `name` and `creator_id` stay null here; the group changeset that
   fills them is below.
   """
+  @spec private_changeset(t(), String.t()) :: Ecto.Changeset.t(t())
   def private_changeset(conversation, participant_key) do
     conversation
     |> cast(%{}, [])
@@ -61,6 +76,7 @@ defmodule Api.Conversations.Conversation do
   arrive from the request body. `participant_key` stays null — it is the private
   pair's uniqueness key and meaningless for a group.
   """
+  @spec group_changeset(t(), map()) :: Ecto.Changeset.t(t())
   def group_changeset(conversation, attrs) do
     conversation
     |> cast(attrs, [:name])

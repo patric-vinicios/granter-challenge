@@ -18,6 +18,19 @@ defmodule Api.Conversations.Participant do
   alias Api.Accounts.User
   alias Api.Conversations.Conversation
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          conversation_id: Ecto.UUID.t() | nil,
+          conversation: Conversation.t() | Ecto.Association.NotLoaded.t() | nil,
+          user_id: Ecto.UUID.t() | nil,
+          user: User.t() | Ecto.Association.NotLoaded.t() | nil,
+          last_read_at: DateTime.t() | nil,
+          joined_at: DateTime.t() | nil,
+          left_at: DateTime.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "conversation_participants" do
     belongs_to :conversation, Conversation
     belongs_to :user, User
@@ -35,6 +48,7 @@ defmodule Api.Conversations.Participant do
   a duplicate `(conversation_id, user_id)` pair or a dangling reference into
   `{:error, changeset}` rather than a raised exception.
   """
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(participant, attrs \\ %{}) do
     participant
     |> cast(attrs, [:last_read_at, :joined_at, :left_at])

@@ -19,6 +19,7 @@ defmodule ApiWeb.AuthController do
 
   @login_types %{username: :string, password: :string}
 
+  @spec register(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def register(conn, params) do
     with {:ok, user} <- Accounts.register_user(params),
          {:ok, token, expires_at} <- Guardian.issue_token(user) do
@@ -28,6 +29,7 @@ defmodule ApiWeb.AuthController do
     end
   end
 
+  @spec login(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def login(conn, params) do
     with {:ok, %{username: username, password: password}} <- validate_login(params),
          {:ok, user} <- Accounts.authenticate(username, password),
@@ -36,11 +38,14 @@ defmodule ApiWeb.AuthController do
     end
   end
 
+  @spec me(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def me(conn, _params), do: render(conn, :show, user: conn.assigns.current_user)
 
   # A missing field is a malformed request, not a failed login: answering
   # invalid_credentials there would tell a client its own bug looks like a
   # wrong password.
+  @spec validate_login(map()) ::
+          {:ok, %{username: String.t(), password: String.t()}} | {:error, Ecto.Changeset.t()}
   defp validate_login(params) do
     {%{}, @login_types}
     |> Ecto.Changeset.cast(params, Map.keys(@login_types))

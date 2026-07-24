@@ -29,8 +29,10 @@ defmodule ApiWeb.ErrorJSON do
   Returns the `{code, detail}` pair for an HTTP status, so other renderers do
   not restate the table.
   """
+  @spec error_for(integer()) :: {String.t(), String.t()}
   def error_for(status) when is_integer(status), do: Map.get(@errors, status, @fallback)
 
+  @spec render(atom() | String.t(), map()) :: map()
   def render(template, assigns) do
     {code, detail} =
       template

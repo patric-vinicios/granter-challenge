@@ -24,6 +24,7 @@ defmodule Api.Conversations.Preview do
   Collapses whitespace and truncates `body` to at most 120 graphemes including
   the ellipsis.
   """
+  @spec truncate(String.t()) :: String.t()
   def truncate(body) when is_binary(body) do
     collapsed = body |> String.replace(~r/\s+/u, " ") |> String.trim()
 

@@ -231,6 +231,7 @@ defmodule Api.Seeds do
     end)
   end
 
+  @spec raise_not_ready(Exception.t()) :: no_return()
   defp raise_not_ready(error) do
     raise """
     The database is not ready for seeding: #{Exception.message(error)}

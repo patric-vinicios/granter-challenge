@@ -21,6 +21,17 @@ defmodule Api.Accounts.User do
   @name_length [min: 2, max: 60]
   @password_length [min: 8, max: 72]
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          username: String.t() | nil,
+          name: String.t() | nil,
+          hashed_password: String.t() | nil,
+          password: String.t() | nil,
+          last_seen_at: DateTime.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "users" do
     field :username, :string
     field :name, :string
@@ -37,6 +48,7 @@ defmodule Api.Accounts.User do
   `last_seen_at` is deliberately absent from the cast: it is presence state,
   written programmatically, never accepted from a request body.
   """
+  @spec registration_changeset(t(), map()) :: Ecto.Changeset.t(t())
   def registration_changeset(user, attrs) do
     user
     |> cast(attrs, [:username, :name, :password])
@@ -61,6 +73,7 @@ defmodule Api.Accounts.User do
   rejected format, not a value to be silently rewritten — but every later
   resolution has to accept whatever decoration the user typed.
   """
+  @spec normalize_username(term()) :: term()
   def normalize_username(username) when is_binary(username) do
     username
     |> strip_display_prefix()

@@ -12,6 +12,7 @@ defmodule ApiWeb.ChangesetJSON do
   field. Interpolation options are substituted into the message, so
   `should be at least %{count} character(s)` reaches the client resolved.
   """
+  @spec error(%{changeset: Ecto.Changeset.t()}) :: map()
   def error(%{changeset: changeset}) do
     {code, detail} = ApiWeb.ErrorJSON.error_for(422)
 
@@ -25,6 +26,7 @@ defmodule ApiWeb.ChangesetJSON do
   `fields` shape the 422 envelope does, so both surfaces translate a rejected
   changeset through one function rather than drifting apart.
   """
+  @spec fields(Ecto.Changeset.t()) :: map()
   def fields(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
       Regex.replace(~r"%{(\w+)}", message, fn _whole, key ->

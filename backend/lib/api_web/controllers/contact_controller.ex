@@ -16,6 +16,8 @@ defmodule ApiWeb.ContactController do
 
   @add_types %{username: :string}
 
+  @spec create(Plug.Conn.t(), map()) ::
+          Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
   def create(conn, params) do
     with {:ok, %{username: username}} <- validate_add(params),
          {:ok, contact} <- Contacts.add_contact(conn.assigns.current_user, username) do
@@ -25,9 +27,11 @@ defmodule ApiWeb.ContactController do
     end
   end
 
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params),
     do: render(conn, :index, contacts: Contacts.list_contacts(conn.assigns.current_user))
 
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, :not_found | :invalid_id}
   def delete(conn, %{"id" => id}) do
     with :ok <- Contacts.delete_contact(conn.assigns.current_user, id) do
       send_resp(conn, :no_content, "")
@@ -36,6 +40,7 @@ defmodule ApiWeb.ContactController do
 
   # A missing username is a malformed request, not an unknown user: answering
   # user_not_found there would tell a client its own bug looks like a typo.
+  @spec validate_add(map()) :: {:ok, %{username: String.t()}} | {:error, Ecto.Changeset.t()}
   defp validate_add(params) do
     {%{}, @add_types}
     |> Ecto.Changeset.cast(params, Map.keys(@add_types))
