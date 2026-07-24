@@ -22,6 +22,17 @@ defmodule Api.Messages.Message do
 
   @body_max_length 4000
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          conversation_id: Ecto.UUID.t() | nil,
+          conversation: Conversation.t() | Ecto.Association.NotLoaded.t() | nil,
+          sender_id: Ecto.UUID.t() | nil,
+          sender: User.t() | Ecto.Association.NotLoaded.t() | nil,
+          body: String.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "messages" do
     belongs_to :conversation, Conversation
     belongs_to :sender, User
@@ -37,6 +48,7 @@ defmodule Api.Messages.Message do
   Trimming happens before the length check, so a whitespace-only body fails as
   an empty one rather than passing as a four-character message.
   """
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(message, attrs \\ %{}) do
     message
     |> cast(attrs, [:body])
