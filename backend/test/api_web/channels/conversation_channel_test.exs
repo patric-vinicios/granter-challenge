@@ -279,6 +279,47 @@ defmodule ApiWeb.ConversationChannelTest do
     assert {:ok, _reply, _socket} = try_join(ana, thread)
   end
 
+  # --- Concurrency --------------------------------------------------------
+
+  test "a subscriber receives a burst of messages once each, in order" do
+    {ana, carlos, thread} = private_pair()
+    sender = joined(ana, thread)
+    _subscriber = joined(carlos, thread)
+
+    refs = for i <- 1..20, do: push(sender, "new_message", %{"body" => "m#{i}"})
+    for ref <- refs, do: assert_reply(ref, :ok, %{})
+
+    received =
+      for _ <- 1..20 do
+        assert_push "message:new", %{body: body}, 2_000
+        body
+      end
+
+    assert received == Enum.map(1..20, &"m#{&1}")
+    refute_push "message:new", _extra, 100
+    assert count_messages(thread.id) == 20
+  end
+
+  test "five concurrent senders each writing 20 messages persist 100 distinct rows" do
+    creator = insert(:user, name: "Creator")
+    senders = for i <- 1..5, do: insert(:user, name: "Sender #{i}")
+    group = group_with(creator, senders)
+    sockets = Enum.map(senders, &joined(&1, group))
+
+    # 20 per sender is exactly the per-user rate limit, so every send is accepted.
+    refs =
+      for {socket, s} <- Enum.with_index(sockets), i <- 1..20 do
+        push(socket, "new_message", %{"body" => "s#{s}-m#{i}"})
+      end
+
+    for ref <- refs, do: assert_reply(ref, :ok, %{}, 5_000)
+
+    assert count_messages(group.id) == 100
+
+    bodies = Repo.all(from m in Message, where: m.conversation_id == ^group.id, select: m.body)
+    assert Enum.count(Enum.uniq(bodies)) == 100
+  end
+
   # --- Fan-out ------------------------------------------------------------
 
   test "pushes conversation:updated to every participant, sender's copy read" do

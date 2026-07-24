@@ -3,7 +3,9 @@ defmodule ApiWeb.Conversations.ConversationGroupControllerTest do
 
   alias Api.Accounts.Guardian
   alias Api.Conversations.Conversation
+  alias Api.Conversations.Participant
   alias Api.Repo
+  alias Ecto.Adapters.SQL.Sandbox
 
   import Ecto.Query
 
@@ -201,6 +203,41 @@ defmodule ApiWeb.Conversations.ConversationGroupControllerTest do
       conn = post(conn, ~p"/api/conversations/#{id}/members", %{"member_ids" => [carlos.id]})
 
       assert json_response(conn, 409)["errors"]["code"] == "already_member"
+    end
+
+    test "two concurrent adds of the same member seat exactly one active row", %{
+      conn: conn,
+      ana: ana,
+      carlos: carlos,
+      joao: joao
+    } do
+      id = create_group(conn, "Time", [joao.id])
+      parent = self()
+
+      responses =
+        for _ <- 1..2 do
+          Task.async(fn ->
+            Sandbox.allow(Repo, parent, self())
+
+            post(authenticate(json_conn(), ana), ~p"/api/conversations/#{id}/members", %{
+              "member_ids" => [carlos.id]
+            })
+          end)
+        end
+        |> Task.await_many()
+
+      # No 500: each is either the successful add or a caught already_member.
+      assert Enum.all?(responses, &(&1.status in [200, 409]))
+
+      active =
+        Repo.aggregate(
+          from(p in Participant,
+            where: p.conversation_id == ^id and p.user_id == ^carlos.id and is_nil(p.left_at)
+          ),
+          :count
+        )
+
+      assert active == 1
     end
 
     test "re-adds a departed member with a cleared left_at", %{conn: conn, carlos: carlos} do
