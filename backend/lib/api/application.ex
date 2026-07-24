@@ -18,9 +18,11 @@ defmodule Api.Application do
       # After its PubSub and ahead of the endpoint, so the tracker exists before
       # the first socket can connect and be tracked.
       ApiWeb.Presence,
-      # Ahead of the endpoint so the counter table exists before the first
-      # socket can connect and send.
+      # Ahead of the endpoint so the counter tables and the revocation set exist
+      # before the first request or socket can reach them.
       ApiWeb.RateLimiter,
+      ApiWeb.LoginThrottle,
+      Api.TokenRevocation,
       # Start to serve requests, typically the last entry
       ApiWeb.Endpoint
     ]

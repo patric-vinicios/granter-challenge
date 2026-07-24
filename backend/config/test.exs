@@ -30,6 +30,10 @@ config :api, Api.Accounts.Guardian,
 # per test spends most of its wall clock hashing, so test uses the floor.
 config :argon2_elixir, t_cost: 1, m_cost: 8
 
+# Raise the login ceiling out of the suite's way; the throttle test lowers it
+# for itself against a unique key.
+config :api, ApiWeb.LoginThrottle, ip_limit: 100_000, user_limit: 100_000, window_ms: 60_000
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

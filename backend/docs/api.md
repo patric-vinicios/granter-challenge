@@ -19,6 +19,7 @@ suite, so a client developer can integrate without reading Elixir.
     - [`POST /api/auth/register`](#post-apiauthregister)
     - [`POST /api/auth/login`](#post-apiauthlogin)
     - [`GET /api/auth/me`](#get-apiauthme)
+    - [`DELETE /api/auth/session`](#delete-apiauthsession)
   - [Contacts](#contacts)
     - [`POST /api/contacts`](#post-apicontacts)
     - [`GET /api/contacts`](#get-apicontacts)
@@ -227,6 +228,10 @@ whether an account exists:
 }
 ```
 
+**Error — `429 Too Many Requests`** (`rate_limited`) — after 10 failed attempts
+from one IP or 5 for one username within 60 seconds; carries a `Retry-After`
+header (seconds). Successful logins are never throttled.
+
 ---
 
 #### `GET /api/auth/me`
@@ -257,6 +262,17 @@ malformed:
   }
 }
 ```
+
+---
+
+#### `DELETE /api/auth/session`
+
+Log out, revoking the presented token until it would have expired. **Auth:** Bearer.
+
+**Success — `204 No Content`** — no body. The same token is afterwards rejected
+with `401` (`unauthenticated`) on every HTTP request and on a socket connect.
+
+**Error — `401 Unauthorized`** (`unauthenticated`) when no valid token is sent.
 
 ---
 

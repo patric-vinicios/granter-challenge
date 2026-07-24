@@ -24,6 +24,7 @@ defmodule Api do
       Health,
       Repo,
       Schema,
+      TokenRevocation,
       UUID
     ]
 end

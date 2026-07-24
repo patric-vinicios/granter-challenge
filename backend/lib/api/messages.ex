@@ -161,6 +161,15 @@ defmodule Api.Messages do
         |> limit(^(limit + 1))
         |> join(:inner, [m], u in assoc(m, :sender))
         |> preload([m, u], sender: u)
+        |> select_merge([m], %{
+          headline:
+            fragment(
+              "ts_headline('portuguese_unaccent', ?, websearch_to_tsquery('portuguese_unaccent', ?), ?)",
+              m.body,
+              ^query,
+              ^Highlight.headline_opts()
+            )
+        })
         |> Repo.all()
 
       has_more = length(rows) > limit
@@ -174,7 +183,7 @@ defmodule Api.Messages do
           %{
             message: message,
             position: position,
-            match_offsets: Highlight.offsets(message.body, query)
+            match_offsets: Highlight.offsets_from_headline(message.headline)
           }
         end)
 

@@ -40,6 +40,9 @@ config :api, Api.Accounts.Guardian,
   # what a client library expects from this API.
   allowed_algos: ["HS256"]
 
+# Failed-login ceiling: per IP and per username, over a fixed window.
+config :api, ApiWeb.LoginThrottle, ip_limit: 10, user_limit: 5, window_ms: 60_000
+
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

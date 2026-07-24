@@ -23,6 +23,7 @@ defmodule Api.Messages.Message do
           sender: User.t() | Ecto.Association.NotLoaded.t() | nil,
           body: String.t() | nil,
           seq: integer() | nil,
+          headline: String.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -32,6 +33,8 @@ defmodule Api.Messages.Message do
     belongs_to :sender, User
     field :body, :string
     field :seq, :integer, read_after_writes: true
+    # Populated only by search, from ts_headline, to compute match offsets.
+    field :headline, :string, virtual: true
 
     timestamps()
   end

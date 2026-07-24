@@ -41,6 +41,14 @@ defmodule ApiWeb.UserSocketTest do
     assert :error = connect(UserSocket, %{"token" => token})
   end
 
+  test "rejects a token revoked at logout" do
+    token = token_for(insert(:user))
+    {:ok, claims} = Guardian.decode_and_verify(token)
+    Api.TokenRevocation.revoke(claims["jti"], claims["exp"])
+
+    assert :error = connect(UserSocket, %{"token" => token})
+  end
+
   test "assigns a per-user socket id" do
     user = insert(:user)
     {:ok, socket} = connect(UserSocket, %{"token" => token_for(user)})

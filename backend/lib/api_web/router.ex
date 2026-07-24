@@ -28,6 +28,7 @@ defmodule ApiWeb.Router do
 
     scope "/", Accounts do
       get "/auth/me", AuthController, :me
+      delete "/auth/session", AuthController, :logout
     end
 
     scope "/", Contacts do
