@@ -19,6 +19,7 @@ defmodule Api do
       {Conversations, []},
       {Messages, []},
       {Seeds, []},
+      Cursor,
       Health,
       Repo,
       Schema
