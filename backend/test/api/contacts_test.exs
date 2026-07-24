@@ -63,7 +63,7 @@ defmodule Api.ContactsTest do
     test "is unidirectional", %{owner: owner, target: target} do
       assert {:ok, _contact} = Contacts.add_contact(owner, "carlos")
 
-      assert Contacts.list_contacts(target) == []
+      assert contacts(target) == []
       refute Repo.exists?(where(Contact, [c], c.owner_id == ^target.id))
     end
 
@@ -121,7 +121,7 @@ defmodule Api.ContactsTest do
       mine = insert(:contact, owner: owner)
       theirs = insert(:contact, owner: other)
 
-      assert [contact] = Contacts.list_contacts(owner)
+      assert [contact] = contacts(owner)
       assert contact.id == mine.id
       refute contact.id == theirs.id
     end
@@ -133,7 +133,7 @@ defmodule Api.ContactsTest do
         insert(:contact, owner: owner, user: build(:user, name: name))
       end
 
-      assert Enum.map(Contacts.list_contacts(owner), & &1.user.name) == [
+      assert Enum.map(contacts(owner), & &1.user.name) == [
                "Álvaro",
                "ana",
                "Ángela",
@@ -149,9 +149,9 @@ defmodule Api.ContactsTest do
         insert(:contact, owner: owner, user: build(:user, name: "Ana Beatriz"))
       end
 
-      ids = Enum.map(Contacts.list_contacts(owner), & &1.id)
+      ids = Enum.map(contacts(owner), & &1.id)
 
-      assert ids == Enum.map(Contacts.list_contacts(owner), & &1.id)
+      assert ids == Enum.map(contacts(owner), & &1.id)
       assert [_first, _second, _third] = Enum.uniq(ids)
     end
 
@@ -159,11 +159,73 @@ defmodule Api.ContactsTest do
       owner = insert(:user)
       insert(:contact, owner: owner)
 
-      assert [%Contact{user: %User{}}] = Contacts.list_contacts(owner)
+      assert [%Contact{user: %User{}}] = contacts(owner)
     end
 
     test "returns an empty list for a user with no contacts" do
-      assert Contacts.list_contacts(insert(:user)) == []
+      assert contacts(insert(:user)) == []
+    end
+  end
+
+  describe "list_contacts/2 with a search term" do
+    setup do
+      owner = insert(:user)
+
+      for {name, username} <- [
+            {"Ana Beatriz", "anabeatriz"},
+            {"Bruno Álvares", "brunoalvares"},
+            {"Carla Mendes", "carlamendes"},
+            {"Mariana Alves", "mariana_alves"}
+          ] do
+        insert(:contact, owner: owner, user: build(:user, name: name, username: username))
+      end
+
+      %{owner: owner}
+    end
+
+    test "narrows to a substring of the display name", %{owner: owner} do
+      names = owner |> contacts(%{q: "ana"}) |> Enum.map(& &1.user.name)
+
+      assert names == ["Ana Beatriz", "Mariana Alves"]
+    end
+
+    test "matches the username as well as the name", %{owner: owner} do
+      assert [contact] = contacts(owner, %{q: "carlamendes"})
+      assert contact.user.name == "Carla Mendes"
+    end
+
+    test "ignores accents and case", %{owner: owner} do
+      assert [contact] = contacts(owner, %{q: "ALVARES"})
+      assert contact.user.name == "Bruno Álvares"
+    end
+
+    test "keeps the display-name ordering inside a filtered list", %{owner: owner} do
+      names = owner |> contacts(%{q: "a"}) |> Enum.map(& &1.user.name)
+
+      assert names == ["Ana Beatriz", "Bruno Álvares", "Carla Mendes", "Mariana Alves"]
+    end
+
+    test "treats a blank term as no filter at all", %{owner: owner} do
+      assert Enum.count(contacts(owner, %{q: "   "})) == 4
+      assert Enum.count(contacts(owner, %{q: nil})) == 4
+      assert Enum.count(contacts(owner, %{})) == 4
+    end
+
+    test "answers a term matching nothing with an empty list", %{owner: owner} do
+      assert contacts(owner, %{q: "zzzznada"}) == []
+    end
+
+    test "never reaches another owner's list", %{owner: owner} do
+      stranger = insert(:user)
+      insert(:contact, owner: stranger, user: build(:user, name: "Ana Clandestina"))
+
+      names = owner |> contacts(%{q: "ana"}) |> Enum.map(& &1.user.name)
+
+      refute "Ana Clandestina" in names
+    end
+
+    test "filters in one query regardless of the term", %{owner: owner} do
+      assert count_queries(fn -> Contacts.list_contacts(owner, %{q: "ana"}) end) == 1
     end
   end
 
@@ -175,7 +237,7 @@ defmodule Api.ContactsTest do
       assert :ok = Contacts.delete_contact(owner, contact.id)
 
       refute Repo.get(Contact, contact.id)
-      assert Contacts.list_contacts(owner) == []
+      assert contacts(owner) == []
     end
 
     test "returns :not_found for another user's contact id" do
@@ -268,9 +330,11 @@ defmodule Api.ContactsTest do
 
     test "names the offenders that are not contacts" do
       owner = insert(:user)
-      c1 = insert(:contact, owner: owner, user: build(:user, username: "carlosedu"))
-      c2 = insert(:contact, owner: owner, user: build(:user, username: "anabeatriz"))
-      stranger = insert(:user, username: "joaopedro")
+      u1 = insert(:user, username: "carlosedu_#{System.unique_integer([:positive])}")
+      u2 = insert(:user, username: "anabeatriz_#{System.unique_integer([:positive])}")
+      c1 = insert(:contact, owner: owner, user: u1)
+      c2 = insert(:contact, owner: owner, user: u2)
+      stranger = insert(:user, username: "joaopedro_#{System.unique_integer([:positive])}")
 
       assert {:error, :not_a_contact, detail} =
                Contacts.reject_non_contacts(owner, [
@@ -279,9 +343,9 @@ defmodule Api.ContactsTest do
                  stranger.id
                ])
 
-      assert detail =~ "@joaopedro"
-      refute detail =~ "@carlosedu"
-      refute detail =~ "@anabeatriz"
+      assert detail =~ stranger.username
+      refute detail =~ u1.username
+      refute detail =~ u2.username
     end
 
     test "treats an unknown id as an offender" do
@@ -296,6 +360,13 @@ defmodule Api.ContactsTest do
     %Contact{owner_id: owner_id, contact_user_id: contact_user_id}
     |> Contact.changeset()
     |> Repo.insert()
+  end
+
+  # The entries of one page, for the assertions that are about the entries and
+  # not about the paging around them.
+  defp contacts(owner, opts \\ %{}) do
+    %{contacts: contacts} = Contacts.list_contacts(owner, opts)
+    contacts
   end
 
   defp fill_contact_list(owner, count) do

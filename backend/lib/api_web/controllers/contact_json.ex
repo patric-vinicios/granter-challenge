@@ -18,8 +18,23 @@ defmodule ApiWeb.ContactJSON do
   @spec show(%{contact: Contact.t()}) :: map()
   def show(%{contact: contact}), do: %{contact: data(contact)}
 
-  @spec index(%{contacts: [Contact.t()]}) :: map()
-  def index(%{contacts: contacts}), do: %{contacts: Enum.map(contacts, &data/1)}
+  @doc """
+  One page of the list: the entries, the cursor that opens the next page and
+  whether there is one. Shaped exactly as the conversation inbox's page is, so a
+  client pages both lists with one piece of code.
+  """
+  @spec index(%{
+          contacts: [Contact.t()],
+          next_cursor: String.t() | nil,
+          has_more: boolean()
+        }) :: map()
+  def index(%{contacts: contacts, next_cursor: next_cursor, has_more: has_more}) do
+    %{
+      contacts: Enum.map(contacts, &data/1),
+      next_cursor: next_cursor,
+      has_more: has_more
+    }
+  end
 
   @spec data(Contact.t()) :: map()
   def data(%Contact{} = contact) do

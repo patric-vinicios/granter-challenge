@@ -9,12 +9,16 @@ defmodule ApiWeb.ContactController do
   use ApiWeb, :controller
 
   alias Api.Contacts
+  alias Ecto.Changeset
 
   action_fallback ApiWeb.FallbackController
 
   plug :put_view, json: ApiWeb.ContactJSON
 
   @add_types %{username: :string}
+
+  @page_types %{limit: :integer, cursor: :string, q: :string}
+  @max_limit 200
 
   @spec create(Plug.Conn.t(), map()) ::
           Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
@@ -27,9 +31,24 @@ defmodule ApiWeb.ContactController do
     end
   end
 
-  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def index(conn, _params),
-    do: render(conn, :index, contacts: Contacts.list_contacts(conn.assigns.current_user))
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
+  def index(conn, params) do
+    with {:ok, page_params} <- validate_page(params),
+         page <- Contacts.list_contacts(conn.assigns.current_user, page_params),
+         {:ok, page} <- page_or_error(page) do
+      render(conn, :index, page)
+    end
+  end
+
+  defp page_or_error({:error, reason}), do: {:error, reason}
+  defp page_or_error(page), do: {:ok, page}
+
+  defp validate_page(params),
+    do:
+      ApiWeb.Pagination.validate(params, @page_types,
+        default_limit: @max_limit,
+        max_limit: @max_limit
+      )
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, :not_found | :invalid_id}
   def delete(conn, %{"id" => id}) do
@@ -40,11 +59,11 @@ defmodule ApiWeb.ContactController do
 
   # A missing username is a malformed request, not an unknown user: answering
   # user_not_found there would tell a client its own bug looks like a typo.
-  @spec validate_add(map()) :: {:ok, %{username: String.t()}} | {:error, Ecto.Changeset.t()}
+  @spec validate_add(map()) :: {:ok, %{username: String.t()}} | {:error, Changeset.t()}
   defp validate_add(params) do
     {%{}, @add_types}
-    |> Ecto.Changeset.cast(params, Map.keys(@add_types))
-    |> Ecto.Changeset.validate_required([:username])
-    |> Ecto.Changeset.apply_action(:insert)
+    |> Changeset.cast(params, Map.keys(@add_types))
+    |> Changeset.validate_required([:username])
+    |> Changeset.apply_action(:insert)
   end
 end
