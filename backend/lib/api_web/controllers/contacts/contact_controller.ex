@@ -1,4 +1,4 @@
-defmodule ApiWeb.ContactController do
+defmodule ApiWeb.Contacts.ContactController do
   @moduledoc """
   The three endpoints that maintain a user's contact list.
 
@@ -13,7 +13,7 @@ defmodule ApiWeb.ContactController do
 
   action_fallback ApiWeb.FallbackController
 
-  plug :put_view, json: ApiWeb.ContactJSON
+  plug :put_view, json: ApiWeb.Contacts.ContactJSON
 
   @add_types %{username: :string}
 
@@ -60,10 +60,5 @@ defmodule ApiWeb.ContactController do
   # A missing username is a malformed request, not an unknown user: answering
   # user_not_found there would tell a client its own bug looks like a typo.
   @spec validate_add(map()) :: {:ok, %{username: String.t()}} | {:error, Changeset.t()}
-  defp validate_add(params) do
-    {%{}, @add_types}
-    |> Changeset.cast(params, Map.keys(@add_types))
-    |> Changeset.validate_required([:username])
-    |> Changeset.apply_action(:insert)
-  end
+  defp validate_add(params), do: ApiWeb.Params.validate(params, @add_types)
 end

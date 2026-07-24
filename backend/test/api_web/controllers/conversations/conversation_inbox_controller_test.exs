@@ -1,4 +1,4 @@
-defmodule ApiWeb.ConversationInboxControllerTest do
+defmodule ApiWeb.Conversations.ConversationInboxControllerTest do
   use ApiWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -230,6 +230,17 @@ defmodule ApiWeb.ConversationInboxControllerTest do
 
       assert Enum.count(titles_for(conn, "")) == 2
     end
+
+    # The title of a private conversation is the counterpart's, so matching on the
+    # caller's own name or @username must not pull in their private threads.
+    test "does not match the caller's own name or @username", %{conn: conn, caller: caller} do
+      # caller is "Primary User" / @primary (see setup)
+      private_pair(caller, insert(:user, name: "Carlos Eduardo"))
+
+      assert titles_for(conn, "primary") == []
+      assert titles_for(conn, "Primary User") == []
+      assert titles_for(conn, "carlos") == ["Carlos Eduardo"]
+    end
   end
 
   describe "POST /api/conversations/:id/read" do
@@ -327,19 +338,16 @@ defmodule ApiWeb.ConversationInboxControllerTest do
            conn: conn,
            caller: caller
          } do
-      m1 = insert(:user)
+      # The caller is a plain member (not the creator) so leaving is unconditional.
+      creator = insert(:user)
       m2 = insert(:user)
-      insert(:contact, owner: caller, user: m1)
-      insert(:contact, owner: caller, user: m2)
+      insert(:contact, owner: creator, user: caller)
+      insert(:contact, owner: creator, user: m2)
 
-      group =
-        conn
-        |> post(~p"/api/conversations/groups", %{
-          "name" => "Time de Produto",
-          "member_ids" => [m1.id, m2.id]
-        })
-        |> json_response(201)
-        |> get_in(["conversation", "id"])
+      {:ok, group} =
+        Api.Conversations.create_group(creator, "Time de Produto", [caller.id, m2.id])
+
+      group = group.id
 
       [entry] =
         conn |> get(~p"/api/conversations") |> json_response(200) |> Map.fetch!("conversations")

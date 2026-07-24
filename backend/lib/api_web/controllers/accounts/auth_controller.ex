@@ -1,4 +1,4 @@
-defmodule ApiWeb.AuthController do
+defmodule ApiWeb.Accounts.AuthController do
   @moduledoc """
   Registration, login and the current-user read.
 
@@ -16,7 +16,7 @@ defmodule ApiWeb.AuthController do
   action_fallback ApiWeb.FallbackController
 
   # The user shape is shared API-wide rather than owned by this controller.
-  plug :put_view, json: ApiWeb.UserJSON
+  plug :put_view, json: ApiWeb.Accounts.UserJSON
 
   @login_types %{username: :string, password: :string}
 
@@ -47,10 +47,5 @@ defmodule ApiWeb.AuthController do
   # wrong password.
   @spec validate_login(map()) ::
           {:ok, %{username: String.t(), password: String.t()}} | {:error, Changeset.t()}
-  defp validate_login(params) do
-    {%{}, @login_types}
-    |> Changeset.cast(params, Map.keys(@login_types))
-    |> Changeset.validate_required([:username, :password])
-    |> Changeset.apply_action(:insert)
-  end
+  defp validate_login(params), do: ApiWeb.Params.validate(params, @login_types)
 end

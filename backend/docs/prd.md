@@ -306,14 +306,14 @@ All three audiences interact with the same contract from different distances, an
 **Capabilities:**
 - Groups reuse the `conversations` and `conversation_participants` tables with `type: :group`, a required `name` and a `creator_id`
 - `name`: 1–60 characters, trimmed, not required to be unique; the group name is immutable after creation — no rename endpoint exists
-- Membership size: minimum 2 members (creator plus at least one), maximum 256 members
+- Membership size: minimum 2 members at creation (creator plus at least one), maximum 256 members; afterwards a group may shrink down to just its creator
 - `POST /api/conversations/groups` accepting `{"name": "...", "member_ids": ["<uuid>", ...]}`; every id in `member_ids` must be in the creator's contact list, validated as a set before any insert; the creator is added automatically and must not be listed
 - Creation is transactional: the conversation and all participant rows are inserted together, so a group is never persisted with a partial member set
 - `GET /api/conversations/:id` for a group returns id, type, name, creator id, active member count and the member list (user id, `@username`, display name), restricted to active members
 - `POST /api/conversations/:id/members` (creator only) accepting `{"member_ids": [...]}`; each must be a contact of the creator and not already an active member; re-adding a user who previously left sets a new `joined_at` and clears `left_at`
 - Each newly seated member is pushed a `conversation:added` event on their own `user:<user_id>` topic carrying the conversation id, so an already-connected member's inbox updates immediately: their session fetches `GET /api/conversations/:id` and inserts the entry without a reload. The notification fires only after the membership change commits, so it is never sent for a rejected add
 - `DELETE /api/conversations/:id/members/:user_id` (creator only) sets `left_at`; the creator cannot remove themselves through this endpoint
-- `DELETE /api/conversations/:id/members/me` lets any member leave by setting `left_at`; the creator may leave only if at least one other active member remains, and the group keeps its original `creator_id`, so once the creator leaves no further membership changes are possible
+- `DELETE /api/conversations/:id/members/me` lets any member leave by setting `left_at`. Following the common messaging-app convention, a group may hold just its creator: a plain member may always leave, while the creator may leave only once every other member is gone. When the sole remaining member leaves, the group has no one left and is deleted outright, cascading its participant rows and messages
 - Departed members retain read access to messages sent before their `left_at` but receive no new messages and cannot send; their channel joins are rejected
 
 **Experience:** The user opens the new-group dialog, names the group and checks contacts. The client sends the name and the selected user ids in one call, and receives the full group conversation including the member list, so the group can be rendered and opened immediately. If any selected user was removed from contacts between opening the dialog and submitting, the whole request fails with 403 naming the offending users rather than silently creating a smaller group. Membership changes take effect immediately: a removed member's next channel join is rejected and their next send returns 403, and a newly added member who is already online sees the group appear in their list the moment they are added, driven by a `conversation:added` push on their personal topic rather than by a manual refresh.
@@ -323,7 +323,7 @@ All three audiences interact with the same contract from different distances, an
 - Empty `member_ids` or a name outside 1–60 characters: 422 with `code: "validation_error"` and the offending field in `fields`
 - Non-creator attempting to add or remove members: 403 with `code: "not_group_creator"` and detail "Only the group creator can manage members"
 - Adding a user who is already an active member: 409 with `code: "already_member"`
-- Last active member attempting to leave, or creator leaving an otherwise empty group: 422 with `code: "last_member"` and detail "A group must keep at least one member"
+- Creator attempting to leave while other members remain: 422 with `code: "creator_has_members"` and detail "The group creator can only leave after every other member has left"; the sole remaining member leaving is allowed and deletes the group
 
 ### F06. Message Persistence and History
 
@@ -429,8 +429,8 @@ All three audiences interact with the same contract from different distances, an
 - `GET /api/conversations/:id/messages/search?q=<term>` searching the messages of one conversation, restricted to participants by the same predicate as F06
 - Full-text search over a generated `search_vector` column (`to_tsvector('portuguese', body)`) with a GIN index; the query uses `websearch_to_tsquery('portuguese', q)` so multi-word and quoted phrases behave as users expect
 - Query length: minimum 2 characters after trimming, maximum 100 characters; queries outside that range are rejected rather than executed
-- Results are capped at 100 matches ordered by `inserted_at` descending, and each hit carries message id, conversation id, sender id, full body, `inserted_at`, and `position` (1-based index within the result set)
-- The response includes `total_matches` (exact when at or below 100, otherwise reported as 100 with `truncated: true`), so the client can render the "1 / N" counter and previous/next navigation shown in the reference screen
+- Results are paginated by the same `(inserted_at, seq)` keyset history uses (`limit` default 30, maximum 100; `before` cursor), ordered newest-first, and each hit carries message id, conversation id, sender id, full body, `inserted_at`, and `position` (global 1-based index, 1 = newest, contiguous across pages)
+- The response includes `total_matches` (the true count across every page), `next_cursor` and `has_more`, so the client can render the "position / N" counter and page through previous/next matches even when a term matches thousands of messages
 - Each hit also carries `match_offsets`, a list of `{start, length}` character positions of the matched terms within the body, so the client can highlight without re-running the match
 - Because the hit carries the message id, the client can page history around it via the F06 cursor and scroll the match into view
 - `GET /api/conversations?q=<term>` filters the conversation list (F08) by display title — counterpart display name or `@username` for private conversations, group name for groups — using a case-insensitive, accent-insensitive `ILIKE` match with `unaccent`; it returns the same entry shape as the unfiltered list
@@ -666,7 +666,7 @@ graph TD
 - [x] Adding an already-active member returns 409 with `code: "already_member"`
 - [x] The creator removing a member sets `left_at`; the removed user no longer appears in the member list and no longer sees the group in their conversation list
 - [x] Any member can leave via `DELETE /api/conversations/:id/members/me` and stops receiving the group's messages
-- [x] The last active member attempting to leave returns 422 with `code: "last_member"`
+- [x] The creator attempting to leave while other members remain returns 422 with `code: "creator_has_members"`; the sole remaining member leaving is allowed and deletes the group
 - [x] A removed member re-added by the creator receives a new `joined_at` and a cleared `left_at`
 - [x] `GET /api/conversations/:id` for a group from a non-member returns 404
 
@@ -721,7 +721,7 @@ graph TD
 - [ ] Searching a conversation for a term present in 3 messages returns those 3 messages with `total_matches: 3`
 - [ ] Results are ordered by `inserted_at` descending and each hit carries a 1-based `position` from 1 to `total_matches`
 - [ ] Each hit carries the message id and `match_offsets` whose start/length values correctly delimit the matched term in the body
-- [ ] A search matching more than 100 messages returns 100 hits with `truncated: true`
+- [ ] A search matching more than one page returns the first page with `has_more: true`, `next_cursor` set and the true `total_matches`, and paging with `before` reaches every match with contiguous positions
 - [ ] Search is accent- and case-insensitive: querying `familia` matches a message containing `Família`
 - [ ] A query shorter than 2 characters returns 422 and executes no database scan
 - [ ] Searching a conversation the caller does not participate in returns 404 with no message content

@@ -208,6 +208,7 @@ defmodule ApiWeb.FallbackControllerTest do
         {:not_group_creator, 403, "not_group_creator"},
         {:already_member, 409, "already_member"},
         {:last_member, 422, "last_member"},
+        {:creator_has_members, 422, "creator_has_members"},
         {:cannot_remove_self, 422, "cannot_remove_self"}
       ]
 

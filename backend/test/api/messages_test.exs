@@ -163,6 +163,22 @@ defmodule Api.MessagesTest do
                Messages.list_messages(ana, thread.id)
     end
 
+    test "orders messages sharing a timestamp by insertion sequence, not by id", %{
+      ana: ana,
+      conversation: thread
+    } do
+      at = ~U[2026-07-22 12:00:00.000000Z]
+
+      for body <- ~w(primeiro segundo terceiro) do
+        {:ok, _} = Messages.create_message(ana, thread.id, %{body: body, inserted_at: at})
+      end
+
+      assert {:ok, page} = Messages.list_messages(ana, thread.id)
+      assert Enum.map(page.messages, & &1.body) == ~w(primeiro segundo terceiro)
+      seqs = Enum.map(page.messages, & &1.seq)
+      assert seqs == Enum.sort(seqs)
+    end
+
     test "paginates a 250-message conversation exactly once", %{ana: ana, conversation: thread} do
       seeded = seed(thread, ana, 250)
       expected = Enum.map(seeded, & &1.id)
@@ -290,7 +306,7 @@ defmodule Api.MessagesTest do
     end
   end
 
-  describe "search_messages/3" do
+  describe "search_messages/4" do
     test "returns matching messages newest-first with total_matches", %{
       ana: ana,
       conversation: thread
@@ -302,7 +318,8 @@ defmodule Api.MessagesTest do
 
       assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma")
       assert result.total_matches == 3
-      refute result.truncated
+      refute result.has_more
+      assert result.next_cursor == nil
 
       bodies = Enum.map(result.messages, & &1.message.body)
       assert bodies == ["cronograma final", "cronograma revisado", "primeiro cronograma"]
@@ -325,13 +342,39 @@ defmodule Api.MessagesTest do
       assert hit.match_offsets == [%{start: 2, length: 10}]
     end
 
-    test "caps at 100 with truncated true", %{ana: ana, conversation: thread} do
+    test "paginates a match set larger than one page", %{ana: ana, conversation: thread} do
       bulk(thread, ana, "cronograma", 101)
 
       assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma")
+      assert result.total_matches == 101
+      assert Enum.count(result.messages) == 30
+      assert result.has_more
+      assert result.next_cursor
+      assert Enum.map(result.messages, & &1.position) == Enum.to_list(1..30)
+    end
+
+    test "continues counting positions across a page boundary", %{ana: ana, conversation: thread} do
+      bulk(thread, ana, "cronograma", 101)
+
+      {:ok, first} = Messages.search_messages(ana, thread.id, "cronograma", %{limit: 40})
+
+      {:ok, second} =
+        Messages.search_messages(ana, thread.id, "cronograma", %{
+          before: first.next_cursor,
+          limit: 40
+        })
+
+      assert Enum.map(second.messages, & &1.position) == Enum.to_list(41..80)
+      assert second.total_matches == 101
+    end
+
+    test "caps the page size at 100", %{ana: ana, conversation: thread} do
+      bulk(thread, ana, "cronograma", 150)
+
+      assert {:ok, result} = Messages.search_messages(ana, thread.id, "cronograma", %{limit: 500})
       assert Enum.count(result.messages) == 100
-      assert result.total_matches == 100
-      assert result.truncated
+      assert result.total_matches == 150
+      assert result.has_more
     end
 
     test "is accent- and case-insensitive", %{ana: ana, conversation: thread} do
@@ -344,7 +387,7 @@ defmodule Api.MessagesTest do
     test "returns empty with total_matches 0 for no match", %{ana: ana, conversation: thread} do
       write(thread, ana, "nada relevante aqui", ago(10))
 
-      assert {:ok, %{messages: [], total_matches: 0, truncated: false}} =
+      assert {:ok, %{messages: [], total_matches: 0, has_more: false, next_cursor: nil}} =
                Messages.search_messages(ana, thread.id, "cronograma")
     end
 

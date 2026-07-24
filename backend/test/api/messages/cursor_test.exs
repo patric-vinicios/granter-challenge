@@ -5,7 +5,7 @@ defmodule Api.Messages.CursorTest do
   alias Api.Messages.Message
 
   defp message(inserted_at \\ ~U[2026-07-22 13:48:17.123456Z]) do
-    %Message{id: "3a1d0c74-8e5b-4a11-9c22-5b7c1f2d3e40", inserted_at: inserted_at}
+    %Message{seq: 42, inserted_at: inserted_at}
   end
 
   defp encoded(raw), do: Base.url_encode64(raw, padding: false)
@@ -14,10 +14,10 @@ defmodule Api.Messages.CursorTest do
     test "round trips a message, preserving microseconds" do
       message = message()
 
-      assert {:ok, {inserted_at, id}} = message |> Cursor.encode() |> Cursor.decode()
+      assert {:ok, {inserted_at, seq}} = message |> Cursor.encode() |> Cursor.decode()
       assert inserted_at == message.inserted_at
       assert inserted_at.microsecond == {123_456, 6}
-      assert id == message.id
+      assert seq == message.seq
     end
 
     test "produces a URL-safe value" do
@@ -31,7 +31,7 @@ defmodule Api.Messages.CursorTest do
     test "encodes a bare pair the same way it encodes a message" do
       message = message()
 
-      assert Cursor.encode({message.inserted_at, message.id}) == Cursor.encode(message)
+      assert Cursor.encode({message.inserted_at, message.seq}) == Cursor.encode(message)
     end
   end
 
@@ -45,16 +45,15 @@ defmodule Api.Messages.CursorTest do
     end
 
     test "rejects an unparseable timestamp" do
-      assert Cursor.decode(encoded("nope|3a1d0c74-8e5b-4a11-9c22-5b7c1f2d3e40")) ==
-               {:error, :invalid_cursor}
+      assert Cursor.decode(encoded("nope|42")) == {:error, :invalid_cursor}
     end
 
     test "rejects a timestamp that is not UTC" do
-      assert Cursor.decode(encoded("2026-07-22T13:48:17.123456+03:00|" <> message().id)) ==
+      assert Cursor.decode(encoded("2026-07-22T13:48:17.123456+03:00|42")) ==
                {:error, :invalid_cursor}
     end
 
-    test "rejects a non-UUID id" do
+    test "rejects a non-integer seq" do
       assert Cursor.decode(encoded("2026-07-22T13:48:17.123456Z|nope")) ==
                {:error, :invalid_cursor}
     end

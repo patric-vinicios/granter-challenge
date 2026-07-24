@@ -31,10 +31,10 @@ defmodule Api.Cursor do
   """
 
   @typedoc "What one cursor component holds."
-  @type component_type :: :datetime | :uuid | :string | {:nullable, component_type()}
+  @type component_type :: :datetime | :uuid | :string | :integer | {:nullable, component_type()}
 
   @typedoc "A decoded component."
-  @type component :: DateTime.t() | Ecto.UUID.t() | String.t() | nil
+  @type component :: DateTime.t() | Ecto.UUID.t() | String.t() | integer() | nil
 
   @separator "|"
   @absent "-"
@@ -51,6 +51,7 @@ defmodule Api.Cursor do
 
   defp encode_component(nil), do: @absent
   defp encode_component(%DateTime{} = at), do: DateTime.to_iso8601(at)
+  defp encode_component(value) when is_integer(value), do: Integer.to_string(value)
   defp encode_component(value) when is_binary(value), do: value
 
   @doc """
@@ -72,6 +73,34 @@ defmodule Api.Cursor do
   end
 
   def decode(_cursor, _types), do: {:error, :invalid_cursor}
+
+  @doc """
+  Treats `nil` and `""` as "no cursor" and delegates any other value to the
+  list's own `decode` function.
+
+  Every paginated list shares this nil-or-decode step: an absent cursor opens the
+  newest page, and only a present-but-malformed one is an error. Keeping the
+  branch here stops the three lists from drifting into three slightly different
+  notions of "no cursor".
+  """
+  @spec decode_or_nil(term(), (String.t() -> {:ok, term()} | {:error, :invalid_cursor})) ::
+          {:ok, term() | nil} | {:error, :invalid_cursor}
+  def decode_or_nil(cursor, _decode) when cursor in [nil, ""], do: {:ok, nil}
+  def decode_or_nil(cursor, decode) when is_function(decode, 1), do: decode.(cursor)
+
+  @doc """
+  Clamps a requested page size into `1..max`, falling back to `default` for an
+  absent or non-integer value.
+
+  The bound belongs next to the cursor because the two are one paging contract:
+  what differs between the lists is only `default` and `max`, not the clamping.
+  """
+  @spec normalize_limit(term(), pos_integer(), pos_integer()) :: pos_integer()
+  def normalize_limit(nil, default, _max), do: default
+  def normalize_limit(limit, _default, _max) when is_integer(limit) and limit < 1, do: 1
+  def normalize_limit(limit, _default, max) when is_integer(limit) and limit > max, do: max
+  def normalize_limit(limit, _default, _max) when is_integer(limit), do: limit
+  def normalize_limit(_limit, default, _max), do: default
 
   defp decode_components(parts, types) do
     parts
@@ -101,6 +130,13 @@ defmodule Api.Cursor do
   # `Ecto.UUID.cast/1` already answers in exactly the shape a component decoder
   # owes: `{:ok, uuid}` or `:error`.
   defp decode_component(part, :uuid), do: Ecto.UUID.cast(part)
+
+  defp decode_component(part, :integer) do
+    case Integer.parse(part) do
+      {n, ""} -> {:ok, n}
+      _ -> :error
+    end
+  end
 
   # A string component orders rows but names nothing, so the only thing that can
   # be wrong with it is being empty — an empty ordering key would compare before

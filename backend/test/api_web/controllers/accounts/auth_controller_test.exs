@@ -1,4 +1,4 @@
-defmodule ApiWeb.AuthControllerTest do
+defmodule ApiWeb.Accounts.AuthControllerTest do
   use ApiWeb.ConnCase, async: true
 
   alias Api.Accounts.Guardian

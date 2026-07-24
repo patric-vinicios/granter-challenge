@@ -27,11 +27,5 @@ defmodule ApiWeb.ChangesetJSON do
   changeset through one function rather than drifting apart.
   """
   @spec fields(Ecto.Changeset.t()) :: map()
-  def fields(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _whole, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-  end
+  def fields(changeset), do: Api.Changeset.errors(changeset)
 end

@@ -1,18 +1,11 @@
 defmodule Api.Messages.Message do
   @moduledoc """
-  One message in a conversation, private or group alike.
+  One message in a conversation. Write-once: nothing updates a row after insert.
 
-  A row is write-once by construction: nothing updates a message, so
-  `updated_at` stays equal to `inserted_at` for its whole life, and the pair
-  `(inserted_at, id)` is a stable total order — the anchor keyset pagination
-  reads history by.
-
-  `conversation_id`, `sender_id` and `inserted_at` are placed on the struct by
-  the context and appear in no `cast/3` call. That is the security surface: a
-  request body naming another sender, another conversation or another time is
-  not rejected, it is never read. The body is the one field a caller supplies,
-  and it is stored verbatim — escaping belongs to the client, and the persisted
-  bytes stay identical to what was sent.
+  History is ordered by `(inserted_at, seq)` — `inserted_at` for chronology and
+  the monotonic `seq` as the insertion-order tiebreak. `conversation_id`,
+  `sender_id` and `inserted_at` are set on the struct by the context and never
+  cast from a request body.
   """
 
   use Api.Schema
@@ -29,6 +22,7 @@ defmodule Api.Messages.Message do
           sender_id: Ecto.UUID.t() | nil,
           sender: User.t() | Ecto.Association.NotLoaded.t() | nil,
           body: String.t() | nil,
+          seq: integer() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -37,17 +31,11 @@ defmodule Api.Messages.Message do
     belongs_to :conversation, Conversation
     belongs_to :sender, User
     field :body, :string
+    field :seq, :integer, read_after_writes: true
 
     timestamps()
   end
 
-  @doc """
-  Casts and bounds the body, and turns every database guarantee into a
-  changeset error.
-
-  Trimming happens before the length check, so a whitespace-only body fails as
-  an empty one rather than passing as a four-character message.
-  """
   @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(message, attrs \\ %{}) do
     message

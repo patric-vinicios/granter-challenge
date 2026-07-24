@@ -30,15 +30,17 @@ defmodule Api.Messages do
   alias Api.Messages.Highlight
   alias Api.Messages.Message
   alias Api.Repo
+  alias Api.UUID
 
   # What a page holds when the caller asks for no particular size, and the
   # ceiling the endpoint enforces before the query is ever built.
   @default_limit 30
   @max_limit 100
 
-  # The most matches a single search reports. One row beyond it is fetched so a
-  # full result set is told apart from a truncated one without a second count.
-  @search_cap 100
+  # Search pages the same way history does, so a query matching thousands of
+  # messages is reachable in full rather than truncated at a cap.
+  @default_search_limit 30
+  @max_search_limit 100
 
   @typedoc "One page of history: the messages ascending, the cursor before them, and whether more exist."
   @type page :: %{
@@ -54,11 +56,12 @@ defmodule Api.Messages do
           match_offsets: [Highlight.span()]
         }
 
-  @typedoc "A capped set of search hits with the total-match count."
+  @typedoc "One page of search hits with the total-match count and the cursor to the next page."
   @type search_page :: %{
           messages: [hit()],
           total_matches: non_neg_integer(),
-          truncated: boolean()
+          next_cursor: String.t() | nil,
+          has_more: boolean()
         }
 
   @doc """
@@ -81,7 +84,7 @@ defmodule Api.Messages do
   def create_message(%User{} = sender, conversation_id, attrs \\ %{}) do
     attrs = Map.new(attrs)
 
-    with {:ok, cid} <- cast_id(conversation_id),
+    with {:ok, cid} <- UUID.cast(conversation_id),
          :ok <- refute_non_participant(cid, sender) do
       %Message{conversation_id: cid, sender_id: sender.id}
       |> Message.changeset(attrs)
@@ -108,11 +111,11 @@ defmodule Api.Messages do
           {:ok, page()} | {:error, :invalid_id | :not_found | :invalid_cursor}
   def list_messages(%User{} = caller, conversation_id, opts \\ %{}) do
     opts = Map.new(opts)
-    limit = opts |> Map.get(:limit) |> normalize_limit()
+    limit = Api.Cursor.normalize_limit(Map.get(opts, :limit), @default_limit, @max_limit)
 
-    with {:ok, cid} <- cast_id(conversation_id),
+    with {:ok, cid} <- UUID.cast(conversation_id),
          {:ok, access} <- Conversations.read_access(cid, caller),
-         {:ok, cursor} <- decode_cursor(Map.get(opts, :before)) do
+         {:ok, cursor} <- Api.Cursor.decode_or_nil(Map.get(opts, :before), &Cursor.decode/1) do
       cid
       |> history_query(access, cursor, limit)
       |> Repo.all()
@@ -122,34 +125,51 @@ defmodule Api.Messages do
   end
 
   @doc """
-  Full-text search inside one conversation for `query`, newest match first.
+  Full-text search inside one conversation for `query`, newest match first,
+  paginated by the same `(inserted_at, seq)` keyset history uses.
 
   Gated on the same read access history uses, so a non-participant is answered
   `:not_found` and a departed group member searches only the window up to their
-  `left_at` — never learning the conversation continued. The `@@` filter resolves
-  through the GIN index rather than a sequential scan.
+  `left_at`. `opts` takes `:limit` (default #{@default_search_limit}, capped at
+  #{@max_search_limit}) and `:before`.
 
-  Returns `{:ok, %{messages: hits, total_matches: count, truncated: bool}}`, where
-  each hit is `%{message: %Message{}, position: pos, match_offsets: spans}`:
-  `position` is 1-based over the returned set (1 = newest), and `match_offsets`
-  are the grapheme spans of the term in the body. Results cap at
-  #{@search_cap}; beyond it `total_matches` reports #{@search_cap} and `truncated`
-  is true.
+  Returns `{:ok, %{messages: hits, total_matches: count, next_cursor: cursor,
+  has_more: bool}}`, where each hit is `%{message: %Message{}, position: pos,
+  match_offsets: spans}`. `total_matches` is the true count across all pages and
+  `position` is the global 1-based rank (1 = newest), so a client can render
+  "position / total" while paging.
   """
-  @spec search_messages(User.t(), term(), String.t()) ::
-          {:ok, search_page()} | {:error, :invalid_id | :not_found}
-  def search_messages(%User{} = caller, conversation_id, query) when is_binary(query) do
-    with {:ok, cid} <- cast_id(conversation_id),
-         {:ok, access} <- Conversations.read_access(cid, caller) do
-      {matches, total_matches, truncated} =
-        cid
-        |> search_query(access, query)
+  @spec search_messages(User.t(), term(), String.t(), map() | keyword()) ::
+          {:ok, search_page()} | {:error, :invalid_id | :not_found | :invalid_cursor}
+  def search_messages(%User{} = caller, conversation_id, query, opts \\ %{})
+      when is_binary(query) do
+    opts = Map.new(opts)
+
+    limit =
+      Api.Cursor.normalize_limit(Map.get(opts, :limit), @default_search_limit, @max_search_limit)
+
+    with {:ok, cid} <- UUID.cast(conversation_id),
+         {:ok, access} <- Conversations.read_access(cid, caller),
+         {:ok, cursor} <- Api.Cursor.decode_or_nil(Map.get(opts, :before), &Cursor.decode/1) do
+      base = search_base(cid, access, query)
+      total = Repo.aggregate(base, :count)
+
+      rows =
+        base
+        |> apply_cursor(cursor)
+        |> order_by([m], desc: m.inserted_at, desc: m.seq)
+        |> limit(^(limit + 1))
+        |> join(:inner, [m], u in assoc(m, :sender))
+        |> preload([m, u], sender: u)
         |> Repo.all()
-        |> cap()
+
+      has_more = length(rows) > limit
+      page = Enum.take(rows, limit)
+      offset = if cursor, do: rank_of_first(base, page), else: 0
 
       hits =
-        matches
-        |> Enum.with_index(1)
+        page
+        |> Enum.with_index(offset + 1)
         |> Enum.map(fn {message, position} ->
           %{
             message: message,
@@ -158,17 +178,21 @@ defmodule Api.Messages do
           }
         end)
 
-      {:ok, %{messages: hits, total_matches: total_matches, truncated: truncated}}
+      {:ok,
+       %{
+         messages: hits,
+         total_matches: total,
+         next_cursor: if(has_more, do: page |> List.last() |> Cursor.encode()),
+         has_more: has_more
+       }}
     end
   end
 
   # --- Search internals ---------------------------------------------------
 
-  # `search_vector` is a database-managed generated column kept off the schema,
-  # so it is reached through a bare-column fragment rather than a schema field —
-  # the same way the inbox reaches `messages` as a bare source. The departed
-  # member's `left_at` bound is applied exactly as history applies it.
-  defp search_query(conversation_id, access, query) do
+  # The filtered set without order or paging: one conversation, bounded at a
+  # departed member's left_at, matched through the GIN index.
+  defp search_base(conversation_id, access, query) do
     Message
     |> where([m], m.conversation_id == ^conversation_id)
     |> apply_bound(access)
@@ -176,21 +200,25 @@ defmodule Api.Messages do
       [m],
       fragment("search_vector @@ websearch_to_tsquery('portuguese_unaccent', ?)", ^query)
     )
-    |> order_by([m], desc: m.inserted_at, desc: m.id)
-    |> limit(^(@search_cap + 1))
-    |> join(:inner, [m], u in assoc(m, :sender))
-    |> preload([m, u], sender: u)
   end
 
-  # The row past the cap is what tells a full result set from a truncated one:
-  # more than the cap came back means at least one more exists, so the count is
-  # honestly reported as the cap and the extra row dropped.
-  defp cap(rows) do
-    if length(rows) > @search_cap do
-      {Enum.take(rows, @search_cap), @search_cap, true}
-    else
-      {rows, length(rows), false}
-    end
+  # The 0-based rank of the page's first hit — how many matches are newer than it
+  # — so `position` is the global index across pages rather than within the page.
+  defp rank_of_first(_base, []), do: 0
+
+  defp rank_of_first(base, [%Message{inserted_at: inserted_at, seq: seq} | _]) do
+    base
+    |> where(
+      [m],
+      fragment(
+        "(?, ?) > (?, ?)",
+        m.inserted_at,
+        m.seq,
+        type(^inserted_at, :utc_datetime_usec),
+        ^seq
+      )
+    )
+    |> Repo.aggregate(:count)
   end
 
   # --- Write internals ----------------------------------------------------
@@ -220,15 +248,6 @@ defmodule Api.Messages do
 
   # --- Read internals -----------------------------------------------------
 
-  defp normalize_limit(nil), do: @default_limit
-  defp normalize_limit(limit) when limit < 1, do: 1
-  defp normalize_limit(limit) when limit > @max_limit, do: @max_limit
-  defp normalize_limit(limit), do: limit
-
-  defp decode_cursor(nil), do: {:ok, nil}
-  defp decode_cursor(""), do: {:ok, nil}
-  defp decode_cursor(cursor), do: Cursor.decode(cursor)
-
   # One row beyond the page is what makes `has_more` exact: a conversation
   # holding precisely `limit` messages must report false, which comparing the
   # returned count against the page size alone cannot tell from a full page
@@ -238,7 +257,7 @@ defmodule Api.Messages do
     |> where([m], m.conversation_id == ^conversation_id)
     |> apply_bound(access)
     |> apply_cursor(cursor)
-    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> order_by([m], desc: m.inserted_at, desc: m.seq)
     |> limit(^(limit + 1))
     |> join(:inner, [m], u in assoc(m, :sender))
     |> preload([m, u], sender: u)
@@ -251,20 +270,18 @@ defmodule Api.Messages do
 
   defp apply_cursor(query, nil), do: query
 
-  # Written as a row constructor rather than the equivalent
-  # `inserted_at < ? OR (inserted_at = ? AND id < ?)`: the row form is what the
-  # planner recognises as a single range bound over the composite index, while
-  # the expanded form frequently plans as two scans and a merge.
-  defp apply_cursor(query, {inserted_at, id}) do
+  # A row constructor, so the planner reads it as a single range bound over the
+  # (inserted_at, seq) index rather than an OR that plans as two scans.
+  defp apply_cursor(query, {inserted_at, seq}) do
     where(
       query,
       [m],
       fragment(
         "(?, ?) < (?, ?)",
         m.inserted_at,
-        m.id,
+        m.seq,
         type(^inserted_at, :utc_datetime_usec),
-        type(^id, Ecto.UUID)
+        ^seq
       )
     )
   end
@@ -278,12 +295,5 @@ defmodule Api.Messages do
       next_cursor: if(has_more, do: page |> List.last() |> Cursor.encode()),
       has_more: has_more
     }
-  end
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :invalid_id}
-    end
   end
 end

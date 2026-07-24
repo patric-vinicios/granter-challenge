@@ -63,6 +63,9 @@ defmodule ApiWeb.FallbackController do
       {:forbidden, "not_group_creator", "Only the group creator can manage members"},
     already_member: {:conflict, "already_member", "This user is already a member of the group"},
     last_member: {:unprocessable_entity, "last_member", "A group must keep at least one member"},
+    creator_has_members:
+      {:unprocessable_entity, "creator_has_members",
+       "The group creator can only leave after every other member has left"},
     cannot_remove_self:
       {:unprocessable_entity, "cannot_remove_self",
        "The creator cannot remove themselves; leave the group instead"},

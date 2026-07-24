@@ -1,4 +1,4 @@
-defmodule ApiWeb.UserJSON do
+defmodule ApiWeb.Accounts.UserJSON do
   @moduledoc """
   The one user shape the API returns.
 

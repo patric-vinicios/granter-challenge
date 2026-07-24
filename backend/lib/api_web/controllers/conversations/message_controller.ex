@@ -1,4 +1,4 @@
-defmodule ApiWeb.MessageController do
+defmodule ApiWeb.Conversations.MessageController do
   @moduledoc """
   Reading a conversation's history, one page at a time.
 
@@ -21,7 +21,7 @@ defmodule ApiWeb.MessageController do
 
   action_fallback ApiWeb.FallbackController
 
-  plug :put_view, json: ApiWeb.MessageJSON
+  plug :put_view, json: ApiWeb.Conversations.MessageJSON
 
   @page_types %{limit: :integer, before: :string}
   @default_limit 30
@@ -46,7 +46,8 @@ defmodule ApiWeb.MessageController do
   @spec search(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def search(conn, %{"id" => id} = params) do
     with {:ok, %{q: q}} <- validate_query(params),
-         {:ok, result} <- Messages.search_messages(conn.assigns.current_user, id, q) do
+         {:ok, page_params} <- validate_page(params),
+         {:ok, result} <- Messages.search_messages(conn.assigns.current_user, id, q, page_params) do
       render(conn, :search, result)
     end
   end
@@ -65,15 +66,15 @@ defmodule ApiWeb.MessageController do
   # required check; both failures render under `fields.q`.
   @spec validate_query(map()) :: {:ok, %{q: String.t()}} | {:error, Changeset.t()}
   defp validate_query(params) do
-    {%{}, @search_types}
-    |> Changeset.cast(params, [:q])
-    |> Changeset.update_change(:q, &String.trim/1)
-    |> Changeset.validate_required([:q], message: @query_message)
-    |> Changeset.validate_length(:q,
-      min: @query_min,
-      max: @query_max,
-      message: @query_message
+    ApiWeb.Params.validate(params, @search_types,
+      trim: [:q],
+      required_message: @query_message,
+      validate:
+        &Changeset.validate_length(&1, :q,
+          min: @query_min,
+          max: @query_max,
+          message: @query_message
+        )
     )
-    |> Changeset.apply_action(:insert)
   end
 end

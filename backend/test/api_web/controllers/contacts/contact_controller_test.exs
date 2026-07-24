@@ -1,4 +1,4 @@
-defmodule ApiWeb.ContactControllerTest do
+defmodule ApiWeb.Contacts.ContactControllerTest do
   use ApiWeb.ConnCase, async: true
 
   alias Api.Accounts.Guardian

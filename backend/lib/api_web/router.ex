@@ -17,34 +17,42 @@ defmodule ApiWeb.Router do
 
     get "/health", HealthController, :show
 
-    post "/auth/register", AuthController, :register
-    post "/auth/login", AuthController, :login
+    scope "/", Accounts do
+      post "/auth/register", AuthController, :register
+      post "/auth/login", AuthController, :login
+    end
   end
 
   scope "/api", ApiWeb do
     pipe_through :authenticated
 
-    get "/auth/me", AuthController, :me
+    scope "/", Accounts do
+      get "/auth/me", AuthController, :me
+    end
 
-    post "/contacts", ContactController, :create
-    get "/contacts", ContactController, :index
-    delete "/contacts/:id", ContactController, :delete
+    scope "/", Contacts do
+      post "/contacts", ContactController, :create
+      get "/contacts", ContactController, :index
+      delete "/contacts/:id", ContactController, :delete
+    end
 
-    get "/conversations", ConversationController, :index
-    post "/conversations/private", ConversationController, :create_private
-    post "/conversations/groups", ConversationController, :create_group
-    get "/conversations/:id", ConversationController, :show
-    post "/conversations/:id/read", ConversationController, :mark_read
-    post "/conversations/:id/members", ConversationController, :add_members
-    # The static `me` segment must be declared before the parameterised one, so
-    # Phoenix's top-down match sends "I leave" here rather than into the id cast.
-    delete "/conversations/:id/members/me", ConversationController, :leave
-    delete "/conversations/:id/members/:user_id", ConversationController, :remove_member
+    scope "/", Conversations do
+      get "/conversations", ConversationController, :index
+      post "/conversations/private", ConversationController, :create_private
+      post "/conversations/groups", ConversationController, :create_group
+      get "/conversations/:id", ConversationController, :show
+      post "/conversations/:id/read", ConversationController, :mark_read
+      post "/conversations/:id/members", ConversationController, :add_members
+      # The static `me` segment must be declared before the parameterised one, so
+      # Phoenix's top-down match sends "I leave" here rather than into the id cast.
+      delete "/conversations/:id/members/me", ConversationController, :leave
+      delete "/conversations/:id/members/:user_id", ConversationController, :remove_member
 
-    get "/conversations/:id/messages", MessageController, :index
-    # A distinct segment count from `/messages`, so top-down matching has no
-    # ordering hazard between the two.
-    get "/conversations/:id/messages/search", MessageController, :search
+      get "/conversations/:id/messages", MessageController, :index
+      # A distinct segment count from `/messages`, so top-down matching has no
+      # ordering hazard between the two.
+      get "/conversations/:id/messages/search", MessageController, :search
+    end
   end
 
   if Application.compile_env(:api, :dev_routes) do

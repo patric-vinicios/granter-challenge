@@ -36,6 +36,7 @@ defmodule Api.Conversations do
   alias Api.Conversations.Participant
   alias Api.Conversations.Preview
   alias Api.Repo
+  alias Api.UUID
   alias Ecto.Changeset
 
   @typedoc "How much of a conversation a user may read: all of it, or up to the moment they left."
@@ -140,7 +141,7 @@ defmodule Api.Conversations do
   @spec get_conversation(User.t(), term()) ::
           {:ok, Conversation.t()} | {:error, :not_found | :invalid_id}
   def get_conversation(%User{} = caller, id) do
-    with {:ok, uuid} <- cast_id(id),
+    with {:ok, uuid} <- UUID.cast(id),
          %Conversation{} = conversation <- Repo.get(Conversation, uuid) || {:error, :not_found} do
       authorize_read(load(conversation), caller)
     end
@@ -160,7 +161,7 @@ defmodule Api.Conversations do
           | {:error, :invalid_id | :not_found | :not_group_creator | :already_member}
           | {:error, :not_a_contact, String.t()}
   def add_members(%User{} = creator, id, member_ids) do
-    with {:ok, uuid} <- cast_id(id),
+    with {:ok, uuid} <- UUID.cast(id),
          {:ok, conversation} <- load_manageable(creator, uuid),
          {:ok, ids} <- validate_member_ids(member_ids),
          :ok <- Contacts.reject_non_contacts(creator, ids),
@@ -182,8 +183,8 @@ defmodule Api.Conversations do
           :ok
           | {:error, :invalid_id | :not_found | :not_group_creator | :cannot_remove_self}
   def remove_member(%User{} = creator, id, user_id) do
-    with {:ok, uuid} <- cast_id(id),
-         {:ok, target_id} <- cast_id(user_id),
+    with {:ok, uuid} <- UUID.cast(id),
+         {:ok, target_id} <- UUID.cast(user_id),
          {:ok, conversation} <- load_manageable(creator, uuid),
          :ok <- refute_self_removal(creator, target_id) do
       deactivate(conversation.id, target_id)
@@ -193,15 +194,22 @@ defmodule Api.Conversations do
   @doc """
   Lets an active member leave by setting their own `left_at`.
 
-  The last active member — creator or not — cannot leave, so a group is never
-  emptied. The count is taken after locking the conversation's active rows, so
-  two last-ish members leaving at once can never both succeed. `creator_id` is
-  never rewritten, so a group keeps its recorded owner after the creator leaves.
+  Group semantics follow the messaging-app convention: a group may hold just its
+  creator, and a plain member may always leave. The creator, however, may leave
+  only once every other member is gone — while others remain they must remove
+  them first — so the creator never abandons a populated group. When the sole
+  remaining member leaves, the group has no one left and is deleted outright,
+  cascading its participants and messages.
+
+  A private conversation keeps the older rule: its last active participant cannot
+  leave, so a two-person thread is never half-emptied. The active count is taken
+  after locking the conversation's active rows, so two last-ish members leaving
+  at once can never both succeed.
   """
   @spec leave(User.t(), term()) ::
-          :ok | {:error, :invalid_id | :not_found | :last_member}
+          :ok | {:error, :invalid_id | :not_found | :last_member | :creator_has_members}
   def leave(%User{} = user, id) do
-    with {:ok, uuid} <- cast_id(id) do
+    with {:ok, uuid} <- UUID.cast(id) do
       commit_leave(uuid, user)
     end
   end
@@ -218,8 +226,8 @@ defmodule Api.Conversations do
   def participant?(conversation_id, %User{id: id}), do: participant?(conversation_id, id)
 
   def participant?(conversation_id, user_id) do
-    with {:ok, cid} <- cast_id(conversation_id),
-         {:ok, uid} <- cast_id(user_id) do
+    with {:ok, cid} <- UUID.cast(conversation_id),
+         {:ok, uid} <- UUID.cast(user_id) do
       Repo.exists?(active_member_row(cid, uid))
     else
       {:error, :invalid_id} -> false
@@ -239,7 +247,7 @@ defmodule Api.Conversations do
   def participant_ids(%Conversation{id: id}), do: participant_ids(id)
 
   def participant_ids(conversation_id) do
-    case cast_id(conversation_id) do
+    case UUID.cast(conversation_id) do
       {:ok, cid} ->
         Repo.all(
           from p in Participant,
@@ -273,8 +281,8 @@ defmodule Api.Conversations do
   def read_access(conversation_id, %User{id: id}), do: read_access(conversation_id, id)
 
   def read_access(conversation_id, user_id) do
-    with {:ok, cid} <- cast_id(conversation_id),
-         {:ok, uid} <- cast_id(user_id) do
+    with {:ok, cid} <- UUID.cast(conversation_id),
+         {:ok, uid} <- UUID.cast(user_id) do
       case Repo.one(member_row(cid, uid)) do
         nil -> {:error, :not_found}
         %{left_at: nil} -> {:ok, :active}
@@ -322,10 +330,10 @@ defmodule Api.Conversations do
   def list_conversations(%User{} = caller, opts \\ %{}) do
     parsed = parse_opts(opts)
 
-    with {:ok, cursor} <- decode_cursor(parsed.cursor) do
+    with {:ok, cursor} <- Api.Cursor.decode_or_nil(parsed.cursor, &Cursor.decode/1) do
       caller
       |> inbox_query()
-      |> apply_title_filter(parsed.query)
+      |> apply_title_filter(parsed.query, caller.id)
       |> apply_cursor(cursor)
       |> limit(^(parsed.limit + 1))
       |> Repo.all()
@@ -337,23 +345,13 @@ defmodule Api.Conversations do
     %{
       query: get_opt(opts, :query) || get_opt(opts, :q),
       cursor: get_opt(opts, :cursor),
-      limit: normalize_limit(get_opt(opts, :limit))
+      limit: Api.Cursor.normalize_limit(get_opt(opts, :limit), @list_limit, @list_limit)
     }
   end
 
   defp get_opt(opts, key) when is_atom(key) do
     Map.get(opts, key) || Map.get(opts, Atom.to_string(key))
   end
-
-  defp normalize_limit(nil), do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit) and limit < 1, do: 1
-  defp normalize_limit(limit) when is_integer(limit) and limit > @list_limit, do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit), do: limit
-  defp normalize_limit(_limit), do: @list_limit
-
-  defp decode_cursor(nil), do: {:ok, nil}
-  defp decode_cursor(""), do: {:ok, nil}
-  defp decode_cursor(cursor), do: Cursor.decode(cursor)
 
   defp assemble_page(rows, limit) do
     has_more = length(rows) > limit
@@ -382,7 +380,7 @@ defmodule Api.Conversations do
           {:ok, %{conversation_id: Ecto.UUID.t(), last_read_at: DateTime.t()}}
           | {:error, :invalid_id | :not_found | :not_a_participant}
   def mark_read(%User{} = caller, id) do
-    with {:ok, uuid} <- cast_id(id) do
+    with {:ok, uuid} <- UUID.cast(id) do
       case read_access(uuid, caller) do
         {:ok, :active} -> write_marker(uuid, caller.id)
         {:ok, {:until, _left_at}} -> {:error, :not_a_participant}
@@ -405,7 +403,7 @@ defmodule Api.Conversations do
       :left_lateral,
       [conversation: c],
       lm in fragment(
-        "SELECT m.id AS id, m.body AS body, m.sender_id AS sender_id, m.inserted_at AS inserted_at FROM messages AS m WHERE m.conversation_id = ? ORDER BY m.inserted_at DESC, m.id DESC LIMIT 1",
+        "SELECT m.id AS id, m.body AS body, m.sender_id AS sender_id, m.inserted_at AS inserted_at FROM messages AS m WHERE m.conversation_id = ? ORDER BY m.inserted_at DESC, m.seq DESC LIMIT 1",
         c.id
       ),
       on: true,
@@ -429,11 +427,6 @@ defmodule Api.Conversations do
       as: :counterpart
     )
     |> join(:left_lateral, [], mc in subquery(member_count_query()), on: true, as: :members)
-    # `COALESCE(..., '-infinity')` rather than a leading `lm.id IS NULL` term:
-    # both sort a never-used conversation last, because Postgres orders NULLs
-    # first under DESC and `-infinity` last, but only the collapsed form is a
-    # single expression the keyset cursor can bound on. Three components, and
-    # the last of them unique, is what makes the bound total.
     |> order_by([conversation: c, last_message: lm],
       desc: fragment("COALESCE(?.inserted_at, '-infinity')", lm),
       desc: c.inserted_at,
@@ -485,13 +478,13 @@ defmodule Api.Conversations do
   # same answer. The `ILIKE` operands are spelled exactly as the indexed
   # expressions are, since an expression index is only used when the query
   # writes the expression the same way.
-  defp apply_title_filter(query, term) do
+  defp apply_title_filter(query, term, caller_id) do
     case Accounts.search_term(term) do
       {:ok, trimmed} ->
         where(
           query,
           [conversation: c],
-          c.id in subquery(matching_private_query(trimmed)) or
+          c.id in subquery(matching_private_query(trimmed, caller_id)) or
             c.id in subquery(matching_group_query(trimmed))
         )
 
@@ -502,17 +495,20 @@ defmodule Api.Conversations do
 
   # Private conversations reached through a counterpart whose display name or
   # username matches. Restricted to `:private` so a group is never matched by a
-  # member's name — a group answers to its own name and nothing else. The
-  # condition is `Api.Accounts`', so this list and the contact list agree on
-  # what matching a person means.
-  defp matching_private_query(term) do
+  # member's name — a group answers to its own name and nothing else. The caller
+  # is excluded from the match: a private conversation's title is the *other*
+  # participant, so a term equal to the caller's own name or `@username` must not
+  # pull in every private thread they are part of. The condition is
+  # `Api.Accounts`', so this list and the contact list agree on what matching a
+  # person means.
+  defp matching_private_query(term, caller_id) do
     from(op in Participant,
       join: ou in User,
       as: :user,
       on: ou.id == op.user_id,
       join: oc in Conversation,
       on: oc.id == op.conversation_id,
-      where: oc.type == :private and is_nil(op.left_at),
+      where: oc.type == :private and is_nil(op.left_at) and op.user_id != ^caller_id,
       select: op.conversation_id
     )
     |> where(^Accounts.matching_user(term))
@@ -835,11 +831,36 @@ defmodule Api.Conversations do
   end
 
   defp resolve_leave(uuid, user) do
+    conversation = Repo.get(Conversation, uuid)
     active = active_participants_locked(uuid)
 
     cond do
-      not Enum.any?(active, &(&1.user_id == user.id)) -> Repo.rollback(:not_found)
-      match?([_], active) -> Repo.rollback(:last_member)
+      is_nil(conversation) or not Enum.any?(active, &(&1.user_id == user.id)) ->
+        Repo.rollback(:not_found)
+
+      conversation.type == :private ->
+        leave_private(active, uuid, user)
+
+      true ->
+        leave_group(conversation, active, uuid, user)
+    end
+  end
+
+  # A private thread is never half-emptied: its last participant cannot leave.
+  defp leave_private(active, uuid, user) do
+    if match?([_], active),
+      do: Repo.rollback(:last_member),
+      else: deactivate!(uuid, user.id)
+  end
+
+  # The sole member leaving deletes the group (cascading participants and
+  # messages); the creator may not leave while other members remain; any other
+  # member simply leaves. Order matters — the lone member is always the creator,
+  # so the delete branch must be checked before the creator guard.
+  defp leave_group(conversation, active, uuid, user) do
+    cond do
+      match?([_], active) -> Repo.delete!(conversation)
+      conversation.creator_id == user.id -> Repo.rollback(:creator_has_members)
       true -> deactivate!(uuid, user.id)
     end
   end
@@ -912,11 +933,4 @@ defmodule Api.Conversations do
 
   defp member_error(changeset, message),
     do: Changeset.add_error(changeset, :member_ids, message)
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :invalid_id}
-    end
-  end
 end

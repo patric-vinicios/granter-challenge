@@ -21,6 +21,7 @@ defmodule Api.Contacts do
   alias Api.Contacts.Contact
   alias Api.Contacts.Cursor
   alias Api.Repo
+  alias Api.UUID
 
   # Bounds the response size and the unindexed sort behind `list_contacts/1`.
   # A soft guardrail: two adds racing at exactly 499 may both pass, and 501
@@ -81,9 +82,9 @@ defmodule Api.Contacts do
           %{contacts: [Contact.t()], next_cursor: String.t() | nil, has_more: boolean()}
           | {:error, :invalid_cursor}
   def list_contacts(%User{} = owner, opts \\ %{}) do
-    limit = normalize_limit(get_opt(opts, :limit))
+    limit = Api.Cursor.normalize_limit(get_opt(opts, :limit), @list_limit, @list_limit)
 
-    with {:ok, cursor} <- decode_cursor(get_opt(opts, :cursor)) do
+    with {:ok, cursor} <- Api.Cursor.decode_or_nil(get_opt(opts, :cursor), &Cursor.decode/1) do
       Contact
       |> where([c], c.owner_id == ^owner.id)
       |> join(:inner, [c], u in assoc(c, :user), as: :user)
@@ -100,16 +101,6 @@ defmodule Api.Contacts do
   # The controller hands over string keys and a direct caller atom ones.
   defp get_opt(opts, key) when is_atom(key),
     do: Map.get(opts, key) || Map.get(opts, Atom.to_string(key))
-
-  defp normalize_limit(nil), do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit) and limit < 1, do: 1
-  defp normalize_limit(limit) when is_integer(limit) and limit > @list_limit, do: @list_limit
-  defp normalize_limit(limit) when is_integer(limit), do: limit
-  defp normalize_limit(_limit), do: @list_limit
-
-  defp decode_cursor(nil), do: {:ok, nil}
-  defp decode_cursor(""), do: {:ok, nil}
-  defp decode_cursor(cursor), do: Cursor.decode(cursor)
 
   defp apply_name_filter(query, term) do
     case Accounts.search_term(term) do
@@ -161,7 +152,7 @@ defmodule Api.Contacts do
   """
   @spec delete_contact(User.t(), term()) :: :ok | {:error, :not_found | :invalid_id}
   def delete_contact(%User{} = owner, id) do
-    with {:ok, uuid} <- cast_id(id) do
+    with {:ok, uuid} <- UUID.cast(id) do
       case Repo.get_by(Contact, id: uuid, owner_id: owner.id) do
         %Contact{} = contact ->
           Repo.delete!(contact)
@@ -183,7 +174,7 @@ defmodule Api.Contacts do
   def contact?(%User{} = owner, %User{} = user), do: contact?(owner, user.id)
 
   def contact?(%User{} = owner, user_id) do
-    case cast_id(user_id) do
+    case UUID.cast(user_id) do
       {:ok, uuid} -> Repo.exists?(pair_query(owner.id, uuid))
       {:error, :invalid_id} -> false
     end
@@ -285,13 +276,6 @@ defmodule Api.Contacts do
 
   defp pair_query(owner_id, contact_user_id),
     do: where(pair_query(owner_id), [c], c.contact_user_id == ^contact_user_id)
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :invalid_id}
-    end
-  end
 
   defp searched_username(username) do
     username

@@ -86,7 +86,11 @@ defmodule Api.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false}
+      {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
+      {:doctor, "~> 0.23.0", only: :dev},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      {:excellent_migrations, "~> 0.1", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -107,7 +111,10 @@ defmodule Api.MixProject do
         "deps.unlock --unused",
         "format",
         "credo --strict",
-        "coveralls"
+        "coveralls",
+        "dna",
+        "sobelow --exit",
+        "deps.audit --exit"
       ]
     ]
   end

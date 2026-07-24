@@ -1,4 +1,4 @@
-defmodule ApiWeb.ConversationGroupControllerTest do
+defmodule ApiWeb.Conversations.ConversationGroupControllerTest do
   use ApiWeb.ConnCase, async: true
 
   alias Api.Accounts.Guardian
@@ -253,17 +253,34 @@ defmodule ApiWeb.ConversationGroupControllerTest do
       assert json_response(get(carlos_conn, ~p"/api/conversations/#{id}"), 404)
     end
 
-    test "returns 422 last_member for the sole member", %{conn: conn, carlos: carlos} do
+    test "the creator cannot leave while other members remain", %{conn: conn, carlos: carlos} do
       id = create_group(conn, "Time", [carlos.id])
 
+      conn = delete(conn, ~p"/api/conversations/#{id}/members/me")
+
+      assert json_response(conn, 422)["errors"]["code"] == "creator_has_members"
+    end
+
+    test "the sole remaining member leaving deletes the group", %{conn: conn, carlos: carlos} do
+      id = create_group(conn, "Time", [carlos.id])
+      insert(:message, conversation: nil, conversation_id: id, sender: carlos)
+
+      # carlos leaves, then the creator is alone and leaves — deleting the group.
       assert response(
                delete(authenticate(json_conn(), carlos), ~p"/api/conversations/#{id}/members/me"),
                204
              )
 
-      conn = delete(conn, ~p"/api/conversations/#{id}/members/me")
+      assert response(delete(conn, ~p"/api/conversations/#{id}/members/me"), 204) == ""
 
-      assert json_response(conn, 422)["errors"]["code"] == "last_member"
+      # The conversation is gone, and its messages cascade with it.
+      refute Repo.get(Conversation, id)
+      assert json_response(get(conn, ~p"/api/conversations/#{id}"), 404)
+
+      assert Repo.aggregate(
+               from(m in Api.Messages.Message, where: m.conversation_id == ^id),
+               :count
+             ) == 0
     end
   end
 

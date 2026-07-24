@@ -214,21 +214,13 @@ defmodule Api.Seeds do
   defp take(label, {:error, reason, detail}), do: abort(label, {reason, detail})
 
   defp abort(label, %Ecto.Changeset{} = changeset) do
-    IO.puts("Failed to seed #{inspect(label)}: #{inspect(changeset_errors(changeset))}")
+    IO.puts("Failed to seed #{inspect(label)}: #{inspect(Api.Changeset.errors(changeset))}")
     Repo.rollback({label, changeset})
   end
 
   defp abort(label, reason) do
     IO.puts("Failed to seed #{inspect(label)}: #{inspect(reason)}")
     Repo.rollback({label, reason})
-  end
-
-  defp changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
   end
 
   @spec raise_not_ready(Exception.t()) :: no_return()

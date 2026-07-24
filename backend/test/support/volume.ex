@@ -26,6 +26,8 @@ defmodule Api.Volume do
 
   @needle_name "Zoraide Buscada"
   @needle_username "zoraide_needle"
+  @needle_word "xyzznoticiaunica"
+  @match_word "achadocomum"
   @first_names ~w(Ana Bruno Carla Diego Elena Fabio Gabriela Hugo Isabela Joao)
 
   @doc "The display name every seeded needle carries."
@@ -148,6 +150,88 @@ defmodule Api.Volume do
 
     insert_chunked(Contact, contacts)
     analyze()
+  end
+
+  @doc "The unique word placed at `:needle_at` by `seed_history/3`."
+  @spec needle_word() :: String.t()
+  def needle_word, do: @needle_word
+
+  @doc "The common word sprinkled by `:matches` in `seed_history/3`."
+  @spec match_word() :: String.t()
+  def match_word, do: @match_word
+
+  @doc """
+  One private conversation between `caller` and a fresh user, carrying `count`
+  messages one second apart in ascending time, so `(inserted_at)` is a total
+  order over the history.
+
+  Options:
+
+    * `:needle_at` — the index whose body carries the unique `needle_word/0`, so
+      a single message can be found by search in the middle of a large history
+    * `:matches` — how many messages carry the common `match_word/0`, spread
+      evenly, so search result sizes can be measured
+
+  Returns the conversation id.
+  """
+  @spec seed_history(User.t(), non_neg_integer(), keyword()) :: Ecto.UUID.t()
+  def seed_history(caller, count, opts \\ []) do
+    now = now()
+    offset = offset()
+    [other] = users(1, offset)
+    conv_id = uuid(offset + 1)
+    conv = %{id: conv_id, inserted_at: now}
+
+    insert_chunked(Conversation, [
+      %{
+        id: conv_id,
+        type: :private,
+        participant_key: Enum.join(Enum.sort([caller.id, other.id]), ":"),
+        inserted_at: now,
+        updated_at: now
+      }
+    ])
+
+    insert_chunked(Participant, [
+      seat(uuid(offset + 2), conv, caller.id),
+      seat(uuid(offset + 3), conv, other.id)
+    ])
+
+    needle_at = Keyword.get(opts, :needle_at)
+    match_at = matches_set(Keyword.get(opts, :matches, 0), count)
+
+    messages =
+      Enum.map(0..(count - 1), fn i ->
+        at = now |> DateTime.add(i - count, :second) |> DateTime.truncate(:microsecond)
+
+        %{
+          id: uuid(offset + 100 + i),
+          conversation_id: conv_id,
+          sender_id: other.id,
+          body: body_for(i, needle_at, match_at),
+          inserted_at: at,
+          updated_at: at
+        }
+      end)
+
+    insert_chunked(Message, messages)
+    analyze()
+    conv_id
+  end
+
+  defp body_for(i, i, _match_at), do: "mensagem #{@needle_word} de teste #{i}"
+
+  defp body_for(i, _needle_at, match_at) do
+    if MapSet.member?(match_at, i),
+      do: "mensagem com #{@match_word} aqui #{i}",
+      else: "mensagem numero #{i}"
+  end
+
+  defp matches_set(0, _count), do: MapSet.new()
+
+  defp matches_set(k, count) do
+    step = max(div(count, k), 1)
+    0..(k - 1) |> Enum.map(&rem(&1 * step, count)) |> MapSet.new()
   end
 
   @doc "The conversation ids `caller` actively participates in."
