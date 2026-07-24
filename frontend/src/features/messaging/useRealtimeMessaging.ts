@@ -1,4 +1,4 @@
-import { computed, onUnmounted, ref, watch, type Ref } from 'vue'
+import { computed, onUnmounted, ref, toRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
 import { createRealtimeSocket, type RealtimeChannel, type RealtimeSocket, type RealtimeSocketFactory } from '@/shared/realtime/socket'
 import type { ConversationUpdated } from '@/types/realtime'
@@ -13,9 +13,9 @@ import {
 import { useMessagesStore, useMessagingStore } from './messaging.store'
 
 interface UseRealtimeMessagingOptions {
-  token: Ref<string | null>
-  userId: Ref<string | null>
-  selectedConversationId: Ref<string | null>
+  token: MaybeRefOrGetter<string | null>
+  userId: MaybeRefOrGetter<string | null>
+  selectedConversationId: MaybeRefOrGetter<string | null>
   socketFactory?: RealtimeSocketFactory
   onPresenceState?: (payload: unknown) => void
   onPresenceDiff?: (payload: unknown) => void
@@ -37,6 +37,9 @@ export function useRealtimeMessaging({
 }: UseRealtimeMessagingOptions) {
   const store = useMessagingStore()
   const messagesStore = useMessagesStore()
+  const tokenRef = toRef(token)
+  const userIdRef = toRef(userId)
+  const selectedConversationIdRef = toRef(selectedConversationId)
   const socket = ref<RealtimeSocket | null>(null)
   const userChannel = ref<RealtimeChannel | null>(null)
   const userChannelHandlers = ref<Array<{ event: string; ref: number }>>([])
@@ -49,7 +52,7 @@ export function useRealtimeMessaging({
   const canSend = computed(() => status.value === 'connected' && conversationChannel.value !== null)
 
   watch(
-    [token, userId],
+    [tokenRef, userIdRef],
     ([currentToken, currentUserId], _previous, onCleanup) => {
       disconnect()
 
@@ -99,7 +102,7 @@ export function useRealtimeMessaging({
         error.value = 'Não foi possível receber atualizações em tempo real.'
       })
 
-      joinConversation(selectedConversationId.value)
+      joinConversation(selectedConversationIdRef.value)
       onCleanup(() => {
         nextSocket.off(socketStateRefs)
         disconnect()
@@ -108,7 +111,7 @@ export function useRealtimeMessaging({
     { immediate: true },
   )
 
-  watch(selectedConversationId, (conversationId) => {
+  watch(selectedConversationIdRef, (conversationId) => {
     joinConversation(conversationId)
   })
 
@@ -117,7 +120,7 @@ export function useRealtimeMessaging({
   function sendMessage(body: string): boolean {
     const channel = conversationChannel.value
     const conversationId = joinedConversationId.value
-    const currentUserId = userId.value
+    const currentUserId = toValue(userId)
 
     if (!channel || !conversationId || !currentUserId) {
       return false
@@ -147,7 +150,7 @@ export function useRealtimeMessaging({
       return
     }
 
-    const currentUserId = userId.value
+    const currentUserId = toValue(userId)
     const channel = socket.value.channel(`conversation:${conversationId}`)
     conversationChannel.value = channel
     joinedConversationId.value = conversationId
@@ -240,7 +243,7 @@ export function useRealtimeMessaging({
   }
 
   function handleConversationUpdated(payload: unknown): void {
-    const currentUserId = userId.value
+    const currentUserId = toValue(userId)
     const update = decodeConversationUpdated(payload)
 
     if (currentUserId) {
@@ -249,8 +252,10 @@ export function useRealtimeMessaging({
 
     onConversationUpdated?.(update)
 
-    if (token.value && update.conversationId === selectedConversationId.value) {
-      void messagesStore.loadInitial(update.conversationId, token.value, undefined, { force: true, silent: true })
+    const currentToken = toValue(token)
+
+    if (currentToken && update.conversationId === selectedConversationIdRef.value) {
+      void messagesStore.loadInitial(update.conversationId, currentToken, undefined, { force: true, silent: true })
     }
   }
 

@@ -121,6 +121,37 @@ describe('LoginView', () => {
     expect(window.localStorage.getItem('granter.session')).toContain('demo-jwt-token')
   })
 
+  it('ignores unsafe protocol-relative redirect targets after login', async () => {
+    const user = userEvent.setup()
+    const { router } = await renderWithApp(LoginView, {
+      routes,
+      initialRoute: '/?redirect=//evil.example/inbox',
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          user: {
+            id: 'user-1',
+            username: 'anabeatriz',
+            name: 'Ana Beatriz',
+            last_seen_at: null,
+          },
+          token: 'jwt-token',
+          expires_at: '2026-07-30T12:00:00Z',
+        }),
+      ),
+    )
+
+    await user.type(screen.getByLabelText('Usuario'), 'anabeatriz')
+    await user.type(screen.getByLabelText('Senha'), 'segredo')
+    await user.click(screen.getByRole('button', { name: 'Entrar' }))
+
+    await waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/inbox')
+    })
+  })
+
   it('shows demo login failures through the existing form error state', async () => {
     const user = userEvent.setup()
     const { router } = await renderWithApp(LoginView, { routes })

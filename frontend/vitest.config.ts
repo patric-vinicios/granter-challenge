@@ -18,5 +18,26 @@ export default defineConfig({
     restoreMocks: true,
     unstubEnvs: true,
     unstubGlobals: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'json-summary'],
+      reportsDirectory: './coverage',
+      include: ['src/**/*.{ts,vue}'],
+      exclude: [
+        'src/env.d.ts',
+        'src/main.ts',
+        'src/**/*.mock.ts',
+        'src/**/*.spec.ts',
+        'src/**/*TestHarness.ts',
+        'src/test/**',
+        'src/types/**',
+      ],
+      thresholds: {
+        statements: 90,
+        branches: 84,
+        functions: 92,
+        lines: 90,
+      },
+    },
   },
 })

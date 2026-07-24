@@ -1,11 +1,11 @@
-import { computed, shallowRef, type ComputedRef, type Ref } from 'vue'
+import { computed, shallowRef, type MaybeRefOrGetter } from 'vue'
 
 import type { SearchMatchOffset } from './search.contracts'
 import { useConversationSearch } from './useConversationSearch'
 
 interface UseConversationSearchPanelOptions {
-  token: Ref<string | null>
-  conversationId: ComputedRef<string | null>
+  token: MaybeRefOrGetter<string | null>
+  conversationId: MaybeRefOrGetter<string | null>
 }
 
 export function useConversationSearchPanel({

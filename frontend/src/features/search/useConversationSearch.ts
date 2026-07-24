@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, toRef, watch, type MaybeRefOrGetter } from 'vue'
 
 import type { ConversationSearchStatus } from '@/types/search'
 
@@ -8,12 +8,15 @@ import type { ConversationSearchHit, ConversationSearchResult } from './search.c
 export type { ConversationSearchStatus } from '@/types/search'
 
 interface UseConversationSearchOptions {
-  token: Ref<string | null>
-  conversationId: ComputedRef<string | null>
-  query: ComputedRef<string>
+  token: MaybeRefOrGetter<string | null>
+  conversationId: MaybeRefOrGetter<string | null>
+  query: MaybeRefOrGetter<string>
 }
 
 export function useConversationSearch({ token, conversationId, query }: UseConversationSearchOptions) {
+  const tokenRef = toRef(token)
+  const conversationIdRef = toRef(conversationId)
+  const queryRef = toRef(query)
   const status = ref<ConversationSearchStatus>('idle')
   const error = ref<string | null>(null)
   const result = ref<ConversationSearchResult | null>(null)
@@ -25,7 +28,7 @@ export function useConversationSearch({ token, conversationId, query }: UseConve
   const truncated = computed(() => result.value?.truncated ?? false)
 
   watch(
-    [token, conversationId, query],
+    [tokenRef, conversationIdRef, queryRef],
     ([currentToken, currentConversationId, rawQuery], _previous, onCleanup) => {
       const trimmedQuery = rawQuery.trim()
       activeIndex.value = 0

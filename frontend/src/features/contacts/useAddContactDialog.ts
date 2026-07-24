@@ -1,4 +1,4 @@
-import { readonly, ref, type Ref } from 'vue'
+import { readonly, ref, toValue, type MaybeRefOrGetter } from 'vue'
 
 import { isApiError } from '@/shared/api/errors'
 
@@ -6,7 +6,7 @@ import type { AddContactFeedback } from './contacts.contracts'
 import { useContactsStore } from './contacts.store'
 
 interface UseAddContactDialogOptions {
-  token: Readonly<Ref<string | null>>
+  token: MaybeRefOrGetter<string | null>
 }
 
 export function useAddContactDialog({ token }: UseAddContactDialogOptions) {
@@ -27,7 +27,7 @@ export function useAddContactDialog({ token }: UseAddContactDialogOptions) {
   }
 
   async function submit(): Promise<void> {
-    const currentToken = token.value
+    const currentToken = toValue(token)
 
     if (!username.value) {
       feedback.value = {

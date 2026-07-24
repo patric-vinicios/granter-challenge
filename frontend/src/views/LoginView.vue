@@ -106,7 +106,13 @@ const demoCredentials = {
 const redirectTarget = computed(() => {
   const redirect = route.query.redirect
 
-  return typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/inbox'
+  if (typeof redirect !== 'string' || !redirect.startsWith('/') || redirect.startsWith('//')) {
+    return '/inbox'
+  }
+
+  const resolved = router.resolve(redirect)
+
+  return resolved.name === 'not-found' ? '/inbox' : redirect
 })
 
 function fieldError(field: string): string {
