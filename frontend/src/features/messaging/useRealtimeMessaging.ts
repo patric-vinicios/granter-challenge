@@ -61,10 +61,12 @@ export function useRealtimeMessaging({
       const nextSocket = socketFactory(currentToken)
       socket.value = nextSocket
       status.value = 'connecting'
+      error.value = null
       let didOpen = false
       const socketStateRefs = [
         nextSocket.onOpen(() => {
           status.value = 'connected'
+          error.value = null
 
           if (didOpen) {
             onReconnect?.()
@@ -91,6 +93,7 @@ export function useRealtimeMessaging({
       ]
       userChannel.value.join().receive('ok', () => {
         status.value = 'connected'
+        error.value = null
       }).receive('error', () => {
         status.value = 'error'
         error.value = 'Não foi possível receber atualizações em tempo real.'
@@ -189,11 +192,17 @@ export function useRealtimeMessaging({
       ]
     }
 
-    channel.join().receive('error', () => {
-      status.value = 'error'
-      error.value = 'Não foi possível entrar nesta conversa.'
-      leaveConversation()
-    })
+    channel
+      .join()
+      .receive('ok', () => {
+        status.value = 'connected'
+        error.value = null
+      })
+      .receive('error', () => {
+        status.value = 'error'
+        error.value = 'Não foi possível entrar nesta conversa.'
+        leaveConversation()
+      })
   }
 
   function leaveConversation(): void {

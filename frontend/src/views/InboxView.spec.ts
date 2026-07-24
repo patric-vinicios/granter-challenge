@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/vue'
+import { fireEvent, screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -151,6 +151,28 @@ describe('InboxView', () => {
     expect(screen.queryByText('@rafaelalves')).toBeNull()
   })
 
+  it('requires a username before requesting a new contact', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({})
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /contatos/i }))
+    await user.click(screen.getByRole('button', { name: /adicionar/i }))
+
+    const dialog = screen.getByRole('dialog', { name: /adicionar contato/i })
+    await user.click(within(dialog).getByRole('button', { name: /adicionar/i }))
+
+    expect(within(dialog).getByText('Usuario obrigatorio')).toBeTruthy()
+    expect(within(dialog).getByText('Informe o @usuario que deseja adicionar.')).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://localhost:4000/api/contacts',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('opens a private conversation from a contact', async () => {
     const user = userEvent.setup()
 
@@ -288,6 +310,96 @@ describe('InboxView', () => {
     )
   })
 
+  it('aborts the previous history request when switching conversations', async () => {
+    const user = userEvent.setup()
+    const firstHistoryRequest: { signal?: AbortSignal } = {}
+    const conversations = [
+      inboxSummaryResponse({
+        id: 'conversation-ana',
+        title: 'Ana Beatriz',
+        senderId: 'user-ana',
+        body: 'Preview da Ana',
+        unreadCount: 0,
+      }),
+      inboxSummaryResponse({
+        id: 'conversation-bruno',
+        title: 'Bruno Lima',
+        senderId: 'user-bruno',
+        body: 'Preview do Bruno',
+        unreadCount: 0,
+      }),
+    ]
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url
+      const method = init?.method ?? 'GET'
+
+      if (href === 'http://localhost:4000/api/contacts' && method === 'GET') {
+        return Promise.resolve(jsonResponse(200, { contacts: [] }))
+      }
+
+      if (href === 'http://localhost:4000/api/conversations' && method === 'GET') {
+        return Promise.resolve(jsonResponse(200, { conversations }))
+      }
+
+      if (
+        href === 'http://localhost:4000/api/conversations/conversation-ana/messages?limit=30' &&
+        method === 'GET'
+      ) {
+        firstHistoryRequest.signal = init?.signal ?? undefined
+
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+            { once: true },
+          )
+        })
+      }
+
+      if (
+        href === 'http://localhost:4000/api/conversations/conversation-bruno/messages?limit=30' &&
+        method === 'GET'
+      ) {
+        return Promise.resolve(
+          historyResponse({
+            messages: [
+              {
+                ...historyMessageResponse(
+                  'message-bruno',
+                  'Mensagem atual do Bruno',
+                  'user-bruno',
+                  'Bruno Lima',
+                  '2026-07-22T13:49:00Z',
+                ),
+                conversation_id: 'conversation-bruno',
+              },
+            ],
+          }),
+        )
+      }
+
+      return Promise.resolve(
+        jsonResponse(500, {
+          errors: {
+            code: 'unexpected_test_request',
+            detail: `Unexpected test request: ${method} ${href}`,
+          },
+        }),
+      )
+    })
+
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await waitFor(() => expect(firstHistoryRequest.signal).toBeDefined())
+    await user.click(await screen.findByRole('button', { name: /bruno lima/i }))
+
+    expect(await screen.findByText('Mensagem atual do Bruno')).toBeTruthy()
+    expect(firstHistoryRequest.signal?.aborted).toBe(true)
+    expect(screen.queryByText('Mensagem da conversa A')).toBeNull()
+  })
+
   it('shows a history load error for a backend conversation', async () => {
     const user = userEvent.setup()
 
@@ -381,6 +493,81 @@ describe('InboxView', () => {
     expect(screen.queryByText('Time de Produto')).toBeNull()
   })
 
+  it('keeps only the latest inbox search result when a previous request is cancelled', async () => {
+    const { pinia } = await renderInbox()
+    const conversations = [
+      defaultAnaInboxSummary(),
+      inboxSummaryResponse({
+        id: 'group-product',
+        type: 'group',
+        title: 'Time de Produto',
+        senderId: 'user-rafael',
+        body: 'Mensagem do grupo',
+        unreadCount: 0,
+        memberCount: 3,
+      }),
+    ]
+    const staleSearch: { signal?: AbortSignal } = {}
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url
+      const method = init?.method ?? 'GET'
+
+      if (href === 'http://localhost:4000/api/contacts' && method === 'GET') {
+        return Promise.resolve(jsonResponse(200, { contacts: [] }))
+      }
+
+      if (href === 'http://localhost:4000/api/conversations' && method === 'GET') {
+        return Promise.resolve(jsonResponse(200, { conversations }))
+      }
+
+      if (href === 'http://localhost:4000/api/conversations?q=an' && method === 'GET') {
+        staleSearch.signal = init?.signal ?? undefined
+
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+            { once: true },
+          )
+        })
+      }
+
+      if (href === 'http://localhost:4000/api/conversations?q=ana' && method === 'GET') {
+        return Promise.resolve(jsonResponse(200, { conversations: [defaultAnaInboxSummary()] }))
+      }
+
+      if (
+        href.startsWith('http://localhost:4000/api/conversations/') &&
+        href.includes('/messages?') &&
+        method === 'GET'
+      ) {
+        return Promise.resolve(historyResponse())
+      }
+
+      return Promise.resolve(
+        jsonResponse(500, {
+          errors: {
+            code: 'unexpected_test_request',
+            detail: `Unexpected test request: ${method} ${href}`,
+          },
+        }),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await screen.findByText('Time de Produto')
+    const searchInput = screen.getByLabelText(/buscar conversa/i)
+    await fireEvent.update(searchInput, 'an')
+    await waitFor(() => expect(staleSearch.signal).toBeDefined())
+
+    await fireEvent.update(searchInput, 'ana')
+
+    expect(await screen.findByRole('button', { name: /ana beatriz/i })).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('Time de Produto')).toBeNull())
+    expect(staleSearch.signal?.aborted).toBe(true)
+  })
+
   it('loads group members when opening details from an inbox summary', async () => {
     const user = userEvent.setup()
 
@@ -413,6 +600,47 @@ describe('InboxView', () => {
         headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
       }),
     )
+  })
+
+  it('keeps a group member visible and reports the API error when removal fails', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        inboxSummaryResponse({
+          id: 'group-product',
+          type: 'group',
+          title: 'Time de Produto',
+          senderId: 'user-rafael',
+          body: 'Mensagem do grupo',
+          unreadCount: 0,
+          memberCount: 3,
+        }),
+      ],
+      conversationDetails: groupResponse(),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(await screen.findByRole('button', { name: /time de produto/i }))
+    await user.click(screen.getByRole('button', { name: /gerenciar grupo/i }))
+    const removeAnaButton = await screen.findByRole('button', { name: /remover ana beatriz/i })
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, {
+        errors: {
+          code: 'forbidden',
+          detail: 'Only the group creator can manage members',
+        },
+      }),
+    )
+    await user.click(removeAnaButton)
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Apenas o criador do grupo pode gerenciar membros.',
+    )
+    expect(screen.getByRole('button', { name: /remover ana beatriz/i })).toBeTruthy()
   })
 
   it('searches messages in the selected conversation and navigates returned matches', async () => {
@@ -449,6 +677,41 @@ describe('InboxView', () => {
 
     expect(screen.getByText('2 / 2')).toBeTruthy()
     expect(screen.getByText('Familia')).toBeTruthy()
+  })
+
+  it('closes and resets conversation search when focus moves outside its controls', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
+    const searchInput = screen.getByRole('textbox', { name: /buscar na conversa/i }) as HTMLInputElement
+    await user.type(searchInput, 'x')
+
+    expect(await screen.findByText('Digite pelo menos 2 caracteres.')).toBeTruthy()
+
+    await user.click(screen.getByLabelText(/^mensagem$/i))
+
+    expect(screen.queryByRole('textbox', { name: /buscar na conversa/i })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
+
+    expect((screen.getByRole('textbox', { name: /buscar na conversa/i }) as HTMLInputElement).value).toBe('')
+    expect(screen.getByText('0 / 0')).toBeTruthy()
+  })
+
+  it('keeps the message draft when realtime sending is unavailable', async () => {
+    const user = userEvent.setup()
+
+    await renderInbox()
+
+    const messageInput = screen.getByLabelText(/^mensagem$/i) as HTMLTextAreaElement
+    await user.type(messageInput, 'Mensagem ainda nao enviada')
+    await user.keyboard('{Control>}{Enter}{/Control}')
+
+    expect(messageInput.value).toBe('Mensagem ainda nao enviada')
+    expect(sockets).toHaveLength(0)
   })
 
   it('sends over the conversation channel and reconciles the optimistic message from the ack', async () => {
@@ -534,6 +797,53 @@ describe('InboxView', () => {
 
     expect((await screen.findAllByText('Voce saiu desta conversa.')).length).toBeGreaterThanOrEqual(1)
     expect(conversationChannel.leaveCount).toBe(1)
+  })
+
+  it('clears the realtime connection error after the socket reconnects', async () => {
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+    await screen.findAllByText('Ana Beatriz')
+    const socket = sockets[0]
+    socket.channelFor('user:user-current').okJoin()
+
+    socket.emitClose()
+
+    expect(await screen.findByText('Não foi possível manter a conexão em tempo real.')).toBeTruthy()
+
+    socket.emitOpen()
+
+    await waitFor(() =>
+      expect(screen.queryByText('Não foi possível manter a conexão em tempo real.')).toBeNull(),
+    )
+  })
+
+  it('validates the group name and contact selection before requesting creation', async () => {
+    const user = userEvent.setup()
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({})
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await user.click(screen.getByRole('button', { name: /novo grupo/i }))
+    await user.click(screen.getByRole('button', { name: /criar grupo/i }))
+
+    expect(screen.getByRole('alert').textContent).toContain('Informe o nome do grupo.')
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/groups',
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    await user.type(screen.getByLabelText(/nome do grupo/i), 'Time sem membros')
+    await user.click(screen.getByRole('button', { name: /criar grupo/i }))
+
+    expect(screen.getByRole('alert').textContent).toContain('Selecione pelo menos um contato.')
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/groups',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('creates and manages a group from contacts', async () => {
@@ -652,6 +962,29 @@ describe('InboxView', () => {
     )
     expect(screen.queryByLabelText('7 mensagens nao lidas')).toBeNull()
     expect(screen.getByLabelText('99+ mensagens nao lidas')).toBeTruthy()
+  })
+
+  it('renders presence from the authenticated conversation before realtime updates arrive', async () => {
+    const { pinia } = await renderInbox()
+    vi.stubGlobal(
+      'fetch',
+      mockAuthenticatedFetch({
+        conversations: [
+          inboxSummaryResponse({
+            id: 'ana',
+            title: 'Ana Beatriz',
+            senderId: 'user-ana',
+            body: 'Perfeito, fico no aguardo entao',
+            unreadCount: 0,
+            online: true,
+          }),
+        ],
+      }),
+    )
+
+    authenticate(pinia)
+
+    expect(await screen.findByText('online')).toBeTruthy()
   })
 
   it('renders presence from conversation data and updates it from channel events', async () => {
@@ -1061,7 +1394,7 @@ class FakeSocket {
   channels = new Map<string, FakeChannel>()
   token: string
   private nextStateRef = 0
-  private stateCallbacks = new Map<string, () => void>()
+  private stateCallbacks = new Map<string, { state: SocketState; callback: () => void }>()
 
   constructor(token: string) {
     this.token = token
@@ -1076,15 +1409,15 @@ class FakeSocket {
   }
 
   onOpen(callback: () => void): string {
-    return this.registerStateCallback(callback)
+    return this.registerStateCallback('open', callback)
   }
 
   onClose(callback: () => void): string {
-    return this.registerStateCallback(callback)
+    return this.registerStateCallback('close', callback)
   }
 
   onError(callback: (reason: unknown) => void): string {
-    return this.registerStateCallback(() => callback(new Error('socket error')))
+    return this.registerStateCallback('error', () => callback(new Error('socket error')))
   }
 
   off(refs: string | string[]): void {
@@ -1115,9 +1448,27 @@ class FakeSocket {
     return channel
   }
 
-  private registerStateCallback(callback: () => void): string {
+  emitOpen(): void {
+    this.emitState('open')
+  }
+
+  emitClose(): void {
+    this.emitState('close')
+  }
+
+  private emitState(state: SocketState): void {
+    for (const entry of this.stateCallbacks.values()) {
+      if (entry.state === state) {
+        entry.callback()
+      }
+    }
+  }
+
+  private registerStateCallback(state: SocketState, callback: () => void): string {
     const ref = `socket-ref-${++this.nextStateRef}`
-    this.stateCallbacks.set(ref, callback)
+    this.stateCallbacks.set(ref, { state, callback })
     return ref
   }
 }
+
+type SocketState = 'open' | 'close' | 'error'

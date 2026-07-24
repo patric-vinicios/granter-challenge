@@ -82,6 +82,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     expiresAt,
     isBootstrapping,
+    didBootstrap,
     isAuthenticated,
     bootstrap,
     login,

@@ -29,6 +29,7 @@
           :value="groupName"
           class="h-11 w-full rounded-lg border border-[#e8e8e8] bg-white px-4 text-[15px] font-bold text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
           type="text"
+          placeholder="Nome do grupo"
           @input="$emit('update:groupName', ($event.target as HTMLInputElement).value)"
         />
       </div>
