@@ -24,9 +24,24 @@ defmodule ApiWeb.ConversationJSON do
   def show(%{conversation: conversation, caller: caller}),
     do: %{conversation: data(conversation, caller)}
 
-  @spec index(%{conversations: [Api.Conversations.summary()]}) :: map()
-  def index(%{conversations: conversations}),
-    do: %{conversations: Enum.map(conversations, &summary/1)}
+  @doc """
+  One page of the inbox: the entries, the cursor that opens the next page and
+  whether there is one. `next_cursor` is null exactly when `has_more` is false,
+  so a client stops on either without having to compare counts against a page
+  size it did not choose.
+  """
+  @spec index(%{
+          conversations: [Api.Conversations.summary()],
+          next_cursor: String.t() | nil,
+          has_more: boolean()
+        }) :: map()
+  def index(%{conversations: conversations, next_cursor: next_cursor, has_more: has_more}) do
+    %{
+      conversations: Enum.map(conversations, &summary/1),
+      next_cursor: next_cursor,
+      has_more: has_more
+    }
+  end
 
   @doc """
   One inbox entry. `counterpart` and `member_count` are mutually exclusive — each

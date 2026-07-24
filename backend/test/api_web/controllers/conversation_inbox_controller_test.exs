@@ -151,6 +151,47 @@ defmodule ApiWeb.ConversationInboxControllerTest do
     test "returns an empty array for a caller with no conversations", %{conn: conn} do
       assert %{"conversations" => []} = conn |> get(~p"/api/conversations") |> json_response(200)
     end
+
+    test "pages through the inbox with the cursor it was handed", %{conn: conn, caller: caller} do
+      c1 = messaged_pair(caller, ago(10))
+      c2 = messaged_pair(caller, ago(50))
+      c3 = messaged_pair(caller, ago(100))
+
+      assert %{"conversations" => first, "next_cursor" => cursor, "has_more" => true} =
+               conn |> get(~p"/api/conversations?limit=2") |> json_response(200)
+
+      assert Enum.map(first, & &1["id"]) == [c1.id, c2.id]
+      assert is_binary(cursor)
+
+      assert %{"conversations" => second, "next_cursor" => nil, "has_more" => false} =
+               conn
+               |> get(~p"/api/conversations?limit=2&cursor=#{cursor}")
+               |> json_response(200)
+
+      assert Enum.map(second, & &1["id"]) == [c3.id]
+    end
+
+    test "reports no next page when the last one is exactly full", %{conn: conn, caller: caller} do
+      messaged_pair(caller, ago(10))
+      messaged_pair(caller, ago(50))
+
+      assert %{"has_more" => false, "next_cursor" => nil} =
+               conn |> get(~p"/api/conversations?limit=2") |> json_response(200)
+    end
+
+    test "rejects a limit outside the accepted range", %{conn: conn} do
+      assert %{"errors" => %{"fields" => %{"limit" => [message]}}} =
+               conn |> get(~p"/api/conversations?limit=0") |> json_response(422)
+
+      assert message =~ "between 1 and 200"
+
+      assert %{"errors" => %{"fields" => %{"limit" => _}}} =
+               conn |> get(~p"/api/conversations?limit=abc") |> json_response(422)
+    end
+
+    test "rejects a malformed cursor", %{conn: conn} do
+      assert conn |> get(~p"/api/conversations?cursor=nope") |> json_response(400)
+    end
   end
 
   describe "GET /api/conversations?q=" do

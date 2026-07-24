@@ -13,12 +13,16 @@ defmodule ApiWeb.ConversationController do
   use ApiWeb, :controller
 
   alias Api.Conversations
+  alias Ecto.Changeset
 
   action_fallback ApiWeb.FallbackController
 
   plug :put_view, json: ApiWeb.ConversationJSON
 
   @private_types %{user_id: :string}
+
+  @page_types %{limit: :integer, cursor: :string, q: :string}
+  @max_limit 200
 
   @spec create_private(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def create_private(conn, params) do
@@ -46,13 +50,27 @@ defmodule ApiWeb.ConversationController do
     end
   end
 
-  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  # `limit` is validated before the domain call, so a non-numeric or
+  # out-of-range page size is a 422 naming the field rather than a value the
+  # context silently clamps — the same contract the message history offers.
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def index(conn, params) do
-    conversations =
-      Conversations.list_conversations(conn.assigns.current_user, %{query: params["q"]})
-
-    render(conn, :index, conversations: conversations)
+    with {:ok, page_params} <- validate_page(params),
+         page <- Conversations.list_conversations(conn.assigns.current_user, page_params),
+         {:ok, page} <- page_or_error(page) do
+      render(conn, :index, page)
+    end
   end
+
+  defp page_or_error({:error, reason}), do: {:error, reason}
+  defp page_or_error(page), do: {:ok, page}
+
+  defp validate_page(params),
+    do:
+      ApiWeb.Pagination.validate(params, @page_types,
+        default_limit: @max_limit,
+        max_limit: @max_limit
+      )
 
   @spec mark_read(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def mark_read(conn, %{"id" => id}) do
@@ -114,11 +132,11 @@ defmodule ApiWeb.ConversationController do
 
   # A missing user_id is a malformed request, not an unknown user: answering
   # user_not_found there would tell a client its own bug looks like a typo.
-  @spec validate_private(map()) :: {:ok, %{user_id: String.t()}} | {:error, Ecto.Changeset.t()}
+  @spec validate_private(map()) :: {:ok, %{user_id: String.t()}} | {:error, Changeset.t()}
   defp validate_private(params) do
     {%{}, @private_types}
-    |> Ecto.Changeset.cast(params, Map.keys(@private_types))
-    |> Ecto.Changeset.validate_required([:user_id])
-    |> Ecto.Changeset.apply_action(:insert)
+    |> Changeset.cast(params, Map.keys(@private_types))
+    |> Changeset.validate_required([:user_id])
+    |> Changeset.apply_action(:insert)
   end
 end

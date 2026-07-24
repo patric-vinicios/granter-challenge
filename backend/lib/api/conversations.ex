@@ -32,6 +32,7 @@ defmodule Api.Conversations do
   alias Api.Accounts.User
   alias Api.Contacts
   alias Api.Conversations.Conversation
+  alias Api.Conversations.Cursor
   alias Api.Conversations.Participant
   alias Api.Conversations.Preview
   alias Api.Repo
@@ -301,19 +302,72 @@ defmodule Api.Conversations do
   `opts` may carry a `:query`: a non-blank term narrows the list to conversations
   whose display title matches accent- and case-insensitively — a group by its
   name, a private conversation by its counterpart's display name or `@username`.
-  The set is already bounded to #{@list_limit}, so a substring `ILIKE` needs no
-  index, and the returned entry shape is unchanged so the client renders a
-  filtered list with the component it already has. A blank or absent term is no
-  filter at all.
+  The filter is a set membership resolved from the trigram indexes rather than a
+  predicate over the joined counterpart, so a term is answered from the index
+  instead of by enriching the whole inbox and discarding it; the returned entry
+  shape is unchanged, so the client renders a filtered list with the component
+  it already has. A blank or absent term is no filter at all.
+
+  `opts` may also carry `:limit` and `:cursor`, and an inbox large enough to
+  need them is the reason the cap alone is not enough: a member of hundreds of
+  groups cannot be handed their whole list, and filtering client-side would ship
+  the very rows the cap exists to withhold. One row beyond the page is read so
+  `has_more` is exact — an inbox holding precisely `limit` conversations must
+  report false, which comparing the returned count against the page size cannot
+  distinguish from a full page with more behind it.
   """
-  @spec list_conversations(User.t(), map()) :: [summary()]
+  @spec list_conversations(User.t(), map()) ::
+          %{conversations: [summary()], next_cursor: String.t() | nil, has_more: boolean()}
+          | {:error, :invalid_cursor}
   def list_conversations(%User{} = caller, opts \\ %{}) do
-    caller
-    |> inbox_query()
-    |> apply_title_filter(Map.new(opts)[:query])
-    |> Repo.all()
-    |> Enum.map(&to_summary/1)
+    parsed = parse_opts(opts)
+
+    with {:ok, cursor} <- decode_cursor(parsed.cursor) do
+      caller
+      |> inbox_query()
+      |> apply_title_filter(parsed.query)
+      |> apply_cursor(cursor)
+      |> limit(^(parsed.limit + 1))
+      |> Repo.all()
+      |> assemble_page(parsed.limit)
+    end
   end
+
+  defp parse_opts(opts) when is_map(opts) do
+    %{
+      query: get_opt(opts, :query) || get_opt(opts, :q),
+      cursor: get_opt(opts, :cursor),
+      limit: normalize_limit(get_opt(opts, :limit))
+    }
+  end
+
+  defp get_opt(opts, key) when is_atom(key) do
+    Map.get(opts, key) || Map.get(opts, Atom.to_string(key))
+  end
+
+  defp normalize_limit(nil), do: @list_limit
+  defp normalize_limit(limit) when is_integer(limit) and limit < 1, do: 1
+  defp normalize_limit(limit) when is_integer(limit) and limit > @list_limit, do: @list_limit
+  defp normalize_limit(limit) when is_integer(limit), do: limit
+  defp normalize_limit(_limit), do: @list_limit
+
+  defp decode_cursor(nil), do: {:ok, nil}
+  defp decode_cursor(""), do: {:ok, nil}
+  defp decode_cursor(cursor), do: Cursor.decode(cursor)
+
+  defp assemble_page(rows, limit) do
+    has_more = length(rows) > limit
+    page = Enum.take(rows, limit)
+
+    %{
+      conversations: Enum.map(page, &to_summary/1),
+      next_cursor: if(has_more, do: page |> List.last() |> row_cursor()),
+      has_more: has_more
+    }
+  end
+
+  defp row_cursor(row),
+    do: Cursor.encode({row.last_message_inserted_at, row.inserted_at, row.id})
 
   @doc """
   Moves the caller's own read marker forward, or refuses.
@@ -375,13 +429,16 @@ defmodule Api.Conversations do
       as: :counterpart
     )
     |> join(:left_lateral, [], mc in subquery(member_count_query()), on: true, as: :members)
+    # `COALESCE(..., '-infinity')` rather than a leading `lm.id IS NULL` term:
+    # both sort a never-used conversation last, because Postgres orders NULLs
+    # first under DESC and `-infinity` last, but only the collapsed form is a
+    # single expression the keyset cursor can bound on. Three components, and
+    # the last of them unique, is what makes the bound total.
     |> order_by([conversation: c, last_message: lm],
-      asc: fragment("?.id IS NULL", lm),
-      desc: fragment("?.inserted_at", lm),
+      desc: fragment("COALESCE(?.inserted_at, '-infinity')", lm),
       desc: c.inserted_at,
       desc: c.id
     )
-    |> limit(^@list_limit)
     |> select(
       [
         participant: p,
@@ -411,38 +468,90 @@ defmodule Api.Conversations do
     )
   end
 
-  # Applied after the joins so the counterpart's name and username are in scope;
-  # the title a private conversation shows is the counterpart's, never a column
-  # on the conversation itself, so both are matched. `unaccent` on each side is
-  # what makes `familia` find `Família`, and `ILIKE` what makes it case-blind.
-  # A blank term is dropped upstream of the query — there is nothing to narrow.
-  defp apply_title_filter(query, term) when is_binary(term) do
-    case String.trim(term) do
-      "" ->
-        query
-
-      trimmed ->
-        like = "%" <> trimmed <> "%"
-
+  # The title a private conversation shows is the counterpart's, never a column
+  # on the conversation itself, so a name and a `@username` both have to match.
+  # `immutable_unaccent` on each side is what makes `familia` find `Família`,
+  # and `ILIKE` what makes it case-blind. A blank term is dropped upstream of
+  # the query — there is nothing to narrow.
+  #
+  # The match is expressed as membership in a set computed on its own rather
+  # than as a predicate over the joined `:counterpart`, and that difference is
+  # the whole performance story. Referencing the lateral join forces every
+  # conversation in the inbox through all four enrichment sub-plans before the
+  # first row can be discarded: a 10 000-conversation inbox measured 140 424
+  # buffer hits and ~140 ms to return a single match. Naming the set first lets
+  # the planner enter from the trigram indexes on the names, which are far more
+  # selective, and enrich only the survivors — 73 buffer hits and ~12 ms for the
+  # same answer. The `ILIKE` operands are spelled exactly as the indexed
+  # expressions are, since an expression index is only used when the query
+  # writes the expression the same way.
+  defp apply_title_filter(query, term) do
+    case Accounts.search_term(term) do
+      {:ok, trimmed} ->
         where(
           query,
-          [conversation: c, counterpart: cp],
-          fragment(
-            "((? = 'group' AND unaccent(?) ILIKE unaccent(?)) OR (? = 'private' AND (unaccent(?) ILIKE unaccent(?) OR unaccent(?::text) ILIKE unaccent(?))))",
-            c.type,
-            c.name,
-            ^like,
-            c.type,
-            cp.name,
-            ^like,
-            cp.username,
-            ^like
-          )
+          [conversation: c],
+          c.id in subquery(matching_private_query(trimmed)) or
+            c.id in subquery(matching_group_query(trimmed))
         )
+
+      :none ->
+        query
     end
   end
 
-  defp apply_title_filter(query, _term), do: query
+  # Private conversations reached through a counterpart whose display name or
+  # username matches. Restricted to `:private` so a group is never matched by a
+  # member's name — a group answers to its own name and nothing else. The
+  # condition is `Api.Accounts`', so this list and the contact list agree on
+  # what matching a person means.
+  defp matching_private_query(term) do
+    from(op in Participant,
+      join: ou in User,
+      as: :user,
+      on: ou.id == op.user_id,
+      join: oc in Conversation,
+      on: oc.id == op.conversation_id,
+      where: oc.type == :private and is_nil(op.left_at),
+      select: op.conversation_id
+    )
+    |> where(^Accounts.matching_user(term))
+  end
+
+  defp matching_group_query(term) do
+    like = "%" <> term <> "%"
+
+    from(gc in Conversation,
+      where:
+        gc.type == :group and
+          fragment("immutable_unaccent(?) ILIKE immutable_unaccent(?)", gc.name, ^like),
+      select: gc.id
+    )
+  end
+
+  defp apply_cursor(query, nil), do: query
+
+  # Written as a row constructor rather than the equivalent chain of ORs, for
+  # the reason `Api.Messages` gives: the row form is what the planner reads as a
+  # single range bound, while the expanded form frequently plans as several
+  # scans and a merge. Both sides coalesce the absent activity to `-infinity`,
+  # so a never-used conversation compares as the ordering already places it and
+  # never as a `NULL` that makes the whole comparison unknown.
+  defp apply_cursor(query, {activity, inserted_at, id}) do
+    where(
+      query,
+      [conversation: c, last_message: lm],
+      fragment(
+        "(COALESCE(?.inserted_at, '-infinity'), ?, ?) < (COALESCE(?, '-infinity'), ?, ?)",
+        lm,
+        c.inserted_at,
+        c.id,
+        type(^activity, :utc_datetime_usec),
+        type(^inserted_at, :utc_datetime_usec),
+        type(^id, Ecto.UUID)
+      )
+    )
+  end
 
   defp counterpart_query(caller_id) do
     from o in Participant,
