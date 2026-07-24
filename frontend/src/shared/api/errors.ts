@@ -99,6 +99,9 @@ function localizeErrorDetail(error: ApiErrorBody): string {
       return 'Não foi possível conectar ao servidor.'
     case 'invalid_response':
       return 'Não foi possível ler a resposta do servidor.'
+    case 'rate_limited':
+      // The backend detail carries a dynamic retry window, so map by code.
+      return 'Muitas tentativas. Aguarde um momento e tente novamente.'
     default:
       return error.detail
   }
@@ -168,6 +171,8 @@ const backendDetailsPtBr: Record<string, string> = {
   'Only the group creator can manage members': 'Apenas o criador do grupo pode gerenciar membros.',
   'This user is already a member of the group': 'Este usuário já é membro do grupo.',
   'A group must keep at least one member': 'Um grupo deve manter pelo menos um membro.',
+  'The group creator can only leave after every other member has left':
+    'O criador só pode sair depois que os outros membros saírem.',
   'The creator cannot remove themselves; leave the group instead':
     'O criador não pode remover a si mesmo; saia do grupo.',
   'You have left this conversation': 'Você saiu desta conversa.',
