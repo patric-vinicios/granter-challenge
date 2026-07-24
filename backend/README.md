@@ -80,6 +80,24 @@ unused-dependency check, formatter, Credo and coverage:
 mix precommit
 ```
 
+### Static analysis
+
+Every public function in `lib/` carries an `@spec`, and each Ecto schema a
+`t/0`, so Dialyzer checks the whole application surface. Behaviour callbacks
+(`@impl`) are typed by the behaviour itself and are deliberately left without a
+redundant spec.
+
+```sh
+mix dialyzer
+```
+
+Dialyzer is kept out of `mix precommit` on purpose: the first run builds a PLT
+and costs minutes, while the rest of the gate finishes in seconds. The PLT is
+cached in `priv/plts/` (git-ignored), so later runs take a few seconds and only
+a dependency or Erlang/Elixir upgrade pays the build again. `.dialyzer_ignore.exs`
+holds a single documented entry for an upstream `Ecto.Multi`/`MapSet` opacity
+false positive.
+
 ## Environment variables
 
 `.env.example` carries a working default for each one.
