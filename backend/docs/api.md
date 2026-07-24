@@ -312,6 +312,25 @@ addresses); `user.id` is the contacted user:
 List the caller's contacts, sorted by display name ascending (case- and
 accent-insensitive). **Auth:** Bearer. Maximum 500 entries.
 
+**Query parameters**
+
+- `q` *(optional)* — filter by the contact's display name or `@username`, case-
+  and accent-insensitive. Matching runs in the database against the same trigram
+  indexes the conversation search uses, so a client never has to hold the whole
+  list to filter it, and a person found here is never missed in the inbox
+  search. A blank term is no filter at all.
+- `limit` *(optional)* — page size, `1`–`200`, default `200`. A non-numeric or
+  out-of-range value is `422 validation_error` under `fields.limit`.
+- `cursor` *(optional)* — the `next_cursor` of a previous response. Opaque;
+  build it only from a value the API returned. A malformed value, or one minted
+  for a different list, is `400 invalid_cursor`.
+
+Paging is shaped exactly as [`GET /api/conversations`](#get-apiconversations) is,
+so one client implementation drives both. `next_cursor` is `null` exactly when
+`has_more` is `false`. The cursor is a keyset over the full ordering — folded
+display name, then user id — so contacts sharing a display name, or differing
+only by accent or case, are never skipped at a page boundary.
+
 **Success — `200 OK`**
 
 ```json
@@ -326,11 +345,16 @@ accent-insensitive). **Auth:** Bearer. Maximum 500 entries.
         "last_seen_at": null
       }
     }
-  ]
+  ],
+  "next_cursor": null,
+  "has_more": false
 }
 ```
 
 **Error — `401 Unauthorized`** (`unauthenticated`) without a valid token.
+**Error — `422 Unprocessable Entity`** (`validation_error`) for a `limit`
+outside `1`–`200`.
+**Error — `400 Bad Request`** (`invalid_cursor`) for a malformed `cursor`.
 
 ---
 
@@ -366,12 +390,24 @@ last-message preview and unread count, in one request. **Auth:** Bearer.
 
 - `q` *(optional)* — filter by display title (counterpart display name or
   `@username` for private, group name for groups), case- and accent-insensitive,
-  minimum 1 character. Returns the same entry shape as the unfiltered list.
+  minimum 1 character. Matching runs in the database against trigram indexes, so
+  the filter applies to the whole inbox and not only to the page that would have
+  been returned. Returns the same entry shape as the unfiltered list. A group is
+  matched by its own name only, never by a member's.
+- `limit` *(optional)* — page size, `1`–`200`, default `200`. A non-numeric or
+  out-of-range value is `422 validation_error` under `fields.limit`.
+- `cursor` *(optional)* — the `next_cursor` of a previous response. Opaque;
+  build it only from a value the API returned. A malformed value is
+  `400 invalid_cursor` rather than a silent first page.
 
 Ordered by last-message timestamp descending; conversations with no messages
-sort after those that do. Up to 200 entries. `unread_count` is capped at 99 with
-`unread_overflow: true` past that. For a private conversation `counterpart` is
-set and `member_count` is `null`; for a group the reverse.
+sort after those that do, by their own creation time. `unread_count` is capped
+at 99 with `unread_overflow: true` past that. For a private conversation
+`counterpart` is set and `member_count` is `null`; for a group the reverse.
+
+`next_cursor` is `null` exactly when `has_more` is `false`, so paging stops on
+either. The cursor is a keyset over the full ordering, so conversations sharing
+a last-message timestamp are never skipped at a page boundary.
 
 **Success — `200 OK`**
 
@@ -410,11 +446,16 @@ set and `member_count` is `null`; for a group the reverse.
       "unread_overflow": false,
       "last_read_at": null
     }
-  ]
+  ],
+  "next_cursor": "MjAyNi0wNy0yM1QxMzo1OTowMi4xMDQ1NTNafDIwMjYtMDctMjBUMDk6MTQ6MDBafDdmOGU5ZDBjLTFiMmEtMzk0OC01NzY2LTg1OTRhM2IyYzFkMA",
+  "has_more": true
 }
 ```
 
 **Error — `401 Unauthorized`** (`unauthenticated`) without a valid token.
+**Error — `422 Unprocessable Entity`** (`validation_error`) for a `limit`
+outside `1`–`200`.
+**Error — `400 Bad Request`** (`invalid_cursor`) for a malformed `cursor`.
 
 ---
 
