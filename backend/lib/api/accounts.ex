@@ -103,4 +103,50 @@ defmodule Api.Accounts do
   end
 
   def update_last_seen(_user_id, _at), do: :ok
+
+  @doc """
+  A condition matching users whose display name or `@username` contains `term`,
+  for a query that has named its `users` binding `:user`.
+
+  Two lists search people — the contact list by the contact's own name, the
+  conversation inbox by a private counterpart's — and they have to agree on what
+  matching means, because a user found in one and missed in the other reads as a
+  bug in whichever list the client happened to look at. The rule lives here, on
+  the context that owns the columns, so there is one answer rather than two
+  implementations that start identical.
+
+  `immutable_unaccent` on each side is what makes `familia` match `Família`, and
+  `ILIKE` what makes it case-blind. The operands are spelled exactly as
+  `users_name_trgm_index` and `users_username_trgm_index` spell them, since an
+  expression index is only used when the query writes the expression the same
+  way. A blank term matches everyone, so callers drop it rather than pass it.
+
+      from(u in User, as: :user)
+      |> where(^Accounts.matching_user(term))
+
+  """
+  @spec matching_user(String.t()) :: Ecto.Query.dynamic_expr()
+  def matching_user(term) when is_binary(term) do
+    like = "%" <> String.trim(term) <> "%"
+
+    dynamic(
+      [user: u],
+      fragment("immutable_unaccent(?) ILIKE immutable_unaccent(?)", u.name, ^like) or
+        fragment("immutable_unaccent(?::text) ILIKE immutable_unaccent(?)", u.username, ^like)
+    )
+  end
+
+  @doc """
+  Whether `term` narrows anything at all. A blank or absent term is no filter,
+  and both lists drop it before it reaches the database.
+  """
+  @spec search_term(term()) :: {:ok, String.t()} | :none
+  def search_term(term) when is_binary(term) do
+    case String.trim(term) do
+      "" -> :none
+      trimmed -> {:ok, trimmed}
+    end
+  end
+
+  def search_term(_term), do: :none
 end
