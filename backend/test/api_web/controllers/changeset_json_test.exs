@@ -2,6 +2,7 @@ defmodule ApiWeb.ChangesetJSONTest do
   use ExUnit.Case, async: true
 
   alias ApiWeb.ChangesetJSON
+  alias Ecto.Changeset
 
   defmodule Sample do
     use Api.Schema
@@ -16,10 +17,10 @@ defmodule ApiWeb.ChangesetJSONTest do
   defp changeset(params) do
     Sample
     |> struct!()
-    |> Ecto.Changeset.cast(params, [:username, :password, :age])
-    |> Ecto.Changeset.validate_required([:username])
-    |> Ecto.Changeset.validate_length(:password, min: 8)
-    |> Ecto.Changeset.validate_number(:age, greater_than: 0)
+    |> Changeset.cast(params, [:username, :password, :age])
+    |> Changeset.validate_required([:username])
+    |> Changeset.validate_length(:password, min: 8)
+    |> Changeset.validate_number(:age, greater_than: 0)
   end
 
   describe "error/1" do
