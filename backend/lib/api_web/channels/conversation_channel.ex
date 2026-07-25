@@ -1,35 +1,35 @@
 defmodule ApiWeb.ConversationChannel do
   @moduledoc """
-  Message traffic for one conversation.
+  Real-time message traffic for one conversation, on topic `conversation:<id>`.
 
-  `join/3` asks the very predicate the REST history endpoint asks —
-  `Conversations.participant?/2` — so the live surface can never disagree with
-  the HTTP one about who belongs, and an outsider, a departed member, an unknown
-  id and a malformed id collapse into one indistinguishable `unauthorized`: a
-  socket is not an oracle for ids the REST layer already refuses to confirm.
+  ## Join
 
-  `new_message` persists before it broadcasts, and the ordering is about
-  failure, not speed. Were the broadcast first, a rejected insert would have
-  already painted a message into every participant's window that no history read
-  will ever return, with nothing to undo it. Inserting first makes the worst
-  case a message that is durable but momentarily undelivered, which the client
-  repairs on its next history fetch — history stays the single source of truth,
-  which is also why this channel replays nothing on join.
+  `join/3` asks the predicate the REST history endpoint asks,
+  `Conversations.participant?/2`, so the live and HTTP surfaces never disagree
+  about who belongs. An outsider, a departed member, an unknown id and a
+  malformed id all collapse into one `unauthorized` reply.
 
-  The sender is answered by the reply and excluded from the broadcast, so it
-  gets its persisted record once, correlated by `client_ref`, on the call it is
-  already awaiting; a second device of the same user is a plain subscriber and
-  receives `message:new` like anyone else, because the exclusion is by the
-  sending channel process, not by user.
+  ## Sending
+
+  `new_message` persists before it broadcasts. Were the broadcast first, a
+  rejected insert would have already painted a message into every window that no
+  history read returns. Inserting first makes the worst case a durable but
+  momentarily undelivered message, which the client repairs on its next history
+  fetch — so history stays the single source of truth and this channel replays
+  nothing on join. The sender receives its persisted record once as the reply,
+  correlated by `client_ref`, and is excluded from the broadcast; a second
+  device of the same user is a plain subscriber, since the exclusion is by
+  channel process, not by user.
+
+  ## Presence
 
   Presence is relayed, never tracked here. On join the channel pushes
-  `presence:state` for exactly this conversation's participants and subscribes
-  to each participant's personal topic, then forwards every subsequent
-  `presence:diff`. Because it subscribes to no other user topic, a change for a
-  stranger has no path to the client — the no-leak guarantee is structural, not
-  a filter that could be forgotten. Those same subscriptions also carry each
-  participant's `conversation:updated`, which belongs to the personal topic and
-  is ignored here.
+  `presence:state` for this conversation's participants and subscribes to each
+  participant's personal topic, forwarding every later `presence:diff`. It
+  subscribes to no other user topic, so a stranger's change has no path to the
+  client — the no-leak guarantee is structural. Those subscriptions also carry
+  `conversation:updated`, which belongs to the personal topic and is ignored
+  here.
   """
 
   use ApiWeb, :channel

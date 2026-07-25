@@ -2,14 +2,13 @@ defmodule Api.Contacts do
   @moduledoc """
   Personal contact lists.
 
-  A contact list is unidirectional and private: every function here is scoped to
-  one owner, and no call ever writes to, or reads, somebody else's list.
+  A contact list is unidirectional and private: every function is scoped to one
+  owner and never reads or writes another owner's list.
 
-  `contact?/2` is the reason the context exists as much as the three endpoints
-  are. Opening a private conversation and seating a member in a group both ask
-  the same question — is this user in that user's list? — and answering it in
-  one place is what keeps the rule from being reimplemented, and diverging,
-  across features.
+  `contact?/2` is as much the point of the context as the three endpoints are.
+  Opening a private conversation and seating a group member both ask whether a
+  user is in an owner's list, and answering it in one place keeps the rule from
+  diverging across features.
   """
 
   use Boundary, deps: [Api, Api.Accounts], exports: [Contact]
@@ -23,25 +22,39 @@ defmodule Api.Contacts do
   alias Api.Repo
   alias Api.UUID
 
-  # Bounds the response size and the unindexed sort behind `list_contacts/1`.
-  # A soft guardrail: two adds racing at exactly 499 may both pass, and 501
-  # rows harm neither, which is why no trigger defends the number.
+  # Ceiling on a list. A soft guardrail — two adds racing at 499 may both pass,
+  # and 501 rows harm nothing, so no database trigger defends it.
   @contact_limit 500
 
-  # The page cap, matching the conversation inbox's so a client that paginates
-  # one list paginates the other with the same numbers.
+  # Page cap, matching the conversation inbox's so both lists paginate alike.
   @list_limit 200
 
-  # The maximum username length, so an echoed name in an error detail can never
-  # reflect an unbounded slice of the request body.
+  # Username length cap, so an echoed name in an error detail can never reflect
+  # an unbounded slice of the request body.
   @username_max_length 20
 
   @doc """
-  Adds the user carrying `username` to `owner`'s list.
+  Adds the user with `username` to `owner`'s list.
 
-  The guards run in a fixed order — unknown, self, duplicate, then ceiling — so
-  a caller who is both at the limit and re-adding an existing contact is told
-  the truth rather than being asked to prune their list.
+  ## Parameters
+
+    * `owner` — the `%User{}` whose list is modified
+    * `username` — the `@username` of the user to add
+
+  Returns `{:ok, contact}` on success. Failures are tagged tuples —
+  `:user_not_found`, `:self_contact`, `:contact_already_exists` and
+  `:contact_limit_reached` — the last three carrying a client-facing detail
+  string. The guards run in a fixed order (unknown, self, duplicate, ceiling),
+  so a caller who is both at the limit and re-adding an existing contact is told
+  the more useful reason.
+
+  ## Examples
+
+      iex> Api.Contacts.add_contact(owner, "anabeatriz")
+      {:ok, %Api.Contacts.Contact{}}
+
+      iex> Api.Contacts.add_contact(owner, "ghost")
+      {:error, :user_not_found, "No user with @ghost exists in the system"}
   """
   @spec add_contact(User.t(), String.t()) ::
           {:ok, Contact.t()}
@@ -58,25 +71,34 @@ defmodule Api.Contacts do
   end
 
   @doc """
-  One page of `owner`'s contacts, ascending by display name, optionally narrowed
-  by a search term in `opts[:q]`.
+  Lists one page of `owner`'s contacts, ascending by display name.
 
-  The ordering is a server obligation rather than a client one: sorting a
-  JavaScript array with the default comparator places `Álvaro` after `Zoe`,
-  so the fold happens here and every client renders the same order. `id` is the
-  tie-break, so two contacts sharing a display name still have a total order,
-  and the pair is what the cursor bounds on.
+  ## Parameters
 
-  The search is a server obligation for the same kind of reason. A list this
-  size is small enough to send whole, but "small enough to send" is not "small
-  enough to send on every keystroke", and a client that filters locally has to
-  hold every contact in memory to do it. Matching is `Api.Accounts.matching_user/1`,
-  the same condition the conversation inbox searches by, so a person found in
-  one list is never missed in the other.
+    * `owner` — the `%User{}` whose contacts are listed
+    * `opts` — the options below (string or atom keys)
 
-  Paging works exactly as the inbox's does — `:limit`, `:cursor`, and one row
-  read beyond the page so `has_more` is exact rather than inferred from a count
-  the client did not choose.
+  ## Options
+
+    * `:limit` — page size, defaulting to and capped at #{@list_limit}
+    * `:cursor` — the opaque position from a previous page's `next_cursor`
+    * `:q` — narrows the list by `Api.Accounts.matching_user/1`, the same
+      condition the conversation inbox searches by
+
+  Returns `%{contacts: contacts, next_cursor: cursor | nil, has_more: bool}`, or
+  `{:error, :invalid_cursor}` for a malformed `opts[:cursor]`. Ordering and
+  search are server obligations: a JavaScript sort places `Álvaro` after `Zoe`,
+  and a client that filters locally must hold every contact in memory. `id`
+  breaks ties so the order is total, and one row is read beyond the page so
+  `has_more` is exact.
+
+  ## Examples
+
+      iex> Api.Contacts.list_contacts(owner, %{limit: 50})
+      %{contacts: [%Api.Contacts.Contact{}], next_cursor: nil, has_more: false}
+
+      iex> Api.Contacts.list_contacts(owner, %{q: "ana"})
+      %{contacts: [%Api.Contacts.Contact{}], next_cursor: nil, has_more: false}
   """
   @spec list_contacts(User.t(), map()) ::
           %{contacts: [Contact.t()], next_cursor: String.t() | nil, has_more: boolean()}
@@ -111,11 +133,10 @@ defmodule Api.Contacts do
 
   defp apply_cursor(query, nil), do: query
 
-  # A row constructor rather than the equivalent chain of ORs, for the reason
-  # `Api.Messages` gives: the row form is what the planner reads as a single
-  # range bound. The sort key is the folded name, so the cursor carries the
-  # folded name — comparing against the raw one would order by a different
-  # expression than the query sorts by and skip rows at every page boundary.
+  # A row constructor, so the planner reads it as a single range bound (see
+  # `Api.Messages`). The bound compares the folded name, matching the `ORDER BY`;
+  # comparing the raw name would sort by a different expression and skip rows at
+  # every page boundary.
   defp apply_cursor(query, {sort_name, id}) do
     where(
       query,
@@ -142,13 +163,25 @@ defmodule Api.Contacts do
   end
 
   @doc """
-  Removes one contact row from `owner`'s list.
+  Removes one contact from `owner`'s list.
 
-  A malformed id is rejected before any query: a value that fails a UUID cast
-  cannot name a row, so answering `:invalid_id` reports a malformed request and
-  discloses nothing a `:not_found` would have hidden. An id that is well-formed
-  but unknown, already deleted or somebody else's gets one indistinguishable
-  answer, so contact ownership is never disclosed.
+  ## Parameters
+
+    * `owner` — the `%User{}` whose list is modified
+    * `id` — the contact row's id, as a UUID string
+
+  Returns `:ok`, `{:error, :invalid_id}` for a malformed id, or
+  `{:error, :not_found}` for an id that is well-formed but unknown, already
+  deleted or another owner's — one indistinguishable answer, so contact
+  ownership is never disclosed.
+
+  ## Examples
+
+      iex> Api.Contacts.delete_contact(owner, contact.id)
+      :ok
+
+      iex> Api.Contacts.delete_contact(owner, "not-a-uuid")
+      {:error, :invalid_id}
   """
   @spec delete_contact(User.t(), term()) :: :ok | {:error, :not_found | :invalid_id}
   def delete_contact(%User{} = owner, id) do
@@ -165,10 +198,23 @@ defmodule Api.Contacts do
   end
 
   @doc """
-  Whether `user` is in `owner`'s list, taking either a record or an id.
+  Whether `user` is in `owner`'s list, taking a record or an id.
+
+  ## Parameters
+
+    * `owner` — the `%User{}` whose list is checked
+    * `user` — a `%User{}` or a user id to look for
 
   Evaluated at request time by every caller, so removing a contact takes effect
-  on the very next call rather than on the next session.
+  on the very next call.
+
+  ## Examples
+
+      iex> Api.Contacts.contact?(owner, other)
+      true
+
+      iex> Api.Contacts.contact?(owner, "not-a-uuid")
+      false
   """
   @spec contact?(User.t(), User.t() | term()) :: boolean()
   def contact?(%User{} = owner, %User{} = user), do: contact?(owner, user.id)
@@ -181,16 +227,27 @@ defmodule Api.Contacts do
   end
 
   @doc """
-  Answers *which of these ids are not in `owner`'s list*, naming the offenders.
+  Reports which of `ids` are not in `owner`'s list.
 
-  `contact?/2` decides one id at a time, which cannot express "seat all of
-  these or none of them": a group creation must either accept every member or
-  reject the whole request naming the ones that failed, so a member removed from
+  ## Parameters
+
+    * `owner` — the `%User{}` whose list is checked
+    * `ids` — user ids, already cast to UUIDs, to verify
+
+  Returns `:ok` when every id is a contact, or `{:error, :not_a_contact, detail}`
+  whose detail names the offenders' `@username`s for the 403. `contact?/2`
+  decides one id at a time and cannot express "all or none"; a group creation
+  must accept every member or reject the whole request, so a member removed from
   contacts between opening a dialog and submitting fails the call rather than
-  silently dropping out of the group. This is that set check — one query
-  subtracting the owner's contacts from the requested set — and it returns the
-  offenders' `@username`s so the 403 can list them. `id`s are assumed already
-  cast to UUIDs by the caller.
+  silently dropping out.
+
+  ## Examples
+
+      iex> Api.Contacts.reject_non_contacts(owner, [contact.id])
+      :ok
+
+      iex> Api.Contacts.reject_non_contacts(owner, [stranger.id])
+      {:error, :not_a_contact, "These users are not in your contacts: @stranger"}
   """
   @spec reject_non_contacts(User.t(), [Ecto.UUID.t()]) ::
           :ok | {:error, :not_a_contact, String.t()}
@@ -210,9 +267,9 @@ defmodule Api.Contacts do
     end
   end
 
-  # Only offenders that resolve to a user contribute a name; an id that is not a
-  # user at all still failed the contact check and keeps the call rejected, it
-  # simply has no `@username` to show. Ordered so the message is deterministic.
+  # Only offenders that resolve to a user contribute a name; an id that names no
+  # user still failed the contact check but has no `@username` to show. Ordered
+  # for a deterministic message.
   defp offenders_detail(offender_ids) do
     usernames =
       User

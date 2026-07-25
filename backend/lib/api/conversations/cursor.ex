@@ -28,15 +28,35 @@ defmodule Api.Conversations.Cursor do
   @types [{:nullable, :datetime}, :datetime, :uuid]
 
   @doc """
-  The opaque position of one inbox entry.
+  Encodes the position of one inbox entry.
+
+  ## Parameters
+
+    * `position` — the `{activity, inserted_at, id}` triple ordering the inbox;
+      `activity` may be `nil` for a never-used conversation
+
+  ## Examples
+
+      iex> Api.Conversations.Cursor.encode({~U[2026-07-24 12:00:00Z], ~U[2026-07-01 09:00:00Z], "2b8c..."})
+      "MjAyNi0wNy0yNFQxMjowMDowMFp8..."
   """
   @spec encode(position()) :: String.t()
   def encode({activity, %DateTime{} = inserted_at, id}),
     do: Cursor.encode([activity, inserted_at, id])
 
   @doc """
-  Reads a cursor back into the triple the keyset query bounds on, or
-  `{:error, :invalid_cursor}` if any step of it fails.
+  Decodes an inbox cursor into the triple the keyset query bounds on.
+
+  ## Parameters
+
+    * `cursor` — an opaque cursor string produced by `encode/1`
+
+  Returns `{:ok, {activity, inserted_at, id}}` or `{:error, :invalid_cursor}`.
+
+  ## Examples
+
+      iex> Api.Conversations.Cursor.decode("garbage")
+      {:error, :invalid_cursor}
   """
   @spec decode(term()) :: {:ok, position()} | {:error, :invalid_cursor}
   def decode(cursor) do

@@ -1,23 +1,21 @@
 defmodule Api.Messages do
   @moduledoc """
-  Everything written into a conversation, and every page read back out of it.
+  Message writes and history reads for conversations.
 
   `create_message/3` is the single write path. The REST layer never calls it —
-  messages are sent over the channel — and the channel, the seed script and the
-  tests all share it, so the participation gate and the body rules are enforced
-  in exactly one place. It casts `:body` and nothing else: the sender comes from
-  the authenticated caller, the conversation from the request path, and the
-  insertion time from the caller's own attributes only because the seed script
-  needs to backdate a demo conversation. A request body can set none of them.
+  messages are sent over the channel — while the channel, the seed script and
+  the tests all share it, so the participation gate and the body rules live in
+  one place. It casts `:body` only: the sender comes from the authenticated
+  caller, the conversation from the request path, and the insertion time from
+  the caller's attributes solely so the seed script can backdate a demo
+  conversation. A request body can set none of them.
 
-  `list_messages/3` reads history by keyset rather than by offset, and the
-  reason is correctness before it is speed. Messages arrive while a user
-  scrolls; under `OFFSET` a single insert between two requests shifts every row
-  down by one, so the second page re-serves a message the client already
-  rendered, and a delete would skip one instead. A cursor anchored on the row's
-  own `(inserted_at, id)` names a position in a total order rather than a count
-  of rows preceding it, so neither can happen — and, as a dividend, the
-  ten-thousandth page costs what the first one does.
+  History is read by keyset, not offset, for correctness before speed. Messages
+  arrive while a user scrolls; under `OFFSET` a single insert between two
+  requests shifts every row down by one, re-serving a message the client already
+  holds (or a delete skipping one). A cursor anchored on the row's own
+  `(inserted_at, seq)` names a position in a total order, so neither happens —
+  and the ten-thousandth page costs what the first one does.
   """
 
   use Boundary, deps: [Api, Api.Accounts, Api.Conversations], exports: [Message]
@@ -68,14 +66,27 @@ defmodule Api.Messages do
   Persists a message from `sender` into the conversation named by
   `conversation_id`.
 
-  Gated on active participation, so a non-member and a departed group member are
-  both answered `:not_found` — writing is a question about the present, and a
-  conversation's existence is never disclosed by the difference between the two.
+  ## Parameters
 
-  `attrs` carries `:body`, and optionally an `:inserted_at` for backdated data.
-  Only `:body` is cast; the timestamp is placed on the struct, which is why a
-  caller that merely forwards a request body is structurally incapable of
-  setting one.
+    * `sender` — the `%User{}` sending the message
+    * `conversation_id` — the conversation id, as a UUID string
+    * `attrs` — a map or keyword with `:body`, and optionally `:inserted_at` for
+      backdated (seed) data
+
+  Returns `{:ok, message}` with its sender preloaded. Failures are a changeset
+  for an invalid body, `:invalid_id`, or `:not_found`. Gated on active
+  participation, so a non-member and a departed group member are both answered
+  `:not_found` — writing is a question about the present, and existence is never
+  disclosed by the difference. Only `:body` is cast; `:inserted_at` is placed on
+  the struct, so a caller forwarding a request body cannot set it.
+
+  ## Examples
+
+      iex> Api.Messages.create_message(sender, conversation.id, %{body: "Olá!"})
+      {:ok, %Api.Messages.Message{body: "Olá!"}}
+
+      iex> Api.Messages.create_message(outsider, conversation.id, %{body: "Olá!"})
+      {:error, :not_found}
   """
   @spec create_message(User.t(), term(), map() | keyword()) ::
           {:ok, Message.t()}
@@ -95,17 +106,29 @@ defmodule Api.Messages do
   end
 
   @doc """
-  One page of `conversation_id`'s history for `caller`, newest first internally
-  and ascending on the way out.
+  Lists one page of `conversation_id`'s history for `caller`, ascending.
 
-  `opts` takes `:limit` (defaulting to #{@default_limit}, capped at #{@max_limit})
-  and `:before`, the opaque cursor of the oldest message the caller already
-  holds. Returns `{:ok, %{messages: messages, next_cursor: cursor, has_more: bool}}`.
+  ## Parameters
 
-  A departed group member is bounded at their `left_at` inside the query rather
-  than by filtering a fetched page, so `has_more` and `next_cursor` describe the
-  history they are allowed to see and never leak, through a page count, that
-  the conversation carried on without them.
+    * `caller` — the `%User{}` reading the history
+    * `conversation_id` — the conversation id, as a UUID string
+    * `opts` — the options below
+
+  ## Options
+
+    * `:limit` — page size, defaulting to #{@default_limit}, capped at #{@max_limit}
+    * `:before` — the opaque cursor of the oldest message the caller already holds
+
+  Returns `{:ok, %{messages: messages, next_cursor: cursor | nil, has_more: bool}}`,
+  or `{:error, :invalid_id | :not_found | :invalid_cursor}`. A departed group
+  member is bounded at their `left_at` inside the query rather than by filtering
+  a fetched page, so `has_more` and `next_cursor` never leak, through a page
+  count, that the conversation carried on without them.
+
+  ## Examples
+
+      iex> Api.Messages.list_messages(caller, conversation.id, %{limit: 30})
+      {:ok, %{messages: [%Api.Messages.Message{}], next_cursor: nil, has_more: false}}
   """
   @spec list_messages(User.t(), term(), map() | keyword()) ::
           {:ok, page()} | {:error, :invalid_id | :not_found | :invalid_cursor}
@@ -125,19 +148,32 @@ defmodule Api.Messages do
   end
 
   @doc """
-  Full-text search inside one conversation for `query`, newest match first,
-  paginated by the same `(inserted_at, seq)` keyset history uses.
+  Full-text search inside one conversation for `query`, newest match first.
 
-  Gated on the same read access history uses, so a non-participant is answered
-  `:not_found` and a departed group member searches only the window up to their
-  `left_at`. `opts` takes `:limit` (default #{@default_search_limit}, capped at
-  #{@max_search_limit}) and `:before`.
+  ## Parameters
 
-  Returns `{:ok, %{messages: hits, total_matches: count, next_cursor: cursor,
-  has_more: bool}}`, where each hit is `%{message: %Message{}, position: pos,
-  match_offsets: spans}`. `total_matches` is the true count across all pages and
-  `position` is the global 1-based rank (1 = newest), so a client can render
-  "position / total" while paging.
+    * `caller` — the `%User{}` running the search
+    * `conversation_id` — the conversation id, as a UUID string
+    * `query` — the search text, in `websearch_to_tsquery` syntax
+    * `opts` — the options below
+
+  ## Options
+
+    * `:limit` — page size, defaulting to #{@default_search_limit}, capped at #{@max_search_limit}
+    * `:before` — the opaque cursor from a previous page
+
+  Returns `{:ok, %{messages: hits, total_matches: count, next_cursor: cursor | nil,
+  has_more: bool}}`, or `{:error, :invalid_id | :not_found | :invalid_cursor}`.
+  Each hit is `%{message: %Message{}, position: pos, match_offsets: spans}`,
+  where `position` is the global 1-based rank (1 = newest) and `total_matches`
+  the true count across all pages, so a client can render "position / total".
+  Paginated by the same `(inserted_at, seq)` keyset history uses and gated on
+  the same read access, so a departed member searches only up to their `left_at`.
+
+  ## Examples
+
+      iex> Api.Messages.search_messages(caller, conversation.id, "cronograma")
+      {:ok, %{messages: [%{position: 1}], total_matches: 1, next_cursor: nil, has_more: false}}
   """
   @spec search_messages(User.t(), term(), String.t(), map() | keyword()) ::
           {:ok, search_page()} | {:error, :invalid_id | :not_found | :invalid_cursor}

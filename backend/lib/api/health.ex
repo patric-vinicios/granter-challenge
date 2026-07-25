@@ -13,10 +13,20 @@ defmodule Api.Health do
   @timeout :timer.seconds(2)
 
   @doc """
-  Returns `:ok` when the database answers, `{:error, reason}` when it does not.
+  Probes database connectivity with a `SELECT 1`.
 
-  Takes the repo to probe so a test can point it at an unreachable database;
-  callers use `check/0`.
+  ## Parameters
+
+    * `repo` — the repo to probe, defaulting to `Api.Repo`; a test can pass an
+      unreachable one
+
+  Returns `:ok` when the database answers and `{:error, reason}` when it does
+  not, including on timeout or a dropped connection.
+
+  ## Examples
+
+      iex> Api.Health.check()
+      :ok
   """
   @spec check(Ecto.Repo.t()) :: :ok | {:error, term()}
   def check(repo \\ Repo) do

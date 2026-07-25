@@ -1,24 +1,21 @@
 defmodule ApiWeb.RateLimiter do
   @moduledoc """
-  A per-user ceiling on how fast messages may be sent, across every conversation
-  a socket holds at once.
+  A per-user ceiling on message-send rate, across every conversation a socket
+  holds at once.
 
-  The count lives in a public ETS table rather than in `socket.assigns` for one
-  reason: assigns are per channel process, so a limit tracked there would grant
-  a fresh allowance for each conversation a user opens — and opening
-  conversations is exactly what a spammer does. Keyed on the user instead, the
-  same ceiling holds no matter how many topics one socket has joined.
+  The count lives in a public ETS table, not in `socket.assigns`: assigns are
+  per channel process, so a limit tracked there would grant a fresh allowance
+  for each conversation a user opens — exactly what a spammer does. Keyed on the
+  user, the ceiling holds no matter how many topics one socket has joined.
 
-  `hit/1` runs in the calling channel process and touches the table with a
-  single `:ets.update_counter/4`, so the GenServer is never in the send path: it
-  exists only to own the table and sweep the windows that have rolled past. A
-  fixed window is chosen over a sliding log because the worst case it admits — a
-  burst straddling a boundary — is not a threat model for a chat, while the
-  sliding version would keep a list per active user and walk it on every send to
-  buy a precision no one here consumes.
+  `hit/1` runs in the calling channel process with a single
+  `:ets.update_counter/4`, so the GenServer is never in the send path — it only
+  owns the table and sweeps windows that have rolled past. A fixed window is
+  used over a sliding log because its worst case, a burst straddling a boundary,
+  is not a threat model for a chat.
 
-  State is node-local and lost on restart, which for an abuse guard is the safe
-  direction to fail: a restart resets every window rather than locking anyone out.
+  State is node-local and lost on restart, the safe direction for an abuse
+  guard: a restart resets every window rather than locking anyone out.
   """
 
   use GenServer
@@ -31,11 +28,19 @@ defmodule ApiWeb.RateLimiter do
   @doc """
   Records one send for `user_id` and answers whether it is allowed.
 
+  ## Parameters
+
+    * `user_id` — the sending user's id, as a string
+
   Returns `:ok` for the twentieth send or earlier in the current window, and
   `{:error, retry_after_ms}` past it, where `retry_after_ms` is the time left
   before the window rolls, always in `1..#{@window_ms}`. The counter is created
-  on first use in the same atomic operation that increments it, so a never-seen
-  user needs no setup.
+  on first use in the same atomic operation that increments it.
+
+  ## Examples
+
+      iex> ApiWeb.RateLimiter.hit(user.id)
+      :ok
   """
   @spec hit(String.t()) :: :ok | {:error, pos_integer()}
   def hit(user_id) do

@@ -20,8 +20,18 @@ defmodule ApiWeb.LoginThrottle do
   @doc """
   Whether a login attempt from `ip` for `username` is currently allowed.
 
+  ## Parameters
+
+    * `ip` — the client IP (for example `conn.remote_ip`)
+    * `username` — the normalized `@username` being attempted
+
   Returns `:ok`, or `{:error, retry_after_seconds}` once either the IP or the
   username has failed too many times in the window.
+
+  ## Examples
+
+      iex> ApiWeb.LoginThrottle.check({127, 0, 0, 1}, "anabeatriz")
+      :ok
   """
   @spec check(term(), term()) :: :ok | {:error, pos_integer()}
   def check(ip, username) do
@@ -35,7 +45,19 @@ defmodule ApiWeb.LoginThrottle do
     end
   end
 
-  @doc "Records one failed attempt against both `ip` and `username`."
+  @doc """
+  Records one failed attempt against both `ip` and `username`.
+
+  ## Parameters
+
+    * `ip` — the client IP
+    * `username` — the normalized `@username`
+
+  ## Examples
+
+      iex> ApiWeb.LoginThrottle.fail({127, 0, 0, 1}, "anabeatriz")
+      :ok
+  """
   @spec fail(term(), term()) :: :ok
   def fail(ip, username) do
     window = div(System.system_time(:millisecond), window_ms())

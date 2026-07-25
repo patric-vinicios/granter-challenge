@@ -2,14 +2,13 @@ defmodule Api.Accounts.User do
   @moduledoc """
   A person with an identity in the system.
 
-  The `@` in `@anabeatriz` is a display convention: it is accepted on input,
-  stripped before validation, and never stored, so the column holds exactly
-  what a URL, a token subject or a contact lookup compares against.
+  The `@` in `@anabeatriz` is a display convention: accepted on input, stripped
+  before validation and never stored, so the column holds exactly what a URL, a
+  token subject or a contact lookup compares against.
 
-  The plaintext password is virtual and is dropped from the changeset the
-  moment it is hashed, and the hash itself is redacted from both `inspect/1`
-  and Ecto's own struct inspection, so a logged changeset cannot leak a
-  credential.
+  The plaintext password is virtual and dropped from the changeset as soon as it
+  is hashed. Both it and `hashed_password` are redacted from `inspect/1` and
+  Ecto's struct inspection, so a logged changeset cannot leak a credential.
   """
 
   use Api.Schema
@@ -43,10 +42,20 @@ defmodule Api.Accounts.User do
   end
 
   @doc """
-  Changeset for a new account.
+  Builds the changeset for a new account.
 
-  `last_seen_at` is deliberately absent from the cast: it is presence state,
-  written programmatically, never accepted from a request body.
+  ## Parameters
+
+    * `user` — the struct to build on, usually `%User{}`
+    * `attrs` — a map with `:username`, `:name` and `:password`
+
+  `last_seen_at` is deliberately absent from the cast — it is presence state,
+  written programmatically and never accepted from a request body.
+
+  ## Examples
+
+      iex> Api.Accounts.User.registration_changeset(%Api.Accounts.User{}, %{username: "ana", name: "Ana", password: "senha123"})
+      #Ecto.Changeset<valid?: true>
   """
   @spec registration_changeset(t(), map()) :: Ecto.Changeset.t(t())
   def registration_changeset(user, attrs) do
@@ -66,12 +75,25 @@ defmodule Api.Accounts.User do
   end
 
   @doc """
-  Normalises a username for *lookup*: strips the display `@` and downcases, so
+  Normalizes a username for lookup: strips the display `@` and downcases, so
   logging in as `"@AnaBeatriz"` finds `anabeatriz`.
 
-  Registration deliberately does not downcase — an uppercase letter there is a
-  rejected format, not a value to be silently rewritten — but every later
-  resolution has to accept whatever decoration the user typed.
+  ## Parameters
+
+    * `username` — the raw username, possibly decorated with `@` and mixed case
+
+  Registration does not downcase — an uppercase letter there is a rejected
+  format, not a value to silently rewrite — but every later resolution accepts
+  whatever decoration the user typed. A non-binary argument is returned
+  unchanged.
+
+  ## Examples
+
+      iex> Api.Accounts.User.normalize_username("@AnaBeatriz")
+      "anabeatriz"
+
+      iex> Api.Accounts.User.normalize_username("  demo ")
+      "demo"
   """
   @spec normalize_username(term()) :: term()
   def normalize_username(username) when is_binary(username) do

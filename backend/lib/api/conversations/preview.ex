@@ -23,6 +23,15 @@ defmodule Api.Conversations.Preview do
   @doc """
   Collapses whitespace and truncates `body` to at most 120 graphemes including
   the ellipsis.
+
+  ## Parameters
+
+    * `body` — the raw message body
+
+  ## Examples
+
+      iex> Api.Conversations.Preview.truncate("Oi!   Tudo\\nbem?")
+      "Oi! Tudo bem?"
   """
   @spec truncate(String.t()) :: String.t()
   def truncate(body) when is_binary(body) do

@@ -24,6 +24,7 @@ defmodule ApiWeb.Conversations.ConversationController do
   @page_types %{limit: :integer, cursor: :string, q: :string}
   @max_limit 200
 
+  @doc "`POST /api/conversations/private` — opens (201) or returns (200) the private conversation with a user."
   @spec create_private(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def create_private(conn, params) do
     caller = conn.assigns.current_user
@@ -37,6 +38,7 @@ defmodule ApiWeb.Conversations.ConversationController do
     end
   end
 
+  @doc "`POST /api/conversations/groups` — creates a group with a name and member ids (201)."
   @spec create_group(Plug.Conn.t(), map()) ::
           Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
   def create_group(conn, params) do
@@ -53,17 +55,15 @@ defmodule ApiWeb.Conversations.ConversationController do
   # `limit` is validated before the domain call, so a non-numeric or
   # out-of-range page size is a 422 naming the field rather than a value the
   # context silently clamps — the same contract the message history offers.
+  @doc "`GET /api/conversations` — one page of the caller's inbox, filtered by `q` when given."
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def index(conn, params) do
     with {:ok, page_params} <- validate_page(params),
          page <- Conversations.list_conversations(conn.assigns.current_user, page_params),
-         {:ok, page} <- page_or_error(page) do
+         {:ok, page} <- ApiWeb.Pagination.ok_or_error(page) do
       render(conn, :index, page)
     end
   end
-
-  defp page_or_error({:error, reason}), do: {:error, reason}
-  defp page_or_error(page), do: {:ok, page}
 
   defp validate_page(params),
     do:
@@ -72,6 +72,7 @@ defmodule ApiWeb.Conversations.ConversationController do
         max_limit: @max_limit
       )
 
+  @doc "`POST /api/conversations/:id/read` — advances the caller's read marker to now."
   @spec mark_read(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def mark_read(conn, %{"id" => id}) do
     with {:ok, result} <- Conversations.mark_read(conn.assigns.current_user, id) do
@@ -79,6 +80,7 @@ defmodule ApiWeb.Conversations.ConversationController do
     end
   end
 
+  @doc "`GET /api/conversations/:id` — one conversation with its members, for an active participant."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def show(conn, %{"id" => id}) do
     caller = conn.assigns.current_user
@@ -88,6 +90,7 @@ defmodule ApiWeb.Conversations.ConversationController do
     end
   end
 
+  @doc "`POST /api/conversations/:id/members` — creator adds members and broadcasts `conversation:added`."
   @spec add_members(Plug.Conn.t(), map()) ::
           Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
   def add_members(conn, %{"id" => id} = params) do
@@ -107,6 +110,7 @@ defmodule ApiWeb.Conversations.ConversationController do
     end
   end
 
+  @doc "`DELETE /api/conversations/:id/members/:user_id` — creator removes a member (204), revoking their channel."
   @spec remove_member(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def remove_member(conn, %{"id" => id, "user_id" => user_id}) do
     with :ok <- Conversations.remove_member(conn.assigns.current_user, id, user_id) do
@@ -120,6 +124,7 @@ defmodule ApiWeb.Conversations.ConversationController do
     end
   end
 
+  @doc "`DELETE /api/conversations/:id/members/me` — the caller leaves the conversation (204)."
   @spec leave(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def leave(conn, %{"id" => id}) do
     with :ok <- Conversations.leave(conn.assigns.current_user, id) do

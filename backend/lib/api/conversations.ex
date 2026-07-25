@@ -1,27 +1,27 @@
 defmodule Api.Conversations do
   @moduledoc """
-  Every conversation in the product, private or group.
+  Conversations, private and group.
 
-  A private conversation is not a table of its own: it is a `conversations` row
-  of `type: :private` with exactly two participant rows. A group is a row of
-  `type: :group` carrying a name and a creator, with one participant row per
-  member. Modelling both kinds on the same tables is what lets the later
-  features write one message foreign key, join one channel topic and answer one
-  inbox query rather than branching on a kind they would have to detect.
+  A private conversation is a `conversations` row of `type: :private` with
+  exactly two participant rows; a group is a `type: :group` row carrying a name
+  and a creator, with one participant row per member. One set of tables for both
+  kinds lets the later features write one message foreign key, join one channel
+  topic and answer one inbox query instead of branching on a kind.
 
-  `participant?/2` is the context's real deliverable to the rest of the system,
-  the same way `contact?/2` is the contacts context's: the history read, the
-  channel join and the send path are three code paths that must answer one
-  question — may this user see this conversation? — and answering it here keeps
-  the rule from diverging across them. `read_access/2` asks the same participant
-  row the other question, the one with three answers: writing is a yes-or-no
-  about the present, reading may be bounded at the moment a member left.
+  Two predicates over the participant row are the context's main deliverable:
 
-  Membership is a timeline, not a set. A participant is a row with a `joined_at`
-  and a nullable `left_at`, and leaving sets `left_at` rather than deleting the
-  row. That soft record is what lets a departed member keep read access to what
-  they saw, a re-added member reuse their row with a fresh `joined_at`, and a
-  group keep functioning after its immutable `creator_id` has left.
+    * `participant?/2` — may this user see the conversation? — asked by the
+      history read, the channel join and the send path, so the rule cannot
+      diverge across them.
+    * `read_access/2` — the same row, with three answers: an active member reads
+      everything, a departed one reads up to their `left_at`, an outsider reads
+      nothing.
+
+  Membership is a timeline, not a set. A participant row has a `joined_at` and a
+  nullable `left_at`, and leaving sets `left_at` rather than deleting the row.
+  That soft record lets a departed member keep read access to what they saw, a
+  re-added member reuse their row with a fresh `joined_at`, and a group keep
+  functioning after its immutable `creator_id` has left.
   """
 
   use Boundary, deps: [Api, Api.Accounts, Api.Contacts], exports: [Conversation, Participant]
@@ -77,19 +77,33 @@ defmodule Api.Conversations do
   @member_ids_types %{member_ids: {:array, Ecto.UUID}}
 
   @doc """
-  Opens the private conversation between `caller` and the user named by
-  `target_id`, or returns the existing one.
+  Opens the private conversation between `caller` and `target_id`, or returns
+  the existing one.
 
-  The guards run in a fixed order — self, existence, contact — so the error a
-  caller sees when more than one condition holds is the contract, not an
-  accident: passing one's own id is `self_conversation`, not `not_a_contact`,
-  and an unknown id is a 404, not a 403 that would confuse a typo for a
-  permission problem.
+  ## Parameters
 
-  Idempotency has two layers. The pre-check returns the existing conversation
-  for the ordinary double-click or reload; the `participant_key` unique index is
-  the backstop that turns two genuinely concurrent creates into one winner and
-  one caught error re-read as the existing row, never a duplicate or a 500.
+    * `caller` — the `%User{}` opening the conversation
+    * `target_id` — the other user's id, as a UUID string
+
+  Returns `{:ok, :created, conversation}` the first time and
+  `{:ok, :existing, conversation}` thereafter. Failures are `:self_conversation`,
+  `:user_not_found` and `:not_a_contact`. The guards run in a fixed order (self,
+  existence, contact), so passing one's own id is `:self_conversation` and an
+  unknown id is a 404 rather than a 403 that would read a typo as a permission
+  problem.
+
+  Idempotency has two layers: the pre-check returns the existing conversation
+  for the ordinary double-click or reload, and the `participant_key` unique
+  index is the backstop that collapses two concurrent creates into one winner
+  and one caught error re-read as the existing row — never a duplicate or a 500.
+
+  ## Examples
+
+      iex> Api.Conversations.create_private_conversation(caller, target.id)
+      {:ok, :created, %Api.Conversations.Conversation{type: :private}}
+
+      iex> Api.Conversations.create_private_conversation(caller, caller.id)
+      {:error, :self_conversation}
   """
   @spec create_private_conversation(User.t(), term()) ::
           {:ok, :created | :existing, Conversation.t()}
@@ -108,13 +122,29 @@ defmodule Api.Conversations do
   end
 
   @doc """
-  Creates a group, seating the creator and the given members in one transaction.
+  Creates a group, seating the creator and `member_ids` in one transaction.
 
-  The decision order is the contract: the body shape is validated first, then
-  the creator's own id is stripped and the list de-duplicated, then the contact
-  set is checked (so a non-contact is named rather than hidden behind a size
-  complaint), then the size, and only then are the rows written. A failure at
-  any step inserts nothing.
+  ## Parameters
+
+    * `creator` — the `%User{}` who owns the group
+    * `name` — the group's display name (1–60 characters)
+    * `member_ids` — user ids to seat, as UUID strings; must be contacts of the
+      creator and include at least one user other than the creator
+
+  Returns `{:ok, conversation}`, `{:error, changeset}` for an invalid body, or
+  `{:error, :not_a_contact, detail}`. The decision order is the contract: body
+  shape, then stripping the creator's own id and de-duplicating, then the
+  contact set (so a non-contact is named rather than hidden behind a size
+  complaint), then the size, and only then the writes. A failure at any step
+  inserts nothing.
+
+  ## Examples
+
+      iex> Api.Conversations.create_group(creator, "Time de Produto", [ana.id, carlos.id])
+      {:ok, %Api.Conversations.Conversation{type: :group}}
+
+      iex> Api.Conversations.create_group(creator, "Solo", [])
+      {:error, %Ecto.Changeset{valid?: false}}
   """
   @spec create_group(User.t(), term(), term()) ::
           {:ok, Conversation.t()}
@@ -131,12 +161,24 @@ defmodule Api.Conversations do
   Reads a conversation the caller actively participates in, with its members
   loaded.
 
-  The read is gated on active participation, never on contact, which is what
-  lets the recipient of a private conversation read it without having added the
-  initiator. A malformed id is rejected before any query; a well-formed id that
-  names no conversation, or one the caller is not an active member of — an
-  outsider or a departed group member — gets one indistinguishable `:not_found`,
-  so a conversation's existence is never disclosed.
+  ## Parameters
+
+    * `caller` — the `%User{}` requesting the conversation
+    * `id` — the conversation id, as a UUID string
+
+  Returns `{:ok, conversation}`, `{:error, :invalid_id}` for a malformed id, or
+  `{:error, :not_found}`. The read is gated on active participation, never on
+  contact, which lets the recipient of a private conversation read it without
+  having added the initiator. An outsider, a departed group member and an
+  unknown conversation all get `:not_found`, so existence is never disclosed.
+
+  ## Examples
+
+      iex> Api.Conversations.get_conversation(caller, conversation.id)
+      {:ok, %Api.Conversations.Conversation{}}
+
+      iex> Api.Conversations.get_conversation(outsider, conversation.id)
+      {:error, :not_found}
   """
   @spec get_conversation(User.t(), term()) ::
           {:ok, Conversation.t()} | {:error, :not_found | :invalid_id}
@@ -150,10 +192,26 @@ defmodule Api.Conversations do
   @doc """
   Adds contacts of the creator to the group, re-activating any who had left.
 
-  Creator-gated behind the same visibility rule as every management action: a
-  non-participant is answered `:not_found`, a participant who is not the creator
-  `:not_group_creator`. A supplied id already active is rejected; one who
-  previously left is reactivated in place with a fresh `joined_at`.
+  ## Parameters
+
+    * `creator` — the `%User{}` who owns the group
+    * `id` — the group's conversation id, as a UUID string
+    * `member_ids` — user ids to add, as UUID strings; must be contacts of the
+      creator
+
+  Returns `{:ok, conversation}` with members reloaded. Failures are
+  `:invalid_id`, `:not_found`, `:not_group_creator`, `:already_member`, a
+  changeset, or `{:error, :not_a_contact, detail}`. A supplied id already active
+  is rejected; one who previously left is reactivated in place with a fresh
+  `joined_at`.
+
+  ## Examples
+
+      iex> Api.Conversations.add_members(creator, group.id, [rafael.id])
+      {:ok, %Api.Conversations.Conversation{type: :group}}
+
+      iex> Api.Conversations.add_members(member, group.id, [rafael.id])
+      {:error, :not_group_creator}
   """
   @spec add_members(User.t(), term(), term()) ::
           {:ok, Conversation.t()}
@@ -173,11 +231,25 @@ defmodule Api.Conversations do
   end
 
   @doc """
-  Removes a member by setting `left_at`, creator only.
+  Removes a member by setting `left_at`. Creator only.
 
-  The creator cannot target themselves here — that is a leave, and it lives at
-  `/members/me` so the last-member rule has a single home. A target who is not an
-  active member is answered `:not_found`, disclosing nothing.
+  ## Parameters
+
+    * `creator` — the `%User{}` who owns the group
+    * `id` — the group's conversation id, as a UUID string
+    * `user_id` — the member to remove, as a UUID string
+
+  Returns `:ok`, or `:invalid_id`, `:not_found`, `:not_group_creator` or
+  `:cannot_remove_self`. The creator cannot target themselves here — that is a
+  leave, which lives at `/members/me` so the last-member rule has a single home.
+
+  ## Examples
+
+      iex> Api.Conversations.remove_member(creator, group.id, member.id)
+      :ok
+
+      iex> Api.Conversations.remove_member(creator, group.id, creator.id)
+      {:error, :cannot_remove_self}
   """
   @spec remove_member(User.t(), term(), term()) ::
           :ok
@@ -194,17 +266,27 @@ defmodule Api.Conversations do
   @doc """
   Lets an active member leave by setting their own `left_at`.
 
-  Group semantics follow the messaging-app convention: a group may hold just its
-  creator, and a plain member may always leave. The creator, however, may leave
-  only once every other member is gone — while others remain they must remove
-  them first — so the creator never abandons a populated group. When the sole
-  remaining member leaves, the group has no one left and is deleted outright,
-  cascading its participants and messages.
+  ## Parameters
 
-  A private conversation keeps the older rule: its last active participant cannot
-  leave, so a two-person thread is never half-emptied. The active count is taken
-  after locking the conversation's active rows, so two last-ish members leaving
-  at once can never both succeed.
+    * `user` — the `%User{}` leaving
+    * `id` — the conversation id, as a UUID string
+
+  Returns `:ok`, or `:invalid_id`, `:not_found`, `:last_member` or
+  `:creator_has_members`. A group may hold just its creator, and a plain member
+  may always leave; the creator may leave only once every other member is gone.
+  When the sole remaining member leaves, the group is deleted outright,
+  cascading its participants and messages. A private conversation's last active
+  participant cannot leave, so a two-person thread is never half-emptied. The
+  active count is taken after locking the active rows, so two last-ish members
+  leaving at once can never both succeed.
+
+  ## Examples
+
+      iex> Api.Conversations.leave(member, group.id)
+      :ok
+
+      iex> Api.Conversations.leave(counterpart, private.id)
+      {:error, :last_member}
   """
   @spec leave(User.t(), term()) ::
           :ok | {:error, :invalid_id | :not_found | :last_member | :creator_has_members}
@@ -218,8 +300,21 @@ defmodule Api.Conversations do
   Whether `user` is an active member of `conversation`, taking a record or an id
   on either side.
 
+  ## Parameters
+
+    * `conversation` — a `%Conversation{}` or a conversation id
+    * `user` — a `%User{}` or a user id
+
   Active means a participant row with `left_at` null. Evaluated at request time
   by every caller, so a leave or removal takes effect on the very next call.
+
+  ## Examples
+
+      iex> Api.Conversations.participant?(conversation.id, user.id)
+      true
+
+      iex> Api.Conversations.participant?(conversation, departed_user)
+      false
   """
   @spec participant?(Conversation.t() | term(), User.t() | term()) :: boolean()
   def participant?(%Conversation{id: id}, user), do: participant?(id, user)
@@ -235,13 +330,24 @@ defmodule Api.Conversations do
   end
 
   @doc """
-  The user ids of every currently active member of `conversation`, taking a
-  record or an id.
+  Lists the user ids of every currently active member of `conversation`.
+
+  ## Parameters
+
+    * `conversation` — a `%Conversation{}` or a conversation id
 
   Feeds the per-message fan-out that pushes a summary to each participant's
-  personal topic. Answers `[]` for a malformed or unknown id rather than
+  personal topic. Returns `[]` for a malformed or unknown id rather than
   raising, so a conversation deleted between a message's insert and its fan-out
   cannot crash a channel that has already replied.
+
+  ## Examples
+
+      iex> Api.Conversations.participant_ids(conversation.id)
+      ["2b8c...", "7f1a..."]
+
+      iex> Api.Conversations.participant_ids("not-a-uuid")
+      []
   """
   @spec participant_ids(Conversation.t() | term()) :: [Ecto.UUID.t()]
   def participant_ids(%Conversation{id: id}), do: participant_ids(id)
@@ -261,19 +367,27 @@ defmodule Api.Conversations do
   end
 
   @doc """
-  How much of `conversation` this user may read: all of it, everything up to the
-  moment they left, or nothing at all.
+  Reports how much of `conversation` a user may read.
 
-  The read counterpart to `participant?/2`, over the very same participant row.
-  The predicate stays a yes-or-no about the present — may this user write here,
-  or hold a channel open — because that is what its callers ask. Reading has a
-  third answer: a member who left a group keeps the history they saw and gains
-  not one message written afterwards, and that bound is a timestamp, not a
-  boolean. Widening the predicate to carry it would force every existing caller
-  to match a shape it has no use for.
+  ## Parameters
 
-  An outsider and an unknown conversation share one answer, so the existence of
-  a conversation is never disclosed by the difference between them.
+    * `conversation` — a `%Conversation{}` or a conversation id
+    * `user` — a `%User{}` or a user id
+
+  Returns `{:ok, :active}` for a current member, `{:ok, {:until, left_at}}` for
+  one who left a group, or `{:error, :not_found | :invalid_id}`. This is the
+  read counterpart to `participant?/2` over the same participant row: the
+  predicate answers a yes-or-no about the present, while reading has the third,
+  timestamp-bounded answer. An outsider and an unknown conversation share one
+  answer, so existence is never disclosed.
+
+  ## Examples
+
+      iex> Api.Conversations.read_access(conversation.id, member.id)
+      {:ok, :active}
+
+      iex> Api.Conversations.read_access(group.id, departed.id)
+      {:ok, {:until, ~U[2026-07-20 10:00:00.000000Z]}}
   """
   @spec read_access(Conversation.t() | term(), User.t() | term()) ::
           {:ok, read_scope()} | {:error, :not_found | :invalid_id}
@@ -292,37 +406,42 @@ defmodule Api.Conversations do
   end
 
   @doc """
-  The caller's whole inbox in one round trip: every conversation they actively
-  participate in, ordered by last activity, capped at #{@list_limit}.
+  Lists the caller's inbox in one round trip: every conversation they actively
+  participate in, ordered by last activity.
 
-  The driving scan is the caller's own active participant rows, so the number of
-  rows entering the plan is bounded by their membership before any join runs.
-  Four correlated `LEFT JOIN LATERAL` sub-plans attach the last message, the
-  capped unread count, the private counterpart and the active member count, each
-  yielding at most one row, so one conversation is always one result row and no
-  fact costs a query per conversation.
+  ## Parameters
 
-  The `messages` table is reached as a bare source rather than through
-  `Api.Messages.Message`, because that boundary already depends on this one and
-  the reverse edge would close a cycle the compiler rejects; every column read
-  from it is wrapped in `type/2` to recover the Ecto type a schema would carry.
+    * `caller` — the `%User{}` whose inbox is listed
+    * `opts` — the options below (string or atom keys)
 
-  `opts` may carry a `:query`: a non-blank term narrows the list to conversations
-  whose display title matches accent- and case-insensitively — a group by its
-  name, a private conversation by its counterpart's display name or `@username`.
-  The filter is a set membership resolved from the trigram indexes rather than a
-  predicate over the joined counterpart, so a term is answered from the index
-  instead of by enriching the whole inbox and discarding it; the returned entry
-  shape is unchanged, so the client renders a filtered list with the component
-  it already has. A blank or absent term is no filter at all.
+  ## Options
 
-  `opts` may also carry `:limit` and `:cursor`, and an inbox large enough to
-  need them is the reason the cap alone is not enough: a member of hundreds of
-  groups cannot be handed their whole list, and filtering client-side would ship
-  the very rows the cap exists to withhold. One row beyond the page is read so
-  `has_more` is exact — an inbox holding precisely `limit` conversations must
-  report false, which comparing the returned count against the page size cannot
-  distinguish from a full page with more behind it.
+    * `:limit` — page size, defaulting to and capped at #{@list_limit}
+    * `:cursor` — the opaque position from a previous page's `next_cursor`
+    * `:query` (or `:q`) — narrows the list to conversations whose display title
+      matches accent- and case-insensitively: a group by its name, a private
+      conversation by its counterpart's display name or `@username`
+
+  Returns `%{conversations: summaries, next_cursor: cursor | nil, has_more: bool}`,
+  or `{:error, :invalid_cursor}` for a malformed cursor. One row is read beyond
+  the page so `has_more` is exact.
+
+  The driving scan is the caller's own active participant rows, so the plan is
+  bounded by their membership before any join runs. Four correlated
+  `LEFT JOIN LATERAL` sub-plans attach the last message, the capped unread
+  count, the private counterpart and the active member count — each yielding at
+  most one row, so no fact costs a query per conversation. The title filter is
+  resolved as set membership over the trigram indexes rather than as a predicate
+  over the joined counterpart, so a term is answered from the index instead of
+  by enriching the whole inbox and discarding it.
+
+  ## Examples
+
+      iex> Api.Conversations.list_conversations(caller, %{limit: 20})
+      %{conversations: [%{type: :group}], next_cursor: nil, has_more: false}
+
+      iex> Api.Conversations.list_conversations(caller, %{query: "família"})
+      %{conversations: [%{type: :group, title: "Família"}], next_cursor: nil, has_more: false}
   """
   @spec list_conversations(User.t(), map()) ::
           %{conversations: [summary()], next_cursor: String.t() | nil, has_more: boolean()}
@@ -370,11 +489,25 @@ defmodule Api.Conversations do
   @doc """
   Moves the caller's own read marker forward, or refuses.
 
-  The write is `GREATEST(last_read_at, now)`, so two devices marking at once both
-  succeed and a cleared badge can never reappear: commit order stops mattering
-  because the marker only ever grows. A departed member is answered
-  `:not_a_participant` rather than the `:not_found` an outsider gets — they
-  already know the conversation exists, so 404 would conceal nothing.
+  ## Parameters
+
+    * `caller` — the `%User{}` marking the conversation read
+    * `id` — the conversation id, as a UUID string
+
+  Returns `{:ok, %{conversation_id: id, last_read_at: at}}`, or `:invalid_id`,
+  `:not_found` or `:not_a_participant`. The write is `GREATEST(last_read_at,
+  now)`, so two devices marking at once both succeed and a cleared badge can
+  never reappear — the marker only ever grows. A departed member is answered
+  `:not_a_participant` rather than the `:not_found` an outsider gets, since they
+  already know the conversation exists.
+
+  ## Examples
+
+      iex> Api.Conversations.mark_read(caller, conversation.id)
+      {:ok, %{conversation_id: "2b8c...", last_read_at: ~U[2026-07-24 12:00:00.000000Z]}}
+
+      iex> Api.Conversations.mark_read(departed, group.id)
+      {:error, :not_a_participant}
   """
   @spec mark_read(User.t(), term()) ::
           {:ok, %{conversation_id: Ecto.UUID.t(), last_read_at: DateTime.t()}}
@@ -399,6 +532,10 @@ defmodule Api.Conversations do
       on: c.id == p.conversation_id,
       where: p.user_id == ^caller_id and is_nil(p.left_at)
     )
+    # `messages` is reached as a raw source, not through `Api.Messages.Message`:
+    # that boundary already depends on this one, so the reverse edge would close
+    # a compile cycle. Each column read from it is wrapped in `type/2` below to
+    # recover the Ecto type a schema would carry.
     |> join(
       :left_lateral,
       [conversation: c],

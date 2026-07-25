@@ -43,4 +43,27 @@ defmodule ApiWeb.Pagination do
 
   defp cast_message(:limit, _meta, message), do: message
   defp cast_message(_field, _meta, _message), do: nil
+
+  @doc """
+  Lifts a context list result into an ok/error tuple for a controller `with`.
+
+  `Api.Contacts.list_contacts/2` and `Api.Conversations.list_conversations/2`
+  return a plain page map on success and `{:error, reason}` on a bad cursor;
+  this normalizes the success case to `{:ok, page}` so an action can chain it.
+
+  ## Parameters
+
+    * `result` — a page map, or `{:error, reason}`
+
+  ## Examples
+
+      iex> ApiWeb.Pagination.ok_or_error(%{contacts: [], has_more: false})
+      {:ok, %{contacts: [], has_more: false}}
+
+      iex> ApiWeb.Pagination.ok_or_error({:error, :invalid_cursor})
+      {:error, :invalid_cursor}
+  """
+  @spec ok_or_error(map() | {:error, term()}) :: {:ok, map()} | {:error, term()}
+  def ok_or_error({:error, reason}), do: {:error, reason}
+  def ok_or_error(page), do: {:ok, page}
 end

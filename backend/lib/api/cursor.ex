@@ -1,33 +1,31 @@
 defmodule Api.Cursor do
   @moduledoc """
-  The encoding every keyset cursor in the system shares.
+  Shared encoding for every keyset pagination cursor.
 
-  A cursor is the ordering columns of one row, joined by a separator and
-  base64url-encoded without padding, so it survives a query string without
-  escaping and carries no `=`, `+` or `/`. Three lists are paginated this way —
-  message history, the conversation inbox and the contact list — and they differ
-  only in which columns order them. That difference belongs to each context;
-  the escaping, the strictness and the failure mode do not, and keeping one copy
-  of them is what stops the three from drifting into three slightly different
-  notions of a malformed cursor.
+  A cursor holds one row's ordering columns, joined by a separator and
+  base64url-encoded without padding, so it travels in a query string unescaped
+  and free of `=`, `+` and `/`. Message history, the conversation inbox and the
+  contact list each paginate this way and differ only in which columns order
+  them; that difference lives in each context, while the encoding, the
+  strictness and the failure mode live here.
 
-  A cursor is opaque but deliberately not signed, and the distinction matters:
-  it is not a capability. By the time one is decoded, authorization has already
-  decided which rows the caller may read; the cursor only chooses where inside
-  that set to start, so a forged value can do no more than skip content the
-  caller was always allowed to see. Signing would buy an access-control property
-  the authorization layer already owns, at the price of invalidating every
-  in-flight cursor whenever the secret rotates.
+  Cursors are opaque but deliberately unsigned — they are not capabilities.
+  Authorization decides which rows the caller may read before a cursor is
+  decoded, so a forged value can only skip content the caller was already
+  allowed to see. Signing would duplicate an access-control property the
+  authorization layer already owns and would invalidate in-flight cursors on
+  every secret rotation.
 
-  Decoding is strict at every step and collapses each failure into one error, so
-  no distinction between failure modes is observable and a malformed cursor can
-  never be mistaken for an absent one. Falling back to the first page would hand
-  a client a duplicate of content it already holds, with no way to notice.
+  Decoding is strict at every step and collapses every failure into
+  `{:error, :invalid_cursor}`, so a malformed cursor is never mistaken for an
+  absent one; falling back to the first page would silently re-serve content the
+  client already holds.
+
+  ## Component types
 
   A component is declared by type. `:datetime` and `:uuid` must be present;
-  `{:nullable, type}` also accepts an absent value, which is what lets the inbox
-  encode a conversation that has never been used without inventing a timestamp
-  for it.
+  `{:nullable, type}` also accepts an absent value, which lets the inbox encode
+  a never-used conversation without inventing a timestamp for it.
   """
 
   @typedoc "What one cursor component holds."
@@ -40,7 +38,17 @@ defmodule Api.Cursor do
   @absent "-"
 
   @doc """
-  Encodes ordering components, in the order they order by.
+  Encodes ordering `components`, in the order they sort by, into an opaque
+  cursor string.
+
+  ## Parameters
+
+    * `components` — the row's ordering values, as a list
+
+  ## Examples
+
+      iex> Api.Cursor.encode([~U[2026-07-24 12:00:00Z], "2b8c9f1e-..."])
+      "MjAyNi0wNy0yNFQxMjowMDowMFp8MmI4YzlmMWUtLi4u"
   """
   @spec encode([component()]) :: String.t()
   def encode(components) when is_list(components) do
@@ -55,10 +63,24 @@ defmodule Api.Cursor do
   defp encode_component(value) when is_binary(value), do: value
 
   @doc """
-  Reads a cursor back into the components `types` describes, or
-  `{:error, :invalid_cursor}` if any step of it fails — including a cursor whose
-  component count does not match the list it is being read for, which is what a
+  Decodes a cursor into the components described by `types`.
+
+  ## Parameters
+
+    * `cursor` — an opaque cursor string produced by `encode/1`
+    * `types` — the component types the list orders by (see the module doc)
+
+  Returns `{:ok, components}`, or `{:error, :invalid_cursor}` if any step fails.
+  A component count that does not match `types` also fails — that is what a
   cursor minted for a different list looks like.
+
+  ## Examples
+
+      iex> Api.Cursor.decode(cursor, [:datetime, :uuid])
+      {:ok, [~U[2026-07-24 12:00:00Z], "2b8c9f1e-..."]}
+
+      iex> Api.Cursor.decode("garbage", [:datetime, :uuid])
+      {:error, :invalid_cursor}
   """
   @spec decode(term(), [component_type()]) :: {:ok, [component()]} | {:error, :invalid_cursor}
   def decode(cursor, types) when is_binary(cursor) and is_list(types) do
@@ -75,13 +97,24 @@ defmodule Api.Cursor do
   def decode(_cursor, _types), do: {:error, :invalid_cursor}
 
   @doc """
-  Treats `nil` and `""` as "no cursor" and delegates any other value to the
-  list's own `decode` function.
+  Decodes an optional cursor.
 
-  Every paginated list shares this nil-or-decode step: an absent cursor opens the
-  newest page, and only a present-but-malformed one is an error. Keeping the
-  branch here stops the three lists from drifting into three slightly different
-  notions of "no cursor".
+  ## Parameters
+
+    * `cursor` — the raw cursor value, possibly `nil` or `""`
+    * `decode` — a one-arity function decoding a present cursor
+
+  Treats `nil` and `""` as "no cursor" and returns `{:ok, nil}`; delegates any
+  other value to `decode`. An absent cursor opens the newest page, and only a
+  present-but-malformed one is an error.
+
+  ## Examples
+
+      iex> Api.Cursor.decode_or_nil(nil, &Api.Messages.Cursor.decode/1)
+      {:ok, nil}
+
+      iex> Api.Cursor.decode_or_nil("garbage", &Api.Messages.Cursor.decode/1)
+      {:error, :invalid_cursor}
   """
   @spec decode_or_nil(term(), (String.t() -> {:ok, term()} | {:error, :invalid_cursor})) ::
           {:ok, term() | nil} | {:error, :invalid_cursor}
@@ -89,11 +122,25 @@ defmodule Api.Cursor do
   def decode_or_nil(cursor, decode) when is_function(decode, 1), do: decode.(cursor)
 
   @doc """
-  Clamps a requested page size into `1..max`, falling back to `default` for an
-  absent or non-integer value.
+  Clamps a requested page size into `1..max`.
 
-  The bound belongs next to the cursor because the two are one paging contract:
-  what differs between the lists is only `default` and `max`, not the clamping.
+  ## Parameters
+
+    * `limit` — the requested page size, possibly absent or non-integer
+    * `default` — the size to use when `limit` is absent or non-integer
+    * `max` — the ceiling
+
+  Falls back to `default` for an absent or non-integer value. The bound sits
+  next to the cursor because the two form one paging contract; only `default`
+  and `max` vary between lists.
+
+  ## Examples
+
+      iex> Api.Cursor.normalize_limit(500, 30, 100)
+      100
+
+      iex> Api.Cursor.normalize_limit(nil, 30, 100)
+      30
   """
   @spec normalize_limit(term(), pos_integer(), pos_integer()) :: pos_integer()
   def normalize_limit(nil, default, _max), do: default
@@ -127,8 +174,8 @@ defmodule Api.Cursor do
     end
   end
 
-  # `Ecto.UUID.cast/1` already answers in exactly the shape a component decoder
-  # owes: `{:ok, uuid}` or `:error`.
+  # `Ecto.UUID.cast/1` already returns the `{:ok, uuid} | :error` shape a
+  # component decoder owes.
   defp decode_component(part, :uuid), do: Ecto.UUID.cast(part)
 
   defp decode_component(part, :integer) do
@@ -138,9 +185,8 @@ defmodule Api.Cursor do
     end
   end
 
-  # A string component orders rows but names nothing, so the only thing that can
-  # be wrong with it is being empty — an empty ordering key would compare before
-  # every row and quietly restart the list.
+  # An empty string is rejected: it would sort before every row and quietly
+  # restart the list.
   defp decode_component("", :string), do: :error
   defp decode_component(part, :string), do: {:ok, part}
 end

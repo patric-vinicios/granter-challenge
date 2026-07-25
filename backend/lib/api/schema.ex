@@ -1,12 +1,13 @@
 defmodule Api.Schema do
   @moduledoc """
-  Shared conventions for every schema in the application: UUID primary keys,
-  UUID foreign keys and microsecond timestamps.
+  Shared schema conventions: UUID primary keys, UUID foreign keys and
+  microsecond timestamps.
 
-  Both matter beyond consistency. Sequential ids would let a client enumerate
-  other people's records by counting, and `(inserted_at, id)` is only a total
-  order for keyset pagination if two rows written in the same second can still
-  be told apart.
+  The UUIDs stop a client from enumerating other people's records by counting.
+  The microsecond precision keeps `(inserted_at, id)` a total order for keyset
+  pagination, so two rows written in the same second stay distinguishable.
+
+  ## Example
 
       defmodule Api.Accounts.User do
         use Api.Schema

@@ -342,7 +342,10 @@ defmodule Api.MessagesTest do
       assert hit.match_offsets == [%{start: 2, length: 10}]
     end
 
-    test "highlights the inflected form a stemmed query matched", %{ana: ana, conversation: thread} do
+    test "highlights the inflected form a stemmed query matched", %{
+      ana: ana,
+      conversation: thread
+    } do
       write(thread, ana, "Eu corri ontem", ago(10))
 
       assert {:ok, %{messages: [hit]}} = Messages.search_messages(ana, thread.id, "correr")

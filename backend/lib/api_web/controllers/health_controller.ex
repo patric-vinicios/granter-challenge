@@ -11,6 +11,7 @@ defmodule ApiWeb.HealthController do
 
   alias Api.Health
 
+  @doc "`GET /api/health` — 200 when the database answers, 503 when it does not."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
     case Health.check() do
