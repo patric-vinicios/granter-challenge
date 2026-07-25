@@ -56,7 +56,7 @@ describe('inbox presenter', () => {
     })
   })
 
-  it('appends an active search hit once', () => {
+  it('injects an active search hit once', () => {
     const conversation: ChatConversation = {
       id: 'conversation-ana',
       type: 'private',
@@ -77,14 +77,53 @@ describe('inbox presenter', () => {
     expect(withHit.messages).toHaveLength(1)
     expect(withActiveSearchHit(withHit, hit, currentUserId)).toBe(withHit)
   })
+
+  it('positions a far active search hit by its original message date', () => {
+    const conversation: ChatConversation = {
+      id: 'conversation-ana',
+      type: 'private',
+      initials: 'AB',
+      name: 'Ana Beatriz',
+      subtitle: 'offline',
+      preview: '',
+      time: '',
+      messages: [
+        {
+          id: 'message-499',
+          side: 'in',
+          text: 'Mensagem atual 499',
+          time: '10:00',
+          insertedAt: '2026-07-22T10:00:00Z',
+        },
+        {
+          id: 'message-500',
+          side: 'in',
+          text: 'Mensagem atual 500',
+          time: '10:01',
+          insertedAt: '2026-07-22T10:01:00Z',
+        },
+      ],
+    }
+    const hit = {
+      message: messageWithBody('Resultado antigo fora da pagina atual', '2026-07-21T09:42:00Z'),
+      position: 4500,
+      matchOffsets: [{ start: 0, length: 9 }],
+    }
+
+    expect(withActiveSearchHit(conversation, hit, currentUserId).messages.map((message) => message.id)).toEqual([
+      'message-search',
+      'message-499',
+      'message-500',
+    ])
+  })
 })
 
-function messageWithBody(body: string): PersistedMessage {
+function messageWithBody(body: string, insertedAt = '2026-07-22T09:42:00'): PersistedMessage {
   return {
     id: 'message-search',
     conversationId: 'conversation-ana',
     body,
-    insertedAt: '2026-07-22T09:42:00',
+    insertedAt,
     sender,
   }
 }

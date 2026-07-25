@@ -5,7 +5,7 @@ import type {
 import type { ConversationSearchHit } from '@/features/search/search.contracts'
 import { formatMessageTime } from '@/shared/date/formatMessageTime'
 import { toChatMessage } from '@/shared/chat/toChatMessage'
-import type { ChatConversation } from '@/types/chat'
+import type { ChatConversation, ChatMessage } from '@/types/chat'
 import type { PersistedMessage } from '@/types/message'
 import type { ChatUser } from '@/types/user'
 
@@ -117,8 +117,44 @@ export function withActiveSearchHit(
     return conversation
   }
 
+  const message = toChatMessage(hit.message, currentUserId)
+
   return {
     ...conversation,
-    messages: [...conversation.messages, toChatMessage(hit.message, currentUserId)],
+    messages: insertByInsertedAt(conversation.messages, message),
   }
+}
+
+function insertByInsertedAt(messages: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  const insertedAt = timestampFor(message)
+
+  if (insertedAt === null) {
+    return [...messages, message]
+  }
+
+  const index = messages.findIndex((currentMessage) => {
+    const currentInsertedAt = timestampFor(currentMessage)
+
+    return currentInsertedAt !== null && insertedAt < currentInsertedAt
+  })
+
+  if (index === -1) {
+    return [...messages, message]
+  }
+
+  return [
+    ...messages.slice(0, index),
+    message,
+    ...messages.slice(index),
+  ]
+}
+
+function timestampFor(message: ChatMessage): number | null {
+  if (!message.insertedAt) {
+    return null
+  }
+
+  const timestamp = Date.parse(message.insertedAt)
+
+  return Number.isFinite(timestamp) ? timestamp : null
 }
