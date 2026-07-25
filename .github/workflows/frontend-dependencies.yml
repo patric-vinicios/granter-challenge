@@ -1,23 +1,23 @@
-name: Frontend CI
+name: Frontend Dependencies
 
 on:
   pull_request:
     paths:
       - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
+      - ".github/workflows/frontend-dependencies.yml"
   push:
     branches:
       - main
     paths:
       - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
+      - ".github/workflows/frontend-dependencies.yml"
 
 permissions:
   contents: read
 
 jobs:
-  verify:
-    name: Verify frontend
+  dependency_graph:
+    name: Dependency graph gate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,8 +37,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run frontend gates
-        run: ./scripts/run-gate
-
-      - name: Check formatting whitespace
-        run: git diff --check
+      - name: Run dependency graph gate
+        run: ./scripts/dep-cruiser

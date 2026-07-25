@@ -1,0 +1,28 @@
+name: Frontend Whitespace
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-whitespace.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-whitespace.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  whitespace:
+    name: Git diff whitespace
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check whitespace
+        run: git diff --check origin/main...HEAD
