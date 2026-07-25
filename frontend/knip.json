@@ -11,15 +11,5 @@
     "e2e/**/*.ts",
     "*.config.{js,ts,cjs}",
     "scripts/*"
-  ],
-  "ignoreFiles": [
-    "src/features/contacts/contacts.mock.ts"
-  ],
-  "ignoreExportsUsedInFile": true,
-  "ignoreIssues": {
-    "src/features/conversations/conversations.contracts.ts": ["types"],
-    "src/features/messaging/messaging.contracts.ts": ["types"],
-    "src/shared/realtime/socket.ts": ["types"],
-    "src/stores/auth.store.ts": ["types"]
-  }
+  ]
 }

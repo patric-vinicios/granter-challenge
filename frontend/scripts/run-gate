@@ -2,11 +2,18 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT_DIR"
 
-"$ROOT_DIR/scripts/architecture"
-"$ROOT_DIR/scripts/dep-cruiser"
-"$ROOT_DIR/scripts/eslint"
-"$ROOT_DIR/scripts/nip"
-"$ROOT_DIR/scripts/tsc"
-"$ROOT_DIR/node_modules/.bin/vitest" run --coverage
-"$ROOT_DIR/node_modules/.bin/vite" build
+run_step() {
+  label=$1
+  shift
+  printf '\n==> %s\n' "$label"
+  "$@"
+}
+
+run_step "Architecture" "$ROOT_DIR/scripts/architecture"
+run_step "ESLint" "$ROOT_DIR/scripts/eslint"
+run_step "Unused code and dependencies" "$ROOT_DIR/scripts/nip"
+run_step "Type check" "$ROOT_DIR/scripts/tsc"
+run_step "Tests and coverage" "$ROOT_DIR/node_modules/.bin/vitest" run --coverage
+run_step "Production build" "$ROOT_DIR/node_modules/.bin/vite" build
