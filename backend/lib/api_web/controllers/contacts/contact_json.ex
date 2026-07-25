@@ -15,6 +15,7 @@ defmodule ApiWeb.Contacts.ContactJSON do
   alias Api.Contacts.Contact
   alias ApiWeb.Accounts.UserJSON
 
+  @doc "Renders one contact under a `:contact` key, for the create response."
   @spec show(%{contact: Contact.t()}) :: map()
   def show(%{contact: contact}), do: %{contact: data(contact)}
 
@@ -36,6 +37,7 @@ defmodule ApiWeb.Contacts.ContactJSON do
     }
   end
 
+  @doc "The contact object: the row `id` and the embedded contacted `user`."
   @spec data(Contact.t()) :: map()
   def data(%Contact{} = contact) do
     %{

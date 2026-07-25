@@ -1,4 +1,14 @@
 defmodule ApiWeb.Endpoint do
+  @moduledoc """
+  The Phoenix endpoint — the plug pipeline every request and socket passes
+  through before the router.
+
+  It mounts `ApiWeb.UserSocket` for the real-time layer, parses JSON bodies, and
+  applies CORS from the `CORS_ORIGINS` allowlist (shared with the socket's
+  origin check). The LiveDashboard browser stack is compiled only when
+  `:dev_routes` is set.
+  """
+
   use Phoenix.Endpoint, otp_app: :api
 
   # Browser stack exists only for LiveDashboard; test and prod compile none of it.

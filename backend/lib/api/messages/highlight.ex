@@ -20,6 +20,18 @@ defmodule Api.Messages.Highlight do
   @doc """
   Parses the markers `ts_headline` inserted into `headline`, returning the
   grapheme spans of each highlight in the order they appear.
+
+  ## Parameters
+
+    * `headline` — a `ts_headline` result string, or `nil`
+
+  ## Examples
+
+      iex> Api.Messages.Highlight.offsets_from_headline("Eu \\x02corri\\x03 ontem")
+      [%{start: 3, length: 5}]
+
+      iex> Api.Messages.Highlight.offsets_from_headline(nil)
+      []
   """
   @spec offsets_from_headline(String.t() | nil) :: [span()]
   def offsets_from_headline(nil), do: []

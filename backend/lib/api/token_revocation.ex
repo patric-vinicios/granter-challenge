@@ -18,7 +18,21 @@ defmodule Api.TokenRevocation do
   @table __MODULE__
   @sweep_ms 60_000
 
-  @doc "Records `jti` as revoked until `exp` (unix seconds)."
+  @doc """
+  Records `jti` as revoked until `exp`.
+
+  ## Parameters
+
+    * `jti` — the token's `jti` claim
+    * `exp` — the token's expiry, in unix seconds
+
+  A non-binary `jti` or non-integer `exp` is ignored. Always returns `:ok`.
+
+  ## Examples
+
+      iex> Api.TokenRevocation.revoke("2b8c...", 1_800_000_000)
+      :ok
+  """
   @spec revoke(term(), term()) :: :ok
   def revoke(jti, exp) when is_binary(jti) and is_integer(exp) do
     :ets.insert(@table, {jti, exp})
@@ -27,7 +41,21 @@ defmodule Api.TokenRevocation do
 
   def revoke(_jti, _exp), do: :ok
 
-  @doc "Whether `jti` is a revoked token that has not yet expired."
+  @doc """
+  Whether `jti` names a revoked token that has not yet expired.
+
+  ## Parameters
+
+    * `jti` — the token's `jti` claim
+
+  ## Examples
+
+      iex> Api.TokenRevocation.revoked?("2b8c...")
+      true
+
+      iex> Api.TokenRevocation.revoked?("never-seen")
+      false
+  """
   @spec revoked?(term()) :: boolean()
   def revoked?(jti) when is_binary(jti) do
     case :ets.lookup(@table, jti) do

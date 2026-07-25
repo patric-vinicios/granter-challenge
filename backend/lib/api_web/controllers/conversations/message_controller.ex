@@ -31,6 +31,7 @@ defmodule ApiWeb.Conversations.MessageController do
   @query_min 2
   @query_max 100
 
+  @doc "`GET /api/conversations/:id/messages` — one page of history, oldest-to-newest within the page."
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def index(conn, %{"id" => id} = params) do
     with {:ok, page_params} <- validate_page(params),
@@ -43,6 +44,7 @@ defmodule ApiWeb.Conversations.MessageController do
   # the field rather than a query the database is asked to run — the "no scan on
   # a rejected query" guarantee. The check runs even for a non-participant, so a
   # bad term is 422 before access is ever consulted.
+  @doc "`GET /api/conversations/:id/messages/search` — full-text search within one conversation (`q`)."
   @spec search(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def search(conn, %{"id" => id} = params) do
     with {:ok, %{q: q}} <- validate_query(params),

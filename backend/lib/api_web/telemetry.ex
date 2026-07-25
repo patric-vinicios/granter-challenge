@@ -1,7 +1,16 @@
 defmodule ApiWeb.Telemetry do
+  @moduledoc """
+  Telemetry supervisor: declares the metrics the LiveDashboard renders and runs
+  the poller that samples VM measurements every ten seconds.
+
+  No reporters are attached, so the metrics are consumed only by the dev-only
+  dashboard at `/dev/dashboard`.
+  """
+
   use Supervisor
   import Telemetry.Metrics
 
+  @doc "Starts the telemetry supervisor and its poller."
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
@@ -10,16 +19,13 @@ defmodule ApiWeb.Telemetry do
   @impl true
   def init(_arg) do
     children = [
-      # Telemetry poller will execute the given period measurements
-      # every 10_000ms. Learn more here: https://telemetry-metrics.hexdocs.pm
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
-      # Add reporters as children of your supervision tree.
-      # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @doc "The `Telemetry.Metrics` definitions the dashboard renders."
   @spec metrics() :: [Telemetry.Metrics.t()]
   def metrics do
     [

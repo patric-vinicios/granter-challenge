@@ -2,9 +2,8 @@ defmodule Api.Accounts do
   @moduledoc """
   User accounts and credential verification.
 
-  The single write path for users: registration here and seeding both go
-  through `register_user/1`, so a seeded account is hashed and validated
-  exactly like one created through the API.
+  Registration and seeding share `register_user/1`, so every account is hashed
+  and validated the same way regardless of where it is created.
   """
 
   use Boundary, deps: [Api], exports: [User, Guardian]
@@ -16,11 +15,24 @@ defmodule Api.Accounts do
   alias Api.UUID
 
   @doc """
-  Creates an account from registration params.
+  Registers an account from the given attributes.
 
-  A duplicate username comes back as a changeset error on `:username` rather
-  than a raised constraint error, so the client receives a 422 naming the field
-  instead of a 500.
+  ## Parameters
+
+    * `attrs` — a map with `:username`, `:name` and `:password`
+
+  Returns `{:ok, user}` on success and `{:error, changeset}` on invalid input. A
+  duplicate username surfaces as a changeset error on `:username` rather than a
+  raised constraint error, so the client receives a 422 naming the field instead
+  of a 500.
+
+  ## Examples
+
+      iex> Api.Accounts.register_user(%{username: "anabeatriz", name: "Ana Beatriz", password: "senha123"})
+      {:ok, %Api.Accounts.User{username: "anabeatriz"}}
+
+      iex> Api.Accounts.register_user(%{username: "ab", name: "Ana", password: "short"})
+      {:error, %Ecto.Changeset{valid?: false}}
   """
   @spec register_user(map()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t(User.t())}
   def register_user(attrs) do
@@ -30,11 +42,25 @@ defmodule Api.Accounts do
   end
 
   @doc """
-  Resolves a username and password to a user.
+  Verifies a username and password.
 
-  Both failure branches return the same term and pay the same Argon2 cost: the
-  unknown-username branch runs `no_user_verify/0` so response time does not
-  disclose whether an account exists.
+  ## Parameters
+
+    * `username` — the `@username`, with or without a leading `@`
+    * `password` — the plaintext password to check
+
+  Returns `{:ok, user}` on a match and `{:error, :invalid_credentials}`
+  otherwise. Both failure paths pay the same Argon2 cost — the unknown-username
+  path runs `Argon2.no_user_verify/0` — so timing never reveals whether an
+  account exists.
+
+  ## Examples
+
+      iex> Api.Accounts.authenticate("anabeatriz", "senha123")
+      {:ok, %Api.Accounts.User{username: "anabeatriz"}}
+
+      iex> Api.Accounts.authenticate("anabeatriz", "wrong")
+      {:error, :invalid_credentials}
   """
   @spec authenticate(term(), term()) :: {:ok, User.t()} | {:error, :invalid_credentials}
   def authenticate(username, password) when is_binary(username) and is_binary(password) do
@@ -55,10 +81,23 @@ defmodule Api.Accounts do
   def authenticate(_username, _password), do: {:error, :invalid_credentials}
 
   @doc """
-  Fetches a user by id, returning `nil` for an unknown or non-UUID id.
+  Fetches a user by `id`.
 
-  Token subjects and path params both arrive as untrusted strings, so a
-  malformed id has to be an absent user rather than a cast exception.
+  ## Parameters
+
+    * `id` — a user id, as a UUID string
+
+  Returns the user, or `nil` for an unknown or non-UUID id. Token subjects and
+  path params arrive as untrusted strings, so a malformed id yields an absent
+  user rather than a cast exception.
+
+  ## Examples
+
+      iex> Api.Accounts.get_user(user.id)
+      %Api.Accounts.User{}
+
+      iex> Api.Accounts.get_user("not-a-uuid")
+      nil
   """
   @spec get_user(term()) :: User.t() | nil
   def get_user(id) when is_binary(id) do
@@ -71,9 +110,22 @@ defmodule Api.Accounts do
   def get_user(_id), do: nil
 
   @doc """
-  Fetches a user by `@username`, case-insensitively and with the display `@`
-  accepted. The `citext` column makes the comparison index-backed without a
-  `lower()` wrapper.
+  Fetches a user by `@username`, case-insensitively and accepting a leading `@`.
+
+  ## Parameters
+
+    * `username` — the `@username`, with or without a leading `@`
+
+  Returns the user or `nil`. The `citext` column keeps the comparison
+  index-backed without a `lower()` wrapper.
+
+  ## Examples
+
+      iex> Api.Accounts.get_user_by_username("@AnaBeatriz")
+      %Api.Accounts.User{username: "anabeatriz"}
+
+      iex> Api.Accounts.get_user_by_username("ghost")
+      nil
   """
   @spec get_user_by_username(term()) :: User.t() | nil
   def get_user_by_username(username) when is_binary(username),
@@ -82,14 +134,23 @@ defmodule Api.Accounts do
   def get_user_by_username(_username), do: nil
 
   @doc """
-  Stamps a user's `last_seen_at`, the one write path for the column.
+  Sets a user's `last_seen_at`. Always returns `:ok`.
 
-  Presence, not a request, owns this field, so the write bypasses every
-  changeset: a scoped `update_all` sets exactly `last_seen_at` for one id and
-  leaves `updated_at`'s "profile changed" meaning untouched. A malformed or
-  unknown id is a silent no-op — a presence write for a since-deleted account
-  must never raise or block the leave that triggered it — so the answer is
-  always `:ok`.
+  ## Parameters
+
+    * `user_id` — the user's id, as a UUID string
+    * `at` — the `DateTime` to record
+
+  Presence, not a request, owns this field, so the write bypasses the changeset:
+  a scoped `update_all` sets only `last_seen_at` and leaves `updated_at`'s
+  "profile changed" meaning untouched. A malformed or unknown id is a no-op — a
+  presence write for a since-deleted account must never raise or block the leave
+  that triggered it.
+
+  ## Examples
+
+      iex> Api.Accounts.update_last_seen(user.id, DateTime.utc_now())
+      :ok
   """
   @spec update_last_seen(term(), term()) :: :ok
   def update_last_seen(user_id, %DateTime{} = at) when is_binary(user_id) do
@@ -106,25 +167,25 @@ defmodule Api.Accounts do
   def update_last_seen(_user_id, _at), do: :ok
 
   @doc """
-  A condition matching users whose display name or `@username` contains `term`,
-  for a query that has named its `users` binding `:user`.
+  A dynamic `where` condition matching users whose display name or `@username`
+  contains `term`, for a query that names its `users` binding `:user`.
 
-  Two lists search people — the contact list by the contact's own name, the
-  conversation inbox by a private counterpart's — and they have to agree on what
-  matching means, because a user found in one and missed in the other reads as a
-  bug in whichever list the client happened to look at. The rule lives here, on
-  the context that owns the columns, so there is one answer rather than two
-  implementations that start identical.
+  ## Parameters
 
-  `immutable_unaccent` on each side is what makes `familia` match `Família`, and
-  `ILIKE` what makes it case-blind. The operands are spelled exactly as
+    * `term` — a non-blank substring to match against name and `@username`
+
+  The contact list and the conversation inbox both search people and must agree
+  on what a match is, so the rule lives here on the context that owns the
+  columns. `immutable_unaccent` makes `familia` match `Família` and `ILIKE`
+  makes it case-insensitive; the operands are spelled exactly as
   `users_name_trgm_index` and `users_username_trgm_index` spell them, since an
   expression index is only used when the query writes the expression the same
-  way. A blank term matches everyone, so callers drop it rather than pass it.
+  way. A blank term matches everyone, so callers drop it beforehand.
 
-      from(u in User, as: :user)
-      |> where(^Accounts.matching_user(term))
+  ## Examples
 
+      iex> from(u in User, as: :user) |> where(^Api.Accounts.matching_user("ana"))
+      #Ecto.Query<...>
   """
   @spec matching_user(String.t()) :: Ecto.Query.dynamic_expr()
   def matching_user(term) when is_binary(term) do
@@ -138,8 +199,22 @@ defmodule Api.Accounts do
   end
 
   @doc """
-  Whether `term` narrows anything at all. A blank or absent term is no filter,
-  and both lists drop it before it reaches the database.
+  Normalizes a search term.
+
+  ## Parameters
+
+    * `term` — the raw search string from the request
+
+  Returns `{:ok, trimmed}` for a term that narrows the result, or `:none` for a
+  blank or absent one. Both list endpoints drop `:none` before querying.
+
+  ## Examples
+
+      iex> Api.Accounts.search_term("  ana  ")
+      {:ok, "ana"}
+
+      iex> Api.Accounts.search_term("   ")
+      :none
   """
   @spec search_term(term()) :: {:ok, String.t()} | :none
   def search_term(term) when is_binary(term) do

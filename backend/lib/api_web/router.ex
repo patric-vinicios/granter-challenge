@@ -1,4 +1,13 @@
 defmodule ApiWeb.Router do
+  @moduledoc """
+  HTTP routes for the JSON API.
+
+  Two pipelines: `:api` for the public health, register and login routes, and
+  `:authenticated`, which runs `ApiWeb.AuthPipeline` so every route behind it can
+  read `conn.assigns.current_user`. A catch-all at the end renders a JSON 404 for
+  any unmatched path, in place of Phoenix's HTML debug page.
+  """
+
   use ApiWeb, :router
 
   pipeline :api do

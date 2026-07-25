@@ -7,9 +7,11 @@ defmodule ApiWeb.HealthJSON do
   conventions, while a client's single error handler still finds `errors.code`.
   """
 
+  @doc ~S(The healthy body: `status: "ok"`, `database: "up"`.)
   @spec ok(map()) :: map()
   def ok(_assigns), do: %{status: "ok", database: "up"}
 
+  @doc "The unhealthy body: the probe fields plus the standard error envelope."
   @spec error(map()) :: map()
   def error(_assigns) do
     {code, detail} = ApiWeb.ErrorJSON.error_for(503)

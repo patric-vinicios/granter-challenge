@@ -21,6 +21,13 @@ defmodule ApiWeb.Params do
 
   alias Ecto.Changeset
 
+  @doc """
+  Validates and normalizes `params` against `types` through a schemaless
+  changeset.
+
+  Returns `{:ok, atom-keyed map}`, or `{:error, changeset}` for the fallback
+  controller to render as 422. See the module doc for the accepted options.
+  """
   @spec validate(map(), map(), keyword()) :: {:ok, map()} | {:error, Changeset.t()}
   def validate(params, types, opts \\ []) do
     defaults = Keyword.get(opts, :defaults, %{})

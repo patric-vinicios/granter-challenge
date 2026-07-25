@@ -9,6 +9,7 @@ defmodule ApiWeb.ErrorController do
 
   use ApiWeb, :controller
 
+  @doc "Renders a JSON 404 for any unmatched path (the router's catch-all target)."
   # Rendered directly: with no pipeline, no format was negotiated for render/2.
   @spec not_found(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def not_found(conn, _params) do

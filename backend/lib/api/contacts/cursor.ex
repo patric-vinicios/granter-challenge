@@ -1,20 +1,19 @@
 defmodule Api.Contacts.Cursor do
   @moduledoc """
-  Encodes and decodes the position of one contact in an owner's list.
+  Cursor for one contact's position in an owner's list.
 
   The list is ordered by folded display name, then by the contacted user's id,
-  and a cursor carries both. The name alone would not do: display names are not
-  unique — a list holding three `Ana Beatriz` is ordinary — and a bound that
-  cannot break the tie skips every row sharing the boundary name.
+  and a cursor carries both. The name alone is not enough — display names are
+  not unique, and a bound that cannot break the tie skips every row sharing the
+  boundary name.
 
   The name carried is the *folded* one, `lower(immutable_unaccent(name))`, the
-  same expression the query sorts by. Carrying the raw name would compare
-  against a different ordering than the one in force and lose rows wherever the
-  two disagree, which is exactly at the accented and capitalised names the fold
-  exists to place correctly.
+  expression the query sorts by; carrying the raw name would compare against a
+  different ordering and lose rows at exactly the accented and capitalized names
+  the fold exists to place correctly.
 
-  `Api.Cursor` owns the encoding and the strictness; what belongs here is only
-  which columns order this list.
+  `Api.Cursor` owns the encoding and strictness; only the ordering columns
+  belong here.
   """
 
   alias Api.Contacts.Contact

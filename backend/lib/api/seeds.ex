@@ -34,6 +34,25 @@ defmodule Api.Seeds do
   alias Api.Repo
   alias Api.Seeds.Dataset
 
+  @doc """
+  Seeds the demo dataset into an empty database.
+
+  ## Parameters
+
+    * `dataset` — the dataset to seed, defaulting to `Api.Seeds.Dataset.all/0`;
+      a test can pass a deliberately invalid one to assert the rollback contract
+
+  Returns `{:ok, summary}` after seeding, `{:ok, :skipped}` when the primary
+  account already exists, or `{:error, reason}`. Refuses to run in `:prod`
+  (returning `{:error, :prod_refused}`) and raises when the database has not been
+  migrated. The whole run is one transaction, so the database is only ever left
+  untouched or fully seeded.
+
+  ## Examples
+
+      iex> Api.Seeds.run()
+      {:ok, %{users: 7, conversations: 6, messages: 70}}
+  """
   @spec run() :: {:ok, map()} | {:ok, :skipped} | {:error, term()}
   @spec run(map()) :: {:ok, map()} | {:ok, :skipped} | {:error, term()}
   def run(dataset \\ Dataset.all()) do

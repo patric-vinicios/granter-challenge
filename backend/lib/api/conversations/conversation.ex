@@ -54,10 +54,19 @@ defmodule Api.Conversations.Conversation do
   @doc """
   Builds a private conversation from its computed pair key.
 
-  There is nothing castable: `type` and `participant_key` are fixed by the
-  context, so the changeset exists only to attach the participant-key unique
-  constraint. `name` and `creator_id` stay null here; the group changeset that
-  fills them is below.
+  ## Parameters
+
+    * `conversation` — the struct to build on, usually `%Conversation{}`
+    * `participant_key` — the sorted, joined pair key computed by the context
+
+  Nothing is castable: `type` and `participant_key` are fixed by the context, so
+  the changeset exists only to attach the participant-key unique constraint.
+  `name` and `creator_id` stay null.
+
+  ## Examples
+
+      iex> Api.Conversations.Conversation.private_changeset(%Api.Conversations.Conversation{}, "id-a:id-b")
+      #Ecto.Changeset<valid?: true>
   """
   @spec private_changeset(t(), String.t()) :: Ecto.Changeset.t(t())
   def private_changeset(conversation, participant_key) do
@@ -69,12 +78,22 @@ defmodule Api.Conversations.Conversation do
   end
 
   @doc """
-  Changeset for a new group.
+  Builds the changeset for a new group.
 
-  The name is the only value a caller supplies; `type` is fixed to `:group`
-  here and `creator_id` is set on the struct the context builds, so neither can
-  arrive from the request body. `participant_key` stays null — it is the private
-  pair's uniqueness key and meaningless for a group.
+  ## Parameters
+
+    * `conversation` — the struct to build on, with `creator_id` already set
+    * `attrs` — a map with `:name`
+
+  The name is the only value a caller supplies; `type` is fixed to `:group` and
+  `creator_id` is set on the struct the context builds, so neither can arrive
+  from the request body. `participant_key` stays null — it is the private pair's
+  uniqueness key and meaningless for a group.
+
+  ## Examples
+
+      iex> Api.Conversations.Conversation.group_changeset(%Api.Conversations.Conversation{creator_id: creator.id}, %{name: "Família"})
+      #Ecto.Changeset<valid?: true>
   """
   @spec group_changeset(t(), map()) :: Ecto.Changeset.t(t())
   def group_changeset(conversation, attrs) do

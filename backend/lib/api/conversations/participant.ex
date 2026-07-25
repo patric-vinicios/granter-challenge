@@ -44,9 +44,20 @@ defmodule Api.Conversations.Participant do
   @doc """
   Applies the database guarantees as changeset errors.
 
+  ## Parameters
+
+    * `participant` — the struct to build on, with `conversation_id` and
+      `user_id` set
+    * `attrs` — a map that may carry `:joined_at`, `:left_at` and `:last_read_at`
+
   A membership is either representable or it is not, so the changeset only turns
   a duplicate `(conversation_id, user_id)` pair or a dangling reference into
   `{:error, changeset}` rather than a raised exception.
+
+  ## Examples
+
+      iex> Api.Conversations.Participant.changeset(%Api.Conversations.Participant{conversation_id: c.id, user_id: u.id}, %{joined_at: DateTime.utc_now()})
+      #Ecto.Changeset<valid?: true>
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(participant, attrs \\ %{}) do

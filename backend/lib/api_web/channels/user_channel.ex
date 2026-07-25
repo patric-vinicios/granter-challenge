@@ -1,19 +1,18 @@
 defmodule ApiWeb.UserChannel do
   @moduledoc """
-  A user's private notification topic.
+  A user's private notification topic, `user:<id>`.
 
-  One join rule — the topic id must be the connected user's own — so a socket
-  can never subscribe to someone else's notifications and a well-formed id and a
-  malformed one are refused with the same answer. It carries no inbound event:
-  it exists to receive `conversation:updated` and, because reaching this channel
-  already proves the socket is the user it names, to be the one place presence
-  tracks that user. An unexpected push is answered rather than left to hang.
+  The only join rule is that the topic id must be the connected user's own, so a
+  socket can never subscribe to another user's notifications. The channel takes
+  no inbound event: it exists to receive `conversation:updated` and, because
+  reaching it already proves the socket is the user it names, to be the one place
+  presence tracks that user.
 
-  On join the channel tracks the connection under the user's id and schedules a
-  periodic `last_seen_at` refresh. The refresh exists for the disconnect a leave
-  callback never sees — a crashed node — bounding how stale the stored timestamp
-  can be to one interval, since while the socket lives presence reports the user
-  as online and the refreshed value only ever surfaces after an unclean drop.
+  On join it tracks the connection under the user's id and schedules a periodic
+  `last_seen_at` refresh. The refresh covers the disconnect a leave callback
+  never sees — a crashed node — bounding how stale the stored timestamp can be
+  to one interval. While the socket lives presence reports the user as online,
+  so the refreshed value only surfaces after an unclean drop.
   """
 
   use ApiWeb, :channel

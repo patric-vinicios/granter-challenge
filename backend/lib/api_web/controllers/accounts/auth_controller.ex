@@ -21,6 +21,7 @@ defmodule ApiWeb.Accounts.AuthController do
 
   @login_types %{username: :string, password: :string}
 
+  @doc "`POST /api/auth/register` — creates an account and returns it with a token and expiry (201)."
   @spec register(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def register(conn, params) do
     with {:ok, user} <- Accounts.register_user(params),
@@ -31,6 +32,7 @@ defmodule ApiWeb.Accounts.AuthController do
     end
   end
 
+  @doc "`POST /api/auth/login` — authenticates and returns the user, a token and expiry, or 429 when throttled."
   @spec login(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def login(conn, params) do
     with {:ok, credentials} <- validate_login(params) do
@@ -38,6 +40,7 @@ defmodule ApiWeb.Accounts.AuthController do
     end
   end
 
+  @doc "`DELETE /api/auth/session` — revokes the presented token until it expires (204)."
   @spec logout(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def logout(conn, _params) do
     claims = Guardian.Plug.current_claims(conn)
@@ -45,6 +48,7 @@ defmodule ApiWeb.Accounts.AuthController do
     send_resp(conn, :no_content, "")
   end
 
+  @doc "`GET /api/auth/me` — returns the authenticated user."
   @spec me(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def me(conn, _params), do: render(conn, :show, user: conn.assigns.current_user)
 

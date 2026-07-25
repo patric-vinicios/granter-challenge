@@ -39,6 +39,26 @@ defmodule Api.Messages.Message do
     timestamps()
   end
 
+  @doc """
+  Builds the changeset for a new message.
+
+  ## Parameters
+
+    * `message` — the struct to build on, with `conversation_id` and `sender_id`
+      set
+    * `attrs` — a map with `:body`
+
+  Casts only `:body`, so `conversation_id`, `sender_id` and `inserted_at` stay
+  under the context's control and cannot be set from a request body. Beyond
+  trimming and the length bound it turns the database guarantees — the body
+  length check constraint and the two foreign keys — into `{:error, changeset}`
+  rather than a raised `Postgrex.Error`.
+
+  ## Examples
+
+      iex> Api.Messages.Message.changeset(%Api.Messages.Message{conversation_id: c.id, sender_id: u.id}, %{body: "Olá!"})
+      #Ecto.Changeset<valid?: true>
+  """
   @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(message, attrs \\ %{}) do
     message

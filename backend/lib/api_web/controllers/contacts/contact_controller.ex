@@ -20,6 +20,7 @@ defmodule ApiWeb.Contacts.ContactController do
   @page_types %{limit: :integer, cursor: :string, q: :string}
   @max_limit 200
 
+  @doc "`POST /api/contacts` — adds a contact by `@username` and returns it (201)."
   @spec create(Plug.Conn.t(), map()) ::
           Plug.Conn.t() | {:error, term()} | {:error, atom(), String.t()}
   def create(conn, params) do
@@ -48,6 +49,7 @@ defmodule ApiWeb.Contacts.ContactController do
         max_limit: @max_limit
       )
 
+  @doc "`DELETE /api/contacts/:id` — removes one contact from the caller's list (204)."
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, :not_found | :invalid_id}
   def delete(conn, %{"id" => id}) do
     with :ok <- Contacts.delete_contact(conn.assigns.current_user, id) do

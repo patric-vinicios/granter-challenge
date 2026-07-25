@@ -1,20 +1,15 @@
 defmodule ApiWeb do
   @moduledoc """
-  The entrypoint for defining your web interface, such
-  as controllers, components, channels, and so on.
+  Entrypoint that supplies the shared `use` blocks for the web layer.
 
-  This can be used in your application as:
+  This is a JSON API, so the only `use ApiWeb, ...` targets are `:controller`,
+  `:channel`, `:router` and `:verified_routes` — there is no HTML, component or
+  LiveView layer. Each block below is injected verbatim into every module that
+  opts into it, so it holds imports, `use`s and aliases only; behaviour lives in
+  dedicated modules that those modules import.
 
       use ApiWeb, :controller
-      use ApiWeb, :html
-
-  The definitions below will be executed for every controller,
-  component, etc, so keep them short and clean, focused
-  on imports, uses and aliases.
-
-  Do NOT define functions inside the quoted expressions
-  below. Instead, define additional modules and import
-  those modules here.
+      use ApiWeb, :channel
 
   Root of the `ApiWeb` boundary, which may depend on `Api` and never the
   reverse.
@@ -24,6 +19,7 @@ defmodule ApiWeb do
     deps: [Api],
     exports: [Endpoint, LoginThrottle, Presence, RateLimiter, Telemetry]
 
+  @doc "Expansion for `use ApiWeb, :router` — `Phoenix.Router` plus pipeline imports."
   @spec router() :: Macro.t()
   def router do
     quote do
@@ -35,6 +31,7 @@ defmodule ApiWeb do
     end
   end
 
+  @doc "Expansion for `use ApiWeb, :channel` — `Phoenix.Channel`."
   @spec channel() :: Macro.t()
   def channel do
     quote do
@@ -42,6 +39,7 @@ defmodule ApiWeb do
     end
   end
 
+  @doc "Expansion for `use ApiWeb, :controller` — a JSON controller with verified routes."
   @spec controller() :: Macro.t()
   def controller do
     quote do
@@ -53,6 +51,7 @@ defmodule ApiWeb do
     end
   end
 
+  @doc "Expansion for `use ApiWeb, :verified_routes` — `~p` route verification."
   @spec verified_routes() :: Macro.t()
   def verified_routes do
     quote do
@@ -63,7 +62,8 @@ defmodule ApiWeb do
   end
 
   @doc """
-  When used, dispatch to the appropriate controller/live_view/etc.
+  Dispatches `use ApiWeb, which` to the block named by `which`
+  (`:controller`, `:channel`, `:router` or `:verified_routes`).
   """
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])

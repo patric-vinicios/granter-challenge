@@ -13,11 +13,20 @@ defmodule Api.Accounts.Guardian do
   alias Api.Accounts
 
   @doc """
-  Issues a token for a user along with the moment it stops being valid.
+  Issues a token for `user`, with the moment it stops being valid.
 
-  The expiry is read back from the signed claims rather than recomputed, so the
-  `expires_at` a client stores can never disagree with the `exp` the server
-  will enforce.
+  ## Parameters
+
+    * `user` — the `%Api.Accounts.User{}` to issue a token for
+
+  Returns `{:ok, token, expires_at}`. The expiry is read back from the signed
+  claims rather than recomputed, so the `expires_at` a client stores can never
+  disagree with the `exp` the server enforces.
+
+  ## Examples
+
+      iex> Api.Accounts.Guardian.issue_token(user)
+      {:ok, "eyJhbGci...", ~U[2026-07-25 12:00:00.000000Z]}
   """
   @spec issue_token(Accounts.User.t()) ::
           {:ok, String.t(), DateTime.t()} | {:error, atom() | term()}
