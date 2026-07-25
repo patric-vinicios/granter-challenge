@@ -90,7 +90,10 @@ defmodule Api.MixProject do
       {:doctor, "~> 0.23.0", only: :dev},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
-      {:excellent_migrations, "~> 0.1", only: [:dev, :test], runtime: false}
+      {:excellent_migrations, "~> 0.1", only: [:dev, :test], runtime: false},
+
+      # documentation
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end
 
