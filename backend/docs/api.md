@@ -1080,6 +1080,7 @@ level codes are owned by `ApiWeb.ErrorJSON`; domain codes by
 | `conflict` | 409 | The request conflicts with the current state. |
 | `contact_already_exists` | 409 | The user is already in the caller's contacts. |
 | `already_member` | 409 | The user is already an active member of the group. |
+| `payload_too_large` | 413 | The request body exceeded the 100 KB cap the endpoint accepts. |
 | `unsupported_media_type` | 415 | The request content-type must be `application/json`. |
 | `validation_error` | 422 | A changeset validation failed; `fields` carries per-field messages. |
 | `self_contact` | 422 | A user cannot add themselves as a contact. |
