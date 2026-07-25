@@ -13,6 +13,7 @@ defmodule ApiWeb.Accounts.AuthController do
   alias Api.Accounts
   alias Api.Accounts.User
   alias Api.TokenRevocation
+  alias ApiWeb.EventLog
   alias ApiWeb.LoginThrottle
 
   action_fallback ApiWeb.FallbackController
@@ -26,6 +27,8 @@ defmodule ApiWeb.Accounts.AuthController do
   def register(conn, params) do
     with {:ok, user} <- Accounts.register_user(params),
          {:ok, token, expires_at} <- Accounts.Guardian.issue_token(user) do
+      EventLog.account_registered(user.id, user.username)
+
       conn
       |> put_status(:created)
       |> render(:token, user: user, token: token, expires_at: expires_at)
@@ -45,6 +48,7 @@ defmodule ApiWeb.Accounts.AuthController do
   def logout(conn, _params) do
     claims = Guardian.Plug.current_claims(conn)
     TokenRevocation.revoke(claims["jti"], claims["exp"])
+    EventLog.logged_out(conn.assigns.current_user.id)
     send_resp(conn, :no_content, "")
   end
 
@@ -57,6 +61,7 @@ defmodule ApiWeb.Accounts.AuthController do
 
     case LoginThrottle.check(conn.remote_ip, uname) do
       {:error, retry_after} ->
+        EventLog.login_throttled(conn.remote_ip, uname, retry_after)
         rate_limited(conn, retry_after)
 
       :ok ->
@@ -66,6 +71,7 @@ defmodule ApiWeb.Accounts.AuthController do
 
           {:error, :invalid_credentials} = error ->
             LoginThrottle.fail(conn.remote_ip, uname)
+            EventLog.login_failed(conn.remote_ip, uname)
             error
         end
     end
@@ -73,6 +79,7 @@ defmodule ApiWeb.Accounts.AuthController do
 
   defp issue(conn, user) do
     with {:ok, token, expires_at} <- Accounts.Guardian.issue_token(user) do
+      EventLog.login_succeeded(user.id)
       render(conn, :token, user: user, token: token, expires_at: expires_at)
     end
   end

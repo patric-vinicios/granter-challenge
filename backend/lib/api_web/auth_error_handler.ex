@@ -12,7 +12,9 @@ defmodule ApiWeb.AuthErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {type, reason}, _opts) do
-    ApiWeb.FallbackController.call(conn, {:error, reason_for(type, reason)})
+    domain_reason = reason_for(type, reason)
+    ApiWeb.EventLog.token_rejected(domain_reason)
+    ApiWeb.FallbackController.call(conn, {:error, domain_reason})
   end
 
   # Guardian reports expiry through either element depending on which plug

@@ -21,6 +21,7 @@ defmodule ApiWeb.UserSocket do
   use Phoenix.Socket
 
   alias Api.Accounts.Guardian
+  alias ApiWeb.EventLog
 
   channel "conversation:*", ApiWeb.ConversationChannel
   channel "user:*", ApiWeb.UserChannel
@@ -29,14 +30,19 @@ defmodule ApiWeb.UserSocket do
   def connect(%{"token" => token}, socket, _connect_info) do
     case Guardian.resource_from_token(token) do
       {:ok, user, _claims} ->
+        Logger.metadata(user_id: user.id)
         {:ok, assign(socket, current_user: user, current_user_id: user.id)}
 
       _error ->
+        EventLog.socket_rejected(:invalid_token)
         :error
     end
   end
 
-  def connect(_params, _socket, _connect_info), do: :error
+  def connect(_params, _socket, _connect_info) do
+    EventLog.socket_rejected(:no_token)
+    :error
+  end
 
   @impl true
   def id(socket), do: "user_socket:#{socket.assigns.current_user_id}"

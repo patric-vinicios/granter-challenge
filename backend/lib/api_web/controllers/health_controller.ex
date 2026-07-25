@@ -10,6 +10,7 @@ defmodule ApiWeb.HealthController do
   use ApiWeb, :controller
 
   alias Api.Health
+  alias ApiWeb.EventLog
 
   @doc "`GET /api/health` — 200 when the database answers, 503 when it does not."
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -18,7 +19,9 @@ defmodule ApiWeb.HealthController do
       :ok ->
         render(conn, :ok)
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        EventLog.database_unavailable(reason)
+
         conn
         |> put_status(:service_unavailable)
         |> render(:error)

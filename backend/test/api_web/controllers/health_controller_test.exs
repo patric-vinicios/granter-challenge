@@ -1,6 +1,8 @@
 defmodule ApiWeb.HealthControllerTest do
   use ApiWeb.ConnCase, async: true
 
+  import ExUnit.CaptureLog, only: [with_log: 1]
+
   alias Ecto.Adapters.SQL.Sandbox
 
   describe "GET /api/health" do
@@ -34,6 +36,15 @@ defmodule ApiWeb.HealthControllerTest do
       assert body["database"] == "down"
       assert body["errors"]["code"] == "database_unavailable"
       assert body["errors"]["detail"] == "Database connection is not available"
+    end
+
+    test "logs the reason it withheld from the body", %{conn: conn, sandbox_owner: owner} do
+      Sandbox.stop_owner(owner)
+
+      {_body, log} = with_log(fn -> conn |> get(~p"/api/health") |> json_response(503) end)
+
+      assert log =~ "[error]"
+      assert log =~ "event=database_unavailable"
     end
 
     @tag :capture_log
