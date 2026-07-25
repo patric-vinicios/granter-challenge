@@ -1,12 +1,16 @@
 import { flushPromises } from '@vue/test-utils'
 import { shallowRef } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { deferred, jsonResponse } from '@/test/http'
 
 import { useConversationSearch } from './useConversationSearch'
 
 describe('useConversationSearch', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it.each([
     ['', 'idle', null],
     ['x', 'validation', 'Digite pelo menos 2 caracteres.'],
@@ -85,6 +89,7 @@ describe('useConversationSearch', () => {
   })
 
   it('ignores stale responses after the query changes', async () => {
+    vi.useFakeTimers()
     const staleResponse = deferred<Response>()
     const query = shallowRef('agenda')
     const fetchMock = vi
@@ -107,6 +112,12 @@ describe('useConversationSearch', () => {
     const staleSignal = (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.signal
 
     query.value = 'cronograma'
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(staleSignal?.aborted).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(800)
     await flushPromises()
 
     expect(staleSignal?.aborted).toBe(true)

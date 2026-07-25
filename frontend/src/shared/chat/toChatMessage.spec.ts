@@ -26,6 +26,8 @@ describe('toChatMessage', () => {
       author: 'Ana Beatriz',
       text: 'Olá',
       time: '09:42',
+      insertedAt: '2026-07-22T09:42:00',
+      wide: false,
     })
   })
 

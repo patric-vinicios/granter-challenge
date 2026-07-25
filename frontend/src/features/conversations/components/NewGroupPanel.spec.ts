@@ -1,12 +1,16 @@
-import { render, screen } from '@testing-library/vue'
+import { fireEvent, render, screen } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import NewGroupPanel from './NewGroupPanel.vue'
 
 describe('NewGroupPanel', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('filters contacts and emits selection through the public form controls', async () => {
-    const user = userEvent.setup()
+    vi.useFakeTimers()
     const toggleContact = vi.fn()
     render(NewGroupPanel, {
       props: {
@@ -22,11 +26,15 @@ describe('NewGroupPanel', () => {
       },
     })
 
-    await user.type(screen.getByLabelText('Buscar contato'), 'ana')
+    await fireEvent.update(screen.getByLabelText('Buscar contato'), 'ana')
+    expect(screen.getByText('Carlos Silva')).toBeTruthy()
+
+    await vi.advanceTimersByTimeAsync(800)
+
     expect(screen.getByText('Ana Beatriz')).toBeTruthy()
     expect(screen.queryByText('Carlos Silva')).toBeNull()
 
-    await user.click(screen.getByRole('checkbox', { name: /Ana Beatriz/ }))
+    await fireEvent.click(screen.getByRole('checkbox', { name: /Ana Beatriz/ }))
     expect(toggleContact).toHaveBeenCalledWith('user-ana')
   })
 
@@ -60,6 +68,29 @@ describe('NewGroupPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(close).toHaveBeenCalledOnce()
     expect(createGroup).not.toHaveBeenCalled()
+  })
+
+  it('keeps selected contact chips in a horizontal scroll rail', () => {
+    render(NewGroupPanel, {
+      props: {
+        contacts: [
+          contact('contact-ana', 'user-ana', 'ana', 'Ana Beatriz'),
+          contact('contact-carlos', 'user-carlos', 'carlos', 'Carlos Silva'),
+          contact('contact-duda', 'user-duda', 'duda', 'Duda Lopes'),
+        ],
+        error: null,
+        isSubmitting: false,
+        selectedContactIds: new Set(['user-ana', 'user-carlos', 'user-duda']),
+        groupName: 'Produto',
+      },
+    })
+
+    const selectedRail = screen.getByLabelText('Contatos selecionados')
+
+    expect(selectedRail.className).toContain('overflow-x-auto')
+    expect(screen.getByRole('button', { name: /remover ana beatriz da selecao/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /remover carlos silva da selecao/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /remover duda lopes da selecao/i })).toBeTruthy()
   })
 })
 

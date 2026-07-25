@@ -263,6 +263,7 @@ describe('Inbox history and search', () => {
 
   it('searches messages in the selected conversation and navigates returned matches', async () => {
     const user = userEvent.setup()
+    const scrollIntoView = mockScrollIntoView()
 
     const { pinia } = await renderInbox()
     const fetchMock = mockAuthenticatedFetch({
@@ -280,6 +281,7 @@ describe('Inbox history and search', () => {
     vi.stubGlobal('fetch', fetchMock)
     authenticate(pinia)
 
+    await screen.findAllByText('Ana Beatriz')
     await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
     await user.type(screen.getByLabelText(/buscar na conversa/i), 'cronograma')
 
@@ -291,32 +293,97 @@ describe('Inbox history and search', () => {
     )
     expect(await screen.findByText('1 / 2')).toBeTruthy()
     expect(screen.getByText('cronograma')).toBeTruthy()
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('button', { name: /proximo resultado/i }))
 
     expect(screen.getByText('2 / 2')).toBeTruthy()
     expect(screen.getByText('Familia')).toBeTruthy()
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2))
   })
 
-  it('closes and resets conversation search when focus moves outside its controls', async () => {
+  it('scrolls to a far search result and places it before the current loaded page', async () => {
+    const user = userEvent.setup()
+    const scrollIntoView = mockScrollIntoView()
+    const currentPageMessages = Array.from({ length: 30 }, (_, index) =>
+      historyMessageResponse(
+        `message-current-${index + 1}`,
+        `Mensagem atual ${index + 1}`,
+        'user-ana',
+        'Ana Beatriz',
+        `2026-07-22T10:${String(index % 60).padStart(2, '0')}:00Z`,
+      ),
+    )
+
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [defaultAnaInboxSummary()],
+      historyMessages: currentPageMessages,
+      searchResult: {
+        messages: [
+          {
+            ...searchHitResponse('message-4500', 'Resultado distante encontrado', 4500, [
+              { start: 20, length: 10 },
+            ]),
+            inserted_at: '2026-07-21T09:42:00Z',
+          },
+        ],
+        total_matches: 5000,
+        next_cursor: null,
+        has_more: true,
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+
+    await screen.findByText('Mensagem atual 30')
+    await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
+    await user.type(screen.getByLabelText(/buscar na conversa/i), 'distante')
+
+    expect(await screen.findByText('4500 / 5000+')).toBeTruthy()
+    expect(
+      screen.getByText((_content, element) => element?.textContent === 'Resultado distante encontrado'),
+    ).toBeTruthy()
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+
+    const messageLog = screen.getByRole('log', { name: 'Mensagens da conversa' })
+    const logText = messageLog.textContent ?? ''
+
+    expect(logText.indexOf('Resultado distante encontrado')).toBeLessThan(
+      logText.indexOf('Mensagem atual 1'),
+    )
+  })
+
+  it('focuses conversation search when opened and keeps it open when focus moves outside', async () => {
     const user = userEvent.setup()
 
     const { pinia } = await renderInbox()
     vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
 
+    await screen.findAllByText('Ana Beatriz')
     await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
     const searchInput = screen.getByRole('textbox', { name: /buscar na conversa/i }) as HTMLInputElement
+    expect(searchInput).toBe(document.activeElement)
     await user.type(searchInput, 'x')
 
     expect(await screen.findByText('Digite pelo menos 2 caracteres.')).toBeTruthy()
 
     await user.click(screen.getByLabelText(/^mensagem$/i))
 
-    expect(screen.queryByRole('textbox', { name: /buscar na conversa/i })).toBeNull()
-    await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
-
-    expect((screen.getByRole('textbox', { name: /buscar na conversa/i }) as HTMLInputElement).value).toBe('')
-    expect(screen.getByText('0 / 0')).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: /buscar na conversa/i })).toBeTruthy()
+    expect(searchInput.value).toBe('x')
+    expect(screen.getByText('Digite pelo menos 2 caracteres.')).toBeTruthy()
   })
 })
+
+function mockScrollIntoView() {
+  const scrollIntoView = vi.fn()
+
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: scrollIntoView,
+  })
+
+  return scrollIntoView
+}

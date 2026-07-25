@@ -14,6 +14,7 @@ configuration and storage concerns.
 - [Requirements](#requirements)
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
+- [Production Readiness](#production-readiness)
 - [Quality Gates](#quality-gates)
 - [Available Commands](#available-commands)
 - [Project Structure](#project-structure)
@@ -71,6 +72,48 @@ Environment variables are read by Vite and typed in [`src/env.d.ts`](src/env.d.t
 | --- | --- | --- |
 | `VITE_API_URL` | `http://localhost:4000/api` | REST API base URL |
 | `VITE_SOCKET_URL` | `ws://localhost:4000/socket` | Phoenix socket endpoint |
+
+Local development may rely on those defaults. Production builds must configure both variables
+explicitly and must not point to `localhost`.
+
+Use [`./.env.production.example`](./.env.production.example) as the production template:
+
+```bash
+cp .env.production.example .env.production
+```
+
+For split frontend/backend deployments, use HTTPS/WSS absolute URLs. For same-origin deployments,
+use `/api` and `/socket`.
+
+## Production Readiness
+
+Before publishing a production build:
+
+1. Configure `VITE_API_URL` and `VITE_SOCKET_URL` for the target environment.
+2. Run the full frontend gate:
+
+   ```bash
+   npm run verify
+   git diff --check
+   ```
+
+3. Build the static app:
+
+   ```bash
+   npm run build
+   ```
+
+4. Smoke the generated bundle locally:
+
+   ```bash
+   npm run preview
+   ```
+
+The production bundle is emitted to `dist/`. Static hosts should serve `index.html` as the fallback
+for application routes such as `/login`, `/register` and `/inbox`. The files
+[`public/_redirects`](public/_redirects) and [`public/_headers`](public/_headers) provide SPA
+fallback, immutable caching for versioned assets and basic browser hardening on hosts that support
+those conventions.
 
 ## Quality Gates
 

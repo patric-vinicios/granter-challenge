@@ -1,10 +1,13 @@
 <template>
-  <section class="grid h-full min-h-0 min-w-0 grid-rows-[64px_minmax(0,1fr)_72px] bg-[#fbfbfb]">
+  <section v-if="!conversation" class="grid h-full min-h-0 min-w-0 place-items-center bg-[#fbfbfb] px-6">
+    <p class="text-center text-[14px] text-[#737373]">{{ emptyStateMessage }}</p>
+  </section>
+
+  <section v-else class="grid h-full min-h-0 min-w-0 grid-rows-[64px_minmax(0,1fr)_88px] bg-[#fbfbfb]">
     <header class="border-b border-[#e8e8e8] bg-white px-5">
       <div
         v-if="isSearching"
         class="grid h-full grid-cols-[36px_minmax(0,1fr)_auto_36px_36px] items-center gap-2"
-        @focusout="$emit('searchFocusout', $event)"
       >
         <button
           class="grid h-9 w-9 place-items-center rounded-lg border border-[#e8e8e8] bg-white text-[#171717] hover:bg-[#f5f5f5]"
@@ -25,9 +28,9 @@
           />
           <input
             id="message-search"
+            ref="searchInput"
             :value="searchTerm"
             class="h-10 w-full rounded-lg border border-[#171717] bg-white pl-9 pr-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
-            autofocus
             type="text"
             @input="$emit('update:searchTerm', ($event.target as HTMLInputElement).value)"
           />
@@ -140,6 +143,7 @@
           <MessageBubble
             v-for="(message, index) in conversation.messages"
             :key="messageKey(message, index)"
+            :data-message-id="message.id"
             :side="message.side"
             :text="message.text"
             :time="message.time"
@@ -152,21 +156,22 @@
     </div>
 
     <form
-      class="grid grid-cols-[minmax(0,1fr)_44px] gap-3 border-t border-[#e8e8e8] bg-white px-5 py-4"
+      class="grid grid-cols-[minmax(0,1fr)_44px] grid-rows-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-[#e8e8e8] bg-white px-5 py-3"
       @submit.prevent="$emit('sendMessage')"
     >
+      <p class="col-span-2 text-[12px] text-[#737373]">Enviar: CTRL + ENTER</p>
       <label class="sr-only" for="message">Mensagem</label>
       <textarea
         id="message"
         :value="messageDraft"
-        class="min-h-12 resize-none rounded-lg border border-[#e8e8e8] bg-white px-4 py-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
+        class="min-h-0 resize-none rounded-lg border border-[#e8e8e8] bg-white px-4 py-3 text-[#171717] placeholder:text-[#a3a3a3] focus:outline-2 focus:outline-offset-1 focus:outline-black"
         placeholder="Escreva uma mensagem..."
         rows="1"
         @input="$emit('update:messageDraft', ($event.target as HTMLTextAreaElement).value)"
         @keydown.ctrl.enter.prevent="$emit('sendMessage')"
       />
       <button
-        class="grid h-12 w-11 place-items-center rounded-lg border border-black bg-black text-white hover:bg-[#222222]"
+        class="grid h-full min-h-11 w-11 place-items-center rounded-lg border border-black bg-black text-white hover:bg-[#222222]"
         :class="{ 'opacity-50': !canSendMessage }"
         type="submit"
         aria-label="Enviar mensagem"
@@ -187,7 +192,7 @@ import type { ChatConversation } from '@/types/chat'
 import type { ConversationSearchStatus, SearchMatchOffset } from '@/types/search'
 
 const props = defineProps<{
-  conversation: ChatConversation
+  conversation: ChatConversation | null
   canSendMessage: boolean
   isSearching: boolean
   isLoadingHistory: boolean
@@ -207,12 +212,13 @@ const props = defineProps<{
 }>()
 
 const messageScroller = useTemplateRef<HTMLElement>('messageScroller')
+const searchInput = useTemplateRef<HTMLInputElement>('searchInput')
 let previousScrollHeight = 0
 
 watch(
   () => ({
-    conversationId: props.conversation.id,
-    messageIds: props.conversation.messages.map(messageIdentity),
+    conversationId: props.conversation?.id ?? null,
+    messageIds: props.conversation?.messages.map(messageIdentity) ?? [],
     isLoadingHistory: props.isLoadingHistory,
   }),
   (current, previous) => {
@@ -228,6 +234,11 @@ watch(
         return
       }
 
+      if (props.searchActiveMessageId) {
+        previousScrollHeight = scroller.scrollHeight
+        return
+      }
+
       if (shouldPreservePosition) {
         scroller.scrollTop = previousScrollTop + Math.max(0, scroller.scrollHeight - previousScrollHeight)
       } else {
@@ -240,6 +251,22 @@ watch(
   { flush: 'post', immediate: true },
 )
 
+watch(
+  () => ({
+    activeMessageId: props.searchActiveMessageId,
+    messageIds: props.conversation?.messages.map(messageIdentity) ?? [],
+  }),
+  async ({ activeMessageId }) => {
+    if (!activeMessageId) {
+      return
+    }
+
+    await nextTick()
+    scrollToMessage(activeMessageId)
+  },
+  { flush: 'post', immediate: true },
+)
+
 defineEmits<{
   closeSearch: []
   closeConversation: []
@@ -248,13 +275,25 @@ defineEmits<{
   loadOlderMessages: []
   nextSearchResult: []
   previousSearchResult: []
-  searchFocusout: [event: FocusEvent]
   sendMessage: []
   'update:searchTerm': [searchTerm: string]
   'update:messageDraft': [messageDraft: string]
 }>()
 
 const canNavigateSearch = computed(() => props.searchTotalMatches > 1 && props.searchStatus === 'success')
+const emptyStateMessage = computed(() => props.realtimeError ?? 'Selecione uma conversa')
+
+watch(
+  () => props.isSearching,
+  async (isSearching) => {
+    if (!isSearching) {
+      return
+    }
+
+    await nextTick()
+    searchInput.value?.focus()
+  },
+)
 
 const searchStatusLabel = computed(() => {
   if (props.searchStatus === 'loading') {
@@ -284,6 +323,28 @@ function messageIdentity(message: ChatConversation['messages'][number]): string 
 
 function messageKey(message: ChatConversation['messages'][number], index: number): string {
   return message.id ?? message.clientRef ?? `${messageIdentity(message)}:${index}`
+}
+
+function scrollToMessage(messageId: string): void {
+  const scroller = messageScroller.value
+
+  if (!scroller) {
+    return
+  }
+
+  const messageElement = Array.from(scroller.querySelectorAll<HTMLElement>('[data-message-id]')).find(
+    (element) => element.dataset.messageId === messageId,
+  )
+
+  if (typeof messageElement?.scrollIntoView !== 'function') {
+    return
+  }
+
+  messageElement.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
+    inline: 'nearest',
+  })
 }
 
 function messagesWerePrepended(previousIds: string[], currentIds: string[]): boolean {

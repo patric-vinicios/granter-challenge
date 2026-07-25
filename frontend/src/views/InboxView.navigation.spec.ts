@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
+
+import { useConversationsStore } from '@/features/conversations/conversations.store'
 
 import {
   authenticate,
@@ -16,6 +18,9 @@ import {
 
 describe('Inbox navigation and summaries', () => {
   beforeEach(resetInboxHarness)
+  afterEach(() => {
+    vi.useRealTimers()
+  })
 
   it('shows the default conversation and switches to another conversation', async () => {
     const user = userEvent.setup()
@@ -91,8 +96,47 @@ describe('Inbox navigation and summaries', () => {
     expect(screen.queryByText('Time de Produto')).toBeNull()
   })
 
+  it('does not keep locally opened groups that do not match the inbox search', async () => {
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        defaultAnaInboxSummary(),
+        inboxSummaryResponse({
+          id: 'group-aws',
+          type: 'group',
+          title: 'aws',
+          senderId: 'user-current',
+          body: 'infra notes',
+          unreadCount: 0,
+          memberCount: 2,
+        }),
+      ],
+      filteredConversations: [defaultAnaInboxSummary()],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+    useConversationsStore(pinia).conversations = [
+      {
+        id: 'group-aws',
+        type: 'group',
+        name: 'aws',
+        creatorId: 'user-current',
+        memberCount: 2,
+        lastReadAt: null,
+        members: [],
+      },
+    ]
+
+    expect(await screen.findByRole('button', { name: /aws/i })).toBeTruthy()
+
+    await fireEvent.update(screen.getByLabelText(/buscar conversa/i), 'ana')
+
+    expect(screen.getByRole('button', { name: /ana beatriz/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /aws/i })).toBeNull()
+  })
+
   it('restores inbox search and selected conversation from the URL', async () => {
-    const { pinia } = await renderInbox('/inbox?q=ana&conversation=group-product')
+    const { pinia } = await renderInbox('/inbox?q=produto&conversation=group-product')
     const fetchMock = mockAuthenticatedFetch({
       conversations: [
         defaultAnaInboxSummary(),
@@ -121,10 +165,10 @@ describe('Inbox navigation and summaries', () => {
     vi.stubGlobal('fetch', fetchMock)
     authenticate(pinia)
 
-    expect((screen.getByLabelText(/buscar conversa/i) as HTMLInputElement).value).toBe('ana')
+    expect((screen.getByLabelText(/buscar conversa/i) as HTMLInputElement).value).toBe('produto')
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://localhost:4000/api/conversations?q=ana',
+        'http://localhost:4000/api/conversations?q=produto',
         expect.objectContaining({ method: 'GET' }),
       ),
     )
@@ -155,9 +199,11 @@ describe('Inbox navigation and summaries', () => {
     authenticate(pinia)
 
     await screen.findByText('Time de Produto')
-    await user.type(screen.getByLabelText(/buscar conversa/i), 'ana')
+    await user.type(screen.getByLabelText(/buscar conversa/i), 'produto')
 
-    await waitFor(() => expect(router.currentRoute.value.query.q).toBe('ana'))
+    await waitFor(() => expect(router.currentRoute.value.query.q).toBe('produto'))
+    expect(screen.getByText('Selecione uma conversa')).toBeTruthy()
+    expect(router.currentRoute.value.query.conversation).toBeUndefined()
 
     await user.click(screen.getByRole('button', { name: /time de produto/i }))
 
@@ -228,11 +274,14 @@ describe('Inbox navigation and summaries', () => {
     authenticate(pinia)
 
     await screen.findByText('Time de Produto')
+    vi.useFakeTimers()
     const searchInput = screen.getByLabelText(/buscar conversa/i)
     await fireEvent.update(searchInput, 'an')
+    await vi.advanceTimersByTimeAsync(800)
     await waitFor(() => expect(staleSearch.signal).toBeDefined())
 
     await fireEvent.update(searchInput, 'ana')
+    await vi.advanceTimersByTimeAsync(800)
 
     expect(await screen.findByRole('button', { name: /ana beatriz/i })).toBeTruthy()
     await waitFor(() => expect(screen.queryByText('Time de Produto')).toBeNull())

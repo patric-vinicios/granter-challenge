@@ -14,5 +14,7 @@ export function toChatMessage(
     author: isOutgoing ? undefined : message.sender.name,
     text: message.body,
     time: formatMessageTime(message.insertedAt),
+    insertedAt: message.insertedAt,
+    wide: message.body.length > 44,
   }
 }

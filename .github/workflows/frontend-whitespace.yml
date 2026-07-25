@@ -1,0 +1,31 @@
+name: Frontend Whitespace
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-whitespace.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-whitespace.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  whitespace:
+    name: Git diff whitespace
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check whitespace
+        run: |
+          BASE_REF="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --depth=1 origin "$BASE_REF:refs/remotes/origin/$BASE_REF"
+          git diff --check "origin/$BASE_REF...HEAD"
