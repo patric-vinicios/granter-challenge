@@ -1,6 +1,15 @@
 import type { ChatUser } from '@/types/user'
+import {
+  requireBoolean,
+  requireNullableNumber,
+  requireNumber,
+  requireOptionalNullableString,
+  requireRecord,
+  requireString,
+} from '@/shared/contracts/decoders'
+import { decodeChatUser } from '@/shared/contracts/user'
 
-export interface PrivateConversation {
+interface PrivateConversation {
   id: string
   type: 'private'
   lastReadAt: string | null
@@ -19,7 +28,7 @@ export interface GroupConversation {
 
 export type ConversationRecord = PrivateConversation | GroupConversation
 
-export interface InboxLastMessage {
+interface InboxLastMessage {
   id: string
   body: string
   senderId: string
@@ -79,8 +88,8 @@ function decodeConversationRecord(payload: unknown): ConversationRecord {
     return {
       id: requireString(data.id),
       type,
-      lastReadAt: requireNullableString(data.last_read_at),
-      counterpart: decodeUser(data.counterpart),
+      lastReadAt: requireOptionalNullableString(data.last_read_at),
+      counterpart: decodeChatUser(data.counterpart),
     }
   }
 
@@ -97,24 +106,12 @@ function decodeConversationRecord(payload: unknown): ConversationRecord {
       name: requireString(data.name),
       creatorId: requireString(data.creator_id),
       memberCount: requireNumber(data.member_count),
-      lastReadAt: requireNullableString(data.last_read_at),
-      members: members.map(decodeUser),
+      lastReadAt: requireOptionalNullableString(data.last_read_at),
+      members: members.map((member) => decodeChatUser(member)),
     }
   }
 
   throw new Error('Unsupported conversation type')
-}
-
-function decodeUser(payload: unknown): ChatUser {
-  const data = requireRecord(payload)
-
-  return {
-    id: requireString(data.id),
-    username: requireString(data.username),
-    name: requireString(data.name),
-    lastSeenAt: requireNullableString(data.last_seen_at),
-    online: requireOptionalBoolean(data.online),
-  }
 }
 
 function decodeInboxConversation(payload: unknown): InboxConversationSummary {
@@ -129,12 +126,12 @@ function decodeInboxConversation(payload: unknown): InboxConversationSummary {
     id: requireString(data.id),
     type,
     title: requireString(data.title),
-    counterpart: data.counterpart === null ? null : decodeUser(data.counterpart),
+    counterpart: data.counterpart === null ? null : decodeChatUser(data.counterpart),
     memberCount: requireNullableNumber(data.member_count),
     lastMessage: data.last_message === null ? null : decodeInboxLastMessage(data.last_message),
     unreadCount: requireNumber(data.unread_count),
     unreadOverflow: requireBoolean(data.unread_overflow),
-    lastReadAt: requireNullableString(data.last_read_at),
+    lastReadAt: requireOptionalNullableString(data.last_read_at),
   }
 }
 
@@ -147,62 +144,6 @@ function decodeInboxLastMessage(payload: unknown): InboxLastMessage {
     senderId: requireString(data.sender_id),
     insertedAt: requireString(data.inserted_at),
   }
-}
-
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Expected object')
-  }
-
-  return value as Record<string, unknown>
-}
-
-function requireString(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('Expected string')
-  }
-
-  return value
-}
-
-function requireNullableString(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null
-  }
-
-  return requireString(value)
-}
-
-function requireNumber(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error('Expected number')
-  }
-
-  return value
-}
-
-function requireNullableNumber(value: unknown): number | null {
-  if (value === null) {
-    return null
-  }
-
-  return requireNumber(value)
-}
-
-function requireBoolean(value: unknown): boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error('Expected boolean')
-  }
-
-  return value
-}
-
-function requireOptionalBoolean(value: unknown): boolean {
-  if (value === undefined) {
-    return false
-  }
-
-  return requireBoolean(value)
 }
 
 function requireZero(value: unknown): 0 {

@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/shared/api/errors'
+import { deferred } from '@/test/http'
 
 import type { Contact } from './contacts.contracts'
 import { useContactsStore } from './contacts.store'
@@ -138,13 +139,4 @@ function contact(): Contact {
       online: false,
     },
   }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-
-  return { promise, resolve }
 }

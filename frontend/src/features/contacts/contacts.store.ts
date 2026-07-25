@@ -109,11 +109,3 @@ function compareContacts(left: Contact, right: Contact): number {
 function groupInitial(name: string): string {
   return name.trim().charAt(0).normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase() || '#'
 }
-
-export function contactInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  const first = parts[0]?.charAt(0) ?? ''
-  const second = parts.length > 1 ? (parts.at(-1)?.charAt(0) ?? '') : ''
-
-  return `${first}${second}`.toUpperCase()
-}

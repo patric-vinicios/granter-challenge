@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import {
   addGroupMembers,
   createGroupConversation,
@@ -328,11 +330,4 @@ function userResponse(id: string, username: string, name: string) {
     name,
     last_seen_at: null,
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(body === null ? null : JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 }

@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/vue'
 import { describe, expect, it, vi } from 'vitest'
 import type { RouteRecordRaw } from 'vue-router'
 
+import { jsonResponse } from '@/test/http'
 import { renderWithApp } from '@/test/render'
 
 import RegisterView from './RegisterView.vue'
@@ -83,10 +84,3 @@ describe('RegisterView', () => {
     expect(screen.getByRole('alert').textContent).toContain('A solicitação não pôde ser processada.')
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

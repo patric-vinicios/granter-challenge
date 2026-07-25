@@ -1,9 +1,16 @@
 import type { PersistedMessage } from '@/types/message'
 import type { ConversationUpdated } from '@/types/realtime'
-import type { ChatUser } from '@/types/user'
+import {
+  requireBoolean,
+  requireOptionalNullableString,
+  requireRecord,
+  requireString,
+} from '@/shared/contracts/decoders'
+import { decodePersistedMessage } from '@/shared/contracts/message'
 
 export type { PersistedMessage } from '@/types/message'
 export type { ConversationUpdated } from '@/types/realtime'
+export { decodePersistedMessage } from '@/shared/contracts/message'
 
 export interface MessageHistoryPage {
   messages: PersistedMessage[]
@@ -16,7 +23,7 @@ export interface MessageAck {
   clientRef: string | null
 }
 
-export type MessageSendErrorReason = 'validation_error' | 'rate_limited' | 'unauthorized' | 'unknown_event'
+type MessageSendErrorReason = 'validation_error' | 'rate_limited' | 'unauthorized' | 'unknown_event'
 
 export interface MessageSendError {
   reason: MessageSendErrorReason
@@ -39,20 +46,8 @@ export function decodeMessageHistoryPage(payload: unknown): MessageHistoryPage {
 
   return {
     messages: messages.map(decodePersistedMessage),
-    nextCursor: requireNullableString(data.next_cursor),
+    nextCursor: requireOptionalNullableString(data.next_cursor),
     hasMore: requireBoolean(data.has_more),
-  }
-}
-
-export function decodePersistedMessage(payload: unknown): PersistedMessage {
-  const data = requireRecord(payload)
-
-  return {
-    id: requireString(data.id),
-    conversationId: requireString(data.conversation_id),
-    body: requireString(data.body),
-    insertedAt: requireString(data.inserted_at),
-    sender: decodeUser(data.sender),
   }
 }
 
@@ -61,7 +56,7 @@ export function decodeMessageAck(payload: unknown): MessageAck {
 
   return {
     message: decodePersistedMessage(data.message),
-    clientRef: requireNullableString(data.client_ref),
+    clientRef: requireOptionalNullableString(data.client_ref),
   }
 }
 
@@ -75,7 +70,7 @@ export function decodeMessageSendError(payload: unknown): MessageSendError {
 
   return {
     reason,
-    clientRef: requireNullableString(data.client_ref),
+    clientRef: requireOptionalNullableString(data.client_ref),
     fields: decodeFields(data.fields),
     retryAfterMs: decodeOptionalNumber(data.retry_after_ms),
   }
@@ -101,18 +96,6 @@ export function decodeMembershipRevoked(payload: unknown): MembershipRevoked {
 
   return {
     conversationId: requireString(data.conversation_id),
-  }
-}
-
-function decodeUser(payload: unknown): ChatUser {
-  const data = requireRecord(payload)
-
-  return {
-    id: requireString(data.id),
-    username: requireString(data.username),
-    name: requireString(data.name),
-    lastSeenAt: requireNullableString(data.last_seen_at),
-    online: requireOptionalBoolean(data.online),
   }
 }
 
@@ -149,44 +132,4 @@ function decodeOptionalNumber(payload: unknown): number | undefined {
 
 function isMessageSendErrorReason(value: string): value is MessageSendErrorReason {
   return value === 'validation_error' || value === 'rate_limited' || value === 'unauthorized' || value === 'unknown_event'
-}
-
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Expected object')
-  }
-
-  return value as Record<string, unknown>
-}
-
-function requireString(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('Expected string')
-  }
-
-  return value
-}
-
-function requireNullableString(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null
-  }
-
-  return requireString(value)
-}
-
-function requireBoolean(value: unknown): boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error('Expected boolean')
-  }
-
-  return value
-}
-
-function requireOptionalBoolean(value: unknown): boolean {
-  if (value === undefined) {
-    return false
-  }
-
-  return requireBoolean(value)
 }

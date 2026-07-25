@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { searchConversationMessages } from './search.api'
 
 describe('search.api', () => {
@@ -99,11 +101,4 @@ function messageResponse(id: string, body: string) {
       last_seen_at: null,
     },
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 }

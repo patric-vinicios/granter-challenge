@@ -2,6 +2,8 @@ import { createPinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory } from 'vue-router'
 
+import { jsonResponse } from '@/test/http'
+
 import { createAppRouter } from './index'
 
 describe('router auth guard', () => {
@@ -98,10 +100,3 @@ describe('router auth guard', () => {
     expect(router.currentRoute.value.name).toBe('not-found')
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

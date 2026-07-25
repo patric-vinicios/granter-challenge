@@ -2,6 +2,8 @@ import { flushPromises } from '@vue/test-utils'
 import { computed, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { useConversationSearch } from './useConversationSearch'
 
 describe('useConversationSearch adaptable inputs', () => {
@@ -83,11 +85,4 @@ function messageResponse(id: string, body: string) {
       last_seen_at: null,
     },
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 }

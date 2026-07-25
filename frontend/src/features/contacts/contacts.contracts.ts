@@ -1,7 +1,7 @@
 import type { Contact } from '@/types/contact'
-import type { ChatUser } from '@/types/user'
+import { requireRecord, requireString } from '@/shared/contracts/decoders'
+import { decodeChatUser } from '@/shared/contracts/user'
 
-export type ContactUser = ChatUser
 export type { Contact } from '@/types/contact'
 
 export interface ContactGroup {
@@ -36,54 +36,6 @@ function decodeContact(payload: unknown): Contact {
 
   return {
     id: requireString(data.id),
-    user: decodeContactUser(data.user),
+    user: decodeChatUser(data.user, { requireLastSeenAt: true }),
   }
-}
-
-function decodeContactUser(payload: unknown): ContactUser {
-  const data = requireRecord(payload)
-
-  return {
-    id: requireString(data.id),
-    username: requireString(data.username),
-    name: requireString(data.name),
-    lastSeenAt: requireNullableString(data.last_seen_at),
-    online: requireOptionalBoolean(data.online),
-  }
-}
-
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Expected object')
-  }
-
-  return value as Record<string, unknown>
-}
-
-function requireString(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('Expected string')
-  }
-
-  return value
-}
-
-function requireNullableString(value: unknown): string | null {
-  if (value === null) {
-    return null
-  }
-
-  return requireString(value)
-}
-
-function requireOptionalBoolean(value: unknown): boolean {
-  if (value === undefined) {
-    return false
-  }
-
-  if (typeof value !== 'boolean') {
-    throw new Error('Expected boolean')
-  }
-
-  return value
 }

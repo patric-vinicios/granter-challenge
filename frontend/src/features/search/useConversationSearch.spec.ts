@@ -2,6 +2,8 @@ import { flushPromises } from '@vue/test-utils'
 import { shallowRef } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred, jsonResponse } from '@/test/http'
+
 import { useConversationSearch } from './useConversationSearch'
 
 describe('useConversationSearch', () => {
@@ -155,20 +157,4 @@ function searchHit(id: string, position: number) {
     position,
     match_offsets: [{ start: 0, length: 6 }],
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-
-  return { promise, resolve }
 }
