@@ -3,6 +3,7 @@ export interface ChatMessage {
   side: 'in' | 'out'
   text: string
   time: string
+  insertedAt?: string
   wide?: boolean
   author?: string
   clientRef?: string

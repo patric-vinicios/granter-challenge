@@ -397,6 +397,7 @@ function toConversationMessage(message: PersistedMessage, currentUserId: string)
     author: message.sender.id === currentUserId ? undefined : message.sender.name,
     text: message.body,
     time: formatMessageTime(message.insertedAt),
+    insertedAt: message.insertedAt,
     wide: message.body.length > 42,
   }
 }
