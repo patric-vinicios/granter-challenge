@@ -281,6 +281,7 @@ describe('Inbox history and search', () => {
     vi.stubGlobal('fetch', fetchMock)
     authenticate(pinia)
 
+    await screen.findAllByText('Ana Beatriz')
     await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
     await user.type(screen.getByLabelText(/buscar na conversa/i), 'cronograma')
 
@@ -360,6 +361,7 @@ describe('Inbox history and search', () => {
     vi.stubGlobal('fetch', mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] }))
     authenticate(pinia)
 
+    await screen.findAllByText('Ana Beatriz')
     await user.click(screen.getByRole('button', { name: /buscar na conversa/i }))
     const searchInput = screen.getByRole('textbox', { name: /buscar na conversa/i }) as HTMLInputElement
     expect(searchInput).toBe(document.activeElement)
