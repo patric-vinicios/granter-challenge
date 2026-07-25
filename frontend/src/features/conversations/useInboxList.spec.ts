@@ -14,9 +14,13 @@ describe('useInboxList', () => {
     setActivePinia(createPinia())
   })
 
-  afterEach(() => unmount?.())
+  afterEach(() => {
+    unmount?.()
+    vi.useRealTimers()
+  })
 
-  it('loads reactively, aborts stale requests and selects the first available item', async () => {
+  it('loads reactively, aborts stale requests and clears hidden selection during search', async () => {
+    vi.useFakeTimers()
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useConversationsStore()
@@ -53,6 +57,13 @@ describe('useInboxList', () => {
     query.value = 'produto'
     await nextTick()
 
+    expect(signals[0]?.aborted).toBe(false)
+    expect(store.loadInbox).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(799)
+    expect(store.loadInbox).toHaveBeenCalledOnce()
+
+    await vi.advanceTimersByTimeAsync(1)
     expect(signals[0]?.aborted).toBe(true)
     expect(store.loadInbox).toHaveBeenLastCalledWith(
       'jwt-token',
@@ -62,6 +73,32 @@ describe('useInboxList', () => {
 
     items.value = [{ id: 'conversation-2' }]
     await nextTick()
+    expect(selectedConversationId.value).toBeNull()
+  })
+
+  it('selects the first available item when the inbox is not being searched', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useConversationsStore()
+    vi.spyOn(store, 'loadInbox').mockResolvedValue()
+    const items = shallowRef([{ id: 'conversation-1' }])
+    const selectedConversationId = shallowRef<string | null>(null)
+    const setup = withSetup(
+      () =>
+        useInboxList({
+          token: 'jwt-token',
+          items,
+          selectedConversationId,
+        }),
+      { pinia },
+    )
+    unmount = setup.unmount
+
+    expect(selectedConversationId.value).toBe('conversation-1')
+
+    items.value = [{ id: 'conversation-2' }]
+    await nextTick()
+
     expect(selectedConversationId.value).toBe('conversation-2')
   })
 

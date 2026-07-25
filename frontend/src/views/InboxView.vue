@@ -86,7 +86,6 @@
         @open-group-details="openGroupDetails"
         @open-search="openSearch"
         @previous-search-result="selectPreviousSearchResult"
-        @search-focusout="closeSearchOnFocusOut"
         @send-message="sendMessage"
         :class="{ 'max-[859px]:hidden': isMobileListVisible }"
       />
@@ -129,7 +128,6 @@ import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { useConversationPresence } from '@/features/presence/useConversationPresence'
 import { useConversationSearchPanel } from '@/features/search/useConversationSearchPanel'
 import { useAuthStore } from '@/stores/auth.store'
-import type { ChatConversation } from '@/types/chat'
 import {
   toConversationItem,
   toInboxConversationItem,
@@ -191,23 +189,12 @@ const {
   applyState: applyPresenceState,
   subtitleFor: presenceSubtitle,
 } = useConversationPresence()
-const emptyConversation: ChatConversation = {
-  id: 'empty',
-  type: 'private',
-  initials: '--',
-  name: 'Conversa',
-  subtitle: '',
-  preview: '',
-  time: '',
-  messages: [],
-}
 const {
   activeHit: activeSearchHit,
   activeMatchOffsets: searchActiveMatchOffsets,
   activeMessageId: searchActiveMessageId,
   activePosition: searchActivePosition,
   close: closeSearch,
-  closeOnFocusOut: closeSearchOnFocusOut,
   error: conversationSearchError,
   isOpen: isSearching,
   open: openSearch,
@@ -243,8 +230,11 @@ const {
 const selectedConversation = computed(() => {
   const conversation =
     conversationItems.value.find((item) => item.id === selectedConversationId.value) ??
-    conversationItems.value[0] ??
-    emptyConversation
+    (!token.value || !inboxSearchQuery.value.trim() ? conversationItems.value[0] : null)
+
+  if (!conversation) {
+    return null
+  }
 
   return withActiveSearchHit(conversation, activeSearchHit.value, currentUserId.value)
 })
@@ -260,11 +250,14 @@ const conversationItems = computed(() => {
     initialsFor: contactInitials,
     presenceSubtitleFor: presenceSubtitle,
   }
+  const currentInboxQuery = inboxSearchQuery.value
   const summaries = inboxSummaries.value
+    .filter((conversation) => matchesInboxSummaryQuery(conversation, currentInboxQuery))
     .map((conversation) => toInboxConversationItem(conversation, presenterContext))
     .map(messagingStore.decorate)
   const openedItems = openedConversations.value
     .filter((conversation) => !summaries.some((summary) => summary.id === conversation.id))
+    .filter((conversation) => matchesConversationRecordQuery(conversation, currentInboxQuery))
     .map((conversation) => toConversationItem(conversation, presenterContext))
     .map(messagingStore.decorate)
 
@@ -300,7 +293,7 @@ const {
   selectedConversationId,
   query: inboxSearchQuery,
 })
-const displayedConversationId = computed(() => selectedConversation.value.id)
+const displayedConversationId = computed(() => selectedConversation.value?.id ?? '')
 const {
   state: selectedHistoryState,
   loadOlder: loadOlderMessages,
@@ -356,10 +349,11 @@ async function createGroup() {
 }
 
 async function openGroupDetails() {
-  const didOpen = await openSelectedGroupDetails(
-    selectedConversation.value.id,
-    selectedConversation.value.type,
-  )
+  if (!selectedConversation.value) {
+    return
+  }
+
+  const didOpen = await openSelectedGroupDetails(selectedConversation.value.id, selectedConversation.value.type)
 
   if (!didOpen) {
     return
@@ -395,6 +389,44 @@ function removeConversationCaches(conversationId: string): void {
   conversationsStore.removeConversation(conversationId)
   messagesStore.removeConversation(conversationId)
   messagingStore.removeConversation(conversationId)
+}
+
+function matchesInboxSummaryQuery(
+  conversation: typeof inboxSummaries.value[number],
+  query: string,
+): boolean {
+  if (conversation.type === 'private') {
+    return matchesInboxFields(
+      [conversation.title, conversation.counterpart?.username ?? ''],
+      query,
+    )
+  }
+
+  return matchesInboxFields([conversation.title], query)
+}
+
+function matchesConversationRecordQuery(
+  conversation: typeof openedConversations.value[number],
+  query: string,
+): boolean {
+  if (conversation.type === 'private') {
+    return matchesInboxFields(
+      [conversation.counterpart.name, conversation.counterpart.username],
+      query,
+    )
+  }
+
+  return matchesInboxFields([conversation.name], query)
+}
+
+function matchesInboxFields(values: string[], query: string): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+
+  if (!normalizedQuery) {
+    return true
+  }
+
+  return values.some((value) => value.toLocaleLowerCase().includes(normalizedQuery))
 }
 
 async function openPrivateConversation(userId: string) {

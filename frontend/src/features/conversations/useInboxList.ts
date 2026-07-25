@@ -1,6 +1,8 @@
 import { storeToRefs } from 'pinia'
 import { computed, shallowRef, toRef, toValue, watch, type MaybeRefOrGetter, type Ref } from 'vue'
 
+import { useDebouncedValue } from '@/shared/reactivity/useDebouncedValue'
+
 import { conversationErrorMessage } from './conversations.error'
 import { useConversationsStore } from './conversations.store'
 
@@ -27,13 +29,17 @@ export function useInboxList({ token, items, selectedConversationId, query: quer
     pendingReadIds,
   } = storeToRefs(conversationsStore)
   const query = querySource ?? shallowRef('')
+  const debouncedQuery = useDebouncedValue(query, {
+    delayMs: 800,
+    immediateWhen: (value) => value.trim() === '',
+  })
   const isLoading = computed(() => inboxLoadState.value === 'loading' && inboxSummaries.value.length === 0)
   const isEmpty = computed(
     () => Boolean(toValue(token)) && inboxLoadState.value === 'success' && toValue(items).length === 0,
   )
 
   watch(
-    [tokenRef, query],
+    [tokenRef, debouncedQuery],
     ([currentToken, currentQuery], _previous, onCleanup) => {
       if (!currentToken) {
         return
@@ -47,15 +53,24 @@ export function useInboxList({ token, items, selectedConversationId, query: quer
   )
 
   watch(
-    [itemsRef, tokenRef],
-    ([currentItems, currentToken]) => {
-      if (!currentToken || currentItems.length === 0) {
+    [itemsRef, tokenRef, query],
+    ([currentItems, currentToken, currentQuery]) => {
+      if (!currentToken) {
         return
       }
 
-      if (!currentItems.some((item) => item.id === selectedConversationIdRef.value)) {
-        selectedConversationIdRef.value = currentItems[0].id
+      const selectedConversationIsVisible = currentItems.some((item) => item.id === selectedConversationIdRef.value)
+
+      if (selectedConversationIsVisible) {
+        return
       }
+
+      if (currentQuery.trim()) {
+        selectedConversationIdRef.value = null
+        return
+      }
+
+      selectedConversationIdRef.value = currentItems[0]?.id ?? null
     },
     { immediate: true },
   )
@@ -84,7 +99,7 @@ export function useInboxList({ token, items, selectedConversationId, query: quer
       return
     }
 
-    await conversationsStore.loadInbox(currentToken, undefined, query.value)
+    await conversationsStore.loadInbox(currentToken, undefined, debouncedQuery.value)
   }
 
   return {
