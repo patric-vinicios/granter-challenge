@@ -17,7 +17,7 @@ defmodule ApiWeb do
 
   use Boundary,
     deps: [Api],
-    exports: [Endpoint, LoginThrottle, Presence, RateLimiter, Telemetry]
+    exports: [Endpoint, EventLog, LoginThrottle, Presence, RateLimiter, Telemetry]
 
   @doc "Expansion for `use ApiWeb, :router` — `Phoenix.Router` plus pipeline imports."
   @spec router() :: Macro.t()
