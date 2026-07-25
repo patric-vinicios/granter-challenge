@@ -104,6 +104,7 @@
 import { MessageCircle, Plus, Search, Trash2, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
+import { useDebouncedValue } from '@/shared/reactivity/useDebouncedValue'
 import { matchesUserQuery } from '@/shared/user/matchesUserQuery'
 import { userInitials } from '@/shared/user/userInitials'
 
@@ -119,8 +120,14 @@ const props = defineProps<{
 }>()
 
 const searchQuery = ref('')
+const debouncedSearchQuery = useDebouncedValue(searchQuery, {
+  delayMs: 800,
+  immediateWhen: (value) => value.trim() === '',
+})
 const filteredContactGroups = computed(() => {
-  if (!searchQuery.value.trim()) {
+  const query = debouncedSearchQuery.value
+
+  if (!query.trim()) {
     return props.contactGroups
   }
 
@@ -128,7 +135,7 @@ const filteredContactGroups = computed(() => {
     .map((group) => ({
       ...group,
       contacts: group.contacts.filter((contact) =>
-        matchesUserQuery(contact.user, searchQuery.value),
+        matchesUserQuery(contact.user, query),
       ),
     }))
     .filter((group) => group.contacts.length > 0)

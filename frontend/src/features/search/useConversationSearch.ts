@@ -1,5 +1,6 @@
 import { computed, ref, toRef, watch, type MaybeRefOrGetter } from 'vue'
 
+import { useDebouncedValue } from '@/shared/reactivity/useDebouncedValue'
 import type { ConversationSearchStatus } from '@/types/search'
 
 import { searchConversationMessages } from './search.api'
@@ -17,6 +18,10 @@ export function useConversationSearch({ token, conversationId, query }: UseConve
   const tokenRef = toRef(token)
   const conversationIdRef = toRef(conversationId)
   const queryRef = toRef(query)
+  const debouncedQuery = useDebouncedValue(queryRef, {
+    delayMs: 800,
+    immediateWhen: (value) => value.trim() === '',
+  })
   const status = ref<ConversationSearchStatus>('idle')
   const error = ref<string | null>(null)
   const result = ref<ConversationSearchResult | null>(null)
@@ -28,7 +33,7 @@ export function useConversationSearch({ token, conversationId, query }: UseConve
   const truncated = computed(() => result.value?.truncated ?? false)
 
   watch(
-    [tokenRef, conversationIdRef, queryRef],
+    [tokenRef, conversationIdRef, debouncedQuery],
     ([currentToken, currentConversationId, rawQuery], _previous, onCleanup) => {
       const trimmedQuery = rawQuery.trim()
       activeIndex.value = 0
