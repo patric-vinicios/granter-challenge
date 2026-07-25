@@ -34,3 +34,5 @@ api-*.tar
 
 # Dialyzer PLTs
 /priv/plts/
+
+.claude
