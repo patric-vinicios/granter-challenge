@@ -56,7 +56,7 @@ describe('Inbox realtime and presence', () => {
     })
 
     await waitFor(() => expect(screen.queryByText('Enviando')).toBeNull())
-    expect(screen.getAllByText('14:40').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Mensagem de teste')).toBeTruthy()
     expect(messageInput.value).toBe('')
   })
 
