@@ -110,12 +110,11 @@ import { useRouter } from 'vue-router'
 
 import AddContactDialog from '@/features/contacts/components/AddContactDialog.vue'
 import ContactsPanel from '@/features/contacts/components/ContactsPanel.vue'
-import { contactInitials, useContactsStore } from '@/features/contacts/contacts.store'
+import { useContactsStore } from '@/features/contacts/contacts.store'
 import { useAddContactDialog } from '@/features/contacts/useAddContactDialog'
 import ConversationListPanel from '@/features/conversations/components/ConversationListPanel.vue'
 import GroupDetailsPanel from '@/features/conversations/components/GroupDetailsPanel.vue'
 import NewGroupPanel from '@/features/conversations/components/NewGroupPanel.vue'
-import { conversations as mockConversations } from '@/features/conversations/conversations.mock'
 import { conversationErrorMessage } from '@/features/conversations/conversations.error'
 import { useConversationsStore } from '@/features/conversations/conversations.store'
 import { useCreateGroup } from '@/features/conversations/useCreateGroup'
@@ -128,6 +127,7 @@ import { useMessageComposer } from '@/features/messaging/useMessageComposer'
 import { useRealtimeMessaging } from '@/features/messaging/useRealtimeMessaging'
 import { useConversationPresence } from '@/features/presence/useConversationPresence'
 import { useConversationSearchPanel } from '@/features/search/useConversationSearchPanel'
+import { userInitials } from '@/shared/user/userInitials'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ChatConversation } from '@/types/chat'
 import {
@@ -153,7 +153,7 @@ const {
   pendingPrivateUserIds,
   pendingMemberUserIds,
 } = storeToRefs(conversationsStore)
-const { historyByConversationId } = storeToRefs(messagesStore)
+const { histories } = storeToRefs(messagesStore)
 const sidebarMode = ref<'inbox' | 'new-group' | 'contacts' | 'group-details'>('inbox')
 const isMobileListVisible = ref(true)
 const groupError = ref<string | null>(null)
@@ -231,7 +231,7 @@ const {
   selectedConversationId,
   onPresenceState: applyPresenceState,
   onPresenceDiff: applyPresenceDiff,
-  onConversationUpdated: conversationsStore.applyRealtimeUnread,
+  onConversationUpdated: handleConversationUpdated,
   onMembershipRevoked: handleMembershipRevoked,
   onReconnect: recoverAfterReconnect,
 })
@@ -250,14 +250,10 @@ const selectedConversation = computed(() => {
 })
 
 const conversationItems = computed(() => {
-  if (!token.value) {
-    return mockConversations.map(messagingStore.decorate)
-  }
-
   const presenterContext = {
     currentUserId: currentUserId.value,
-    histories: historyByConversationId.value,
-    initialsFor: contactInitials,
+    histories: histories.value,
+    initialsFor: userInitials,
     presenceSubtitleFor: presenceSubtitle,
   }
   const summaries = inboxSummaries.value
@@ -292,6 +288,7 @@ const {
   error: inboxLoadError,
   isEmpty: isInboxEmpty,
   isLoading: isInboxLoading,
+  acknowledgeRealtimeRead,
   reload: reloadInbox,
   select: selectInboxConversation,
 } = useInboxList({
@@ -332,6 +329,19 @@ function recoverAfterReconnect(): void {
 
   void reloadInbox()
   refreshConversationHistory()
+}
+
+function handleConversationUpdated(update: Parameters<typeof conversationsStore.applyRealtimeUnread>[0]): void {
+  if (update.conversationId !== selectedConversationId.value) {
+    conversationsStore.applyRealtimeUnread(update)
+    return
+  }
+
+  conversationsStore.applyRealtimeUnread({ ...update, unread: false })
+
+  if (update.unread) {
+    void acknowledgeRealtimeRead(update.conversationId)
+  }
 }
 
 function logout() {

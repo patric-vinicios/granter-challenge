@@ -62,11 +62,19 @@ export function useInboxList({ token, items, selectedConversationId, query: quer
 
   async function select(conversationId: string): Promise<void> {
     selectedConversationIdRef.value = conversationId
+    await acknowledgeRead(conversationId)
+  }
 
+  async function acknowledgeRead(conversationId: string, force = false): Promise<void> {
     const currentToken = toValue(token)
     const summary = inboxSummaries.value.find((conversation) => conversation.id === conversationId)
 
-    if (!currentToken || !summary || summary.unreadCount === 0 || pendingReadIds.value.has(conversationId)) {
+    if (
+      !currentToken ||
+      !summary ||
+      (!force && summary.unreadCount === 0) ||
+      pendingReadIds.value.has(conversationId)
+    ) {
       return
     }
 
@@ -92,6 +100,7 @@ export function useInboxList({ token, items, selectedConversationId, query: quer
     isEmpty,
     isLoading,
     query,
+    acknowledgeRealtimeRead: (conversationId: string) => acknowledgeRead(conversationId, true),
     reload,
     select,
   }

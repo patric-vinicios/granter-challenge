@@ -1,10 +1,11 @@
-import { screen, waitFor } from '@testing-library/vue'
+import { screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 import {
   authenticate,
   defaultAnaInboxSummary,
+  historyMessageResponse,
   inboxSummaryResponse,
   mockAuthenticatedFetch,
   realtimeMessageResponse,
@@ -15,19 +16,6 @@ import {
 
 describe('Inbox realtime and presence', () => {
   beforeEach(resetInboxHarness)
-
-  it('keeps the message draft when realtime sending is unavailable', async () => {
-    const user = userEvent.setup()
-
-    await renderInbox()
-
-    const messageInput = screen.getByLabelText(/^mensagem$/i) as HTMLTextAreaElement
-    await user.type(messageInput, 'Mensagem ainda nao enviada')
-    await user.keyboard('{Control>}{Enter}{/Control}')
-
-    expect(messageInput.value).toBe('Mensagem ainda nao enviada')
-    expect(sockets).toHaveLength(0)
-  })
 
   it('sends over the conversation channel and reconciles the optimistic message from the ack', async () => {
     const user = userEvent.setup()
@@ -112,6 +100,96 @@ describe('Inbox realtime and presence', () => {
 
     expect((await screen.findAllByText('Voce saiu desta conversa.')).length).toBeGreaterThanOrEqual(1)
     expect(conversationChannel.leaveCount).toBe(1)
+  })
+
+  it('acknowledges an incoming update as read when its conversation is already visible', async () => {
+    const { pinia } = await renderInbox()
+    const fetchMock = mockAuthenticatedFetch({ conversations: [defaultAnaInboxSummary()] })
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+    await screen.findAllByText('Ana Beatriz')
+    const userChannel = sockets[0].channelFor('user:user-current')
+    userChannel.okJoin()
+
+    userChannel.pushServer('conversation:updated', {
+      conversation_id: 'ana',
+      last_message: {
+        preview: 'Mensagem recebida com a conversa aberta',
+        sender_id: 'user-ana',
+        inserted_at: '2026-07-24T18:00:00Z',
+      },
+      unread: true,
+    })
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:4000/api/conversations/ana/read',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    )
+    expect(screen.queryByLabelText('1 mensagens nao lidas')).toBeNull()
+  })
+
+  it('reloads cached history when a message arrives while another conversation is visible', async () => {
+    const user = userEvent.setup()
+    const oldMessage = historyMessageResponse(
+      'message-old',
+      'Mensagem anterior',
+      'user-ana',
+      'Ana Beatriz',
+      '2026-07-24T17:00:00Z',
+    )
+    const newMessage = historyMessageResponse(
+      'message-new',
+      'Mensagem recebida fora da conversa',
+      'user-ana',
+      'Ana Beatriz',
+      '2026-07-24T18:00:00Z',
+    )
+    const fetchMock = mockAuthenticatedFetch({
+      conversations: [
+        defaultAnaInboxSummary(),
+        inboxSummaryResponse({
+          id: 'group-product',
+          type: 'group',
+          title: 'Time de Produto',
+          senderId: 'user-current',
+          body: 'Conversa alternativa',
+          unreadCount: 0,
+        }),
+      ],
+      historyResponses: [[oldMessage], [], [oldMessage, newMessage]],
+    })
+    const { pinia } = await renderInbox()
+    vi.stubGlobal('fetch', fetchMock)
+    authenticate(pinia)
+    await waitFor(() => expect(sockets).toHaveLength(1))
+    expect(await screen.findByText('Mensagem anterior')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /time de produto/i }))
+    await waitFor(() =>
+      expect(sockets[0].channels.has('conversation:group-product')).toBe(true),
+    )
+
+    sockets[0].channelFor('user:user-current').pushServer('conversation:updated', {
+      conversation_id: 'ana',
+      last_message: {
+        preview: 'Mensagem recebida fora da conversa',
+        sender_id: 'user-ana',
+        inserted_at: '2026-07-24T18:00:00Z',
+      },
+      unread: true,
+    })
+
+    await user.click(screen.getByRole('button', { name: /ana beatriz/i }))
+
+    expect(
+      await within(screen.getByRole('log', { name: /mensagens da conversa/i })).findByText(
+        'Mensagem recebida fora da conversa',
+      ),
+    ).toBeTruthy()
+    expect(requestCount(fetchMock, '/api/conversations/ana/messages?limit=30')).toBe(2)
   })
 
   it('clears the realtime connection error after the socket reconnects', async () => {

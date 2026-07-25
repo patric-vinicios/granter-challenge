@@ -1,6 +1,7 @@
 import { vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth.store'
+import { jsonResponse } from '@/test/http'
 import { renderWithApp } from '@/test/render'
 import { FakeSocket } from '@/test/realtime'
 
@@ -146,7 +147,7 @@ export function groupResponse(options: { includeAna?: boolean; includeLeticia?: 
   }
 }
 
-export function userResponse(id: string, username: string, name: string) {
+function userResponse(id: string, username: string, name: string) {
   return {
     id,
     username,
@@ -186,23 +187,20 @@ export function historyMessageResponse(id: string, body: string, senderId: strin
   }
 }
 
-export function jsonResponse(status: number, body: unknown): Response {
-  return new Response(body === null ? null : JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
+export { jsonResponse } from '@/test/http'
 
 export function mockAuthenticatedFetch(options: {
   contacts?: unknown[]
   conversations?: unknown[]
   filteredConversations?: unknown[]
   historyMessages?: unknown[]
+  historyResponses?: unknown[][]
   conversationDetails?: unknown
   searchResult?: unknown
 }) {
   const conversations = options.conversations ?? []
   const filteredConversations = options.filteredConversations ?? conversations
+  let historyResponseIndex = 0
 
   const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
     const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url
@@ -243,11 +241,30 @@ export function mockAuthenticatedFetch(options: {
       href.includes('/messages?') &&
       method === 'GET'
     ) {
+      const messages =
+        options.historyResponses?.[historyResponseIndex++] ?? options.historyMessages ?? []
+
       return Promise.resolve(
         jsonResponse(200, {
-          messages: options.historyMessages ?? [],
+          messages,
           next_cursor: null,
           has_more: false,
+        }),
+      )
+    }
+
+    if (
+      href.startsWith('http://localhost:4000/api/conversations/') &&
+      href.endsWith('/read') &&
+      method === 'POST'
+    ) {
+      const conversationId = href.split('/').at(-2) ?? ''
+
+      return Promise.resolve(
+        jsonResponse(200, {
+          conversation_id: conversationId,
+          last_read_at: '2026-07-24T18:00:01Z',
+          unread_count: 0,
         }),
       )
     }

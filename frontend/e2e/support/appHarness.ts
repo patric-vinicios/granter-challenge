@@ -97,7 +97,7 @@ export async function installAppMocks(
   await mockRealtime(page, state)
 }
 
-export async function installAuthenticatedSession(page: Page): Promise<void> {
+async function installAuthenticatedSession(page: Page): Promise<void> {
   await page.addInitScript(() => {
     window.localStorage.setItem(
       'granter.session',
@@ -124,7 +124,7 @@ export async function openAuthenticatedInbox(
   await page.goto('/inbox')
 }
 
-export function userResponse(
+function userResponse(
   id = 'user-current',
   username = 'patric',
   name = 'Patric',
@@ -150,7 +150,7 @@ export function contactResponse(
   }
 }
 
-export function privateConversationResponse(
+function privateConversationResponse(
   id: string,
   counterpart: UserResponse,
 ): ConversationResponse {
