@@ -48,7 +48,7 @@ config :api, ApiWeb.LoginThrottle, ip_limit: 10, user_limit: 5, window_ms: 60_00
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id, :user_id]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

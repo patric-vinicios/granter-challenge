@@ -7,7 +7,7 @@ config :api, ApiWeb.Endpoint,
   force_ssl: [
     rewrite_on: [:x_forwarded_proto],
     exclude: [
-      # paths: ["/health"],
+      paths: ["/api/health"],
       hosts: ["localhost", "127.0.0.1"]
     ]
   ]

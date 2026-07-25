@@ -40,6 +40,7 @@ defmodule ApiWeb.ConversationChannel do
   alias ApiWeb.Conversations.ConversationJSON
   alias ApiWeb.Conversations.MessageJSON
   alias ApiWeb.Endpoint
+  alias ApiWeb.EventLog
   alias ApiWeb.Presence
   alias ApiWeb.RateLimiter
   alias Phoenix.Socket.Broadcast
@@ -66,6 +67,7 @@ defmodule ApiWeb.ConversationChannel do
         persist_and_broadcast(socket, payload, client_ref)
 
       {:error, retry_after_ms} ->
+        EventLog.message_rate_limited(user.id, retry_after_ms)
         reply_error(socket, %{reason: "rate_limited", retry_after_ms: retry_after_ms}, client_ref)
     end
   end

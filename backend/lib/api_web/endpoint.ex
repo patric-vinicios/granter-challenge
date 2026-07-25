@@ -44,11 +44,17 @@ defmodule ApiWeb.Endpoint do
   end
 
   plug Plug.RequestId
-  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
+
+  plug ApiWeb.Plugs.TrustProxyHeaders
+
+  plug Plug.Telemetry,
+    event_prefix: [:phoenix, :endpoint],
+    log: {__MODULE__, :log_level, []}
 
   plug Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
+    length: 100_000,
     json_decoder: Phoenix.json_library()
 
   plug Plug.Head
@@ -65,6 +71,17 @@ defmodule ApiWeb.Endpoint do
     headers: ["authorization", "content-type"]
 
   plug ApiWeb.Router
+
+  @doc """
+  Request log level, consulted per request by `Plug.Telemetry`.
+
+  The health probe is demoted to `:debug` rather than silenced: an orchestrator
+  and a load balancer hit it every few seconds, which at `:info` would bury the
+  requests an incident is actually about, while `mix phx.server` still shows it.
+  """
+  @spec log_level(Plug.Conn.t()) :: Logger.level()
+  def log_level(%Plug.Conn{path_info: ["api", "health"]}), do: :debug
+  def log_level(%Plug.Conn{}), do: :info
 
   @doc """
   Browser origins allowed to call the API, read per request so `CORS_ORIGINS`

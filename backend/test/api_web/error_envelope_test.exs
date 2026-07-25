@@ -78,6 +78,22 @@ defmodule ApiWeb.ErrorEnvelopeTest do
       assert content_type(headers) =~ "application/json"
     end
 
+    test "a body over the size cap returns 413 payload_too_large" do
+      oversized = Jason.encode!(%{"name" => String.duplicate("a", 200_000)})
+
+      {413, headers, body} =
+        assert_error_sent(413, fn -> post(json_conn(), "/api/auth/register", oversized) end)
+
+      assert Jason.decode!(body) == %{
+               "errors" => %{
+                 "code" => "payload_too_large",
+                 "detail" => "The request body is too large"
+               }
+             }
+
+      assert content_type(headers) =~ "application/json"
+    end
+
     test "the parser exception never reaches the response body" do
       {400, _headers, body} =
         assert_error_sent(400, fn -> post(json_conn(), "/api/health", "{invalid") end)

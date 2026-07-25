@@ -1,0 +1,58 @@
+name: backend dialyzer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-dialyzer.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-dialyzer.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-dialyzer-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELIXIR_VERSION: "1.20"
+  OTP_VERSION: "29"
+  MIX_ENV: dev
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  dialyzer:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            backend/deps
+            backend/_build
+          key: mix-dev-${{ runner.os }}-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-${{ hashFiles('backend/mix.lock') }}
+          restore-keys: mix-dev-${{ runner.os }}-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: backend/priv/plts
+          key: plt-${{ runner.os }}-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-${{ hashFiles('backend/mix.lock') }}
+          restore-keys: plt-${{ runner.os }}-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-
+
+      - run: mix deps.get
+
+      - run: mix dialyzer --format short

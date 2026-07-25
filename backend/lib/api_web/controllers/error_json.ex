@@ -16,6 +16,7 @@ defmodule ApiWeb.ErrorJSON do
     404 => {"not_found", "The requested resource was not found"},
     405 => {"method_not_allowed", "This method is not supported for this path"},
     409 => {"conflict", "The request conflicts with the current state"},
+    413 => {"payload_too_large", "The request body is too large"},
     415 => {"unsupported_media_type", "The request content-type must be application/json"},
     422 => {"validation_error", "The request could not be processed"},
     429 => {"rate_limited", "Too many requests, please retry later"},

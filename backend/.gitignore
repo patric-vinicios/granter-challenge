@@ -28,6 +28,9 @@ api-*.tar
 # Local environment variables (copy .env.example to .env).
 .env
 
+# Deployment secrets (copy .env.prod.example to .env.prod).
+.env.prod
+
 # Data directory bind-mounted by the postgres-dev Compose service.
 /postgres_data/
 

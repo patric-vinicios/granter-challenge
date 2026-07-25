@@ -1,0 +1,52 @@
+name: backend duplication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-duplication.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-duplication.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-duplication-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELIXIR_VERSION: "1.20"
+  OTP_VERSION: "29"
+  MIX_ENV: test
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  duplication:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            backend/deps
+            backend/_build
+          key: mix-test-${{ runner.os }}-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-${{ hashFiles('backend/mix.lock') }}
+          restore-keys: mix-test-${{ runner.os }}-otp${{ env.OTP_VERSION }}-elixir${{ env.ELIXIR_VERSION }}-
+
+      - run: mix deps.get
+
+      - run: mix ex_dna

@@ -3,12 +3,17 @@ deps/
 .elixir_ls/
 cover/
 postgres_data/
+priv/plts/
 
 .git/
 .gitignore
+.claude/
 
 .env
+.env.prod
+erl_crash.dump
 
 docs/
+doc/
 *.md
 !README.md
