@@ -68,7 +68,7 @@
           <span
             class="grid h-10 w-10 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
           >
-            {{ contactInitials(contact.user.name) }}
+            {{ userInitials(contact.user.name) }}
           </span>
           <span class="min-w-0">
             <strong class="block truncate text-[15px] text-[#171717]">{{ contact.user.name }}</strong>
@@ -104,7 +104,9 @@
 import { MessageCircle, Plus, Search, Trash2, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
-import { contactInitials } from '../contacts.store'
+import { matchesUserQuery } from '@/shared/user/matchesUserQuery'
+import { userInitials } from '@/shared/user/userInitials'
+
 import type { ContactGroup } from '../contacts.contracts'
 
 const props = defineProps<{
@@ -118,19 +120,16 @@ const props = defineProps<{
 
 const searchQuery = ref('')
 const filteredContactGroups = computed(() => {
-  const query = searchQuery.value.trim().toLocaleLowerCase()
-
-  if (!query) {
+  if (!searchQuery.value.trim()) {
     return props.contactGroups
   }
 
   return props.contactGroups
     .map((group) => ({
       ...group,
-      contacts: group.contacts.filter((contact) => {
-        const searchable = `${contact.user.name} ${contact.user.username}`.toLocaleLowerCase()
-        return searchable.includes(query)
-      }),
+      contacts: group.contacts.filter((contact) =>
+        matchesUserQuery(contact.user, searchQuery.value),
+      ),
     }))
     .filter((group) => group.contacts.length > 0)
 })

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { withSetup } from '@/test/composable'
 import { FakeSocket } from '@/test/realtime'
 
-import { useMessagingStore } from './messaging.store'
+import { useMessagesStore } from './messaging.store'
 import { useRealtimeMessaging } from './useRealtimeMessaging'
 
 describe('useRealtimeMessaging', () => {
@@ -119,10 +119,6 @@ describe('useRealtimeMessaging', () => {
     })
 
     expect(context.result.error.value).toBe(expectedMessage)
-    expect(context.messagingStore.pendingErrors[String(clientRef)]).toMatchObject({
-      reason,
-      clientRef,
-    })
   })
 
   it('calls reconnect recovery only after a connection has opened before', () => {
@@ -150,6 +146,35 @@ describe('useRealtimeMessaging', () => {
     expect(context.result.status.value).toBe('idle')
     expect(context.result.canSend.value).toBe(false)
     expect(context.result.sendMessage('Mensagem')).toBe(false)
+  })
+
+  it('invalidates a cached inactive history when its inbox summary changes', () => {
+    const context = setupRealtime()
+    unmount = context.unmount
+    const messagesStore = useMessagesStore(context.pinia)
+    messagesStore.histories = {
+      'conversation-2': {
+        messages: [],
+        nextCursor: null,
+        hasMore: false,
+        isLoadingInitial: false,
+        isLoadingOlder: false,
+        didLoadInitial: true,
+        error: null,
+      },
+    }
+
+    context.socket.channelFor('user:user-current').pushServer('conversation:updated', {
+      conversation_id: 'conversation-2',
+      last_message: {
+        preview: 'Cheguei enquanto a conversa estava fechada',
+        sender_id: 'user-ana',
+        inserted_at: '2026-07-24T18:00:00Z',
+      },
+      unread: true,
+    })
+
+    expect(messagesStore.histories['conversation-2']?.didLoadInitial).toBe(false)
   })
 })
 
@@ -191,7 +216,7 @@ function setupRealtime(
 
   return {
     ...setup,
-    messagingStore: useMessagingStore(pinia),
+    pinia,
     selectedConversationId,
     socket: socket as FakeSocket,
     sockets,

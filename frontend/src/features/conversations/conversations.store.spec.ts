@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { useConversationsStore } from './conversations.store'
 
 describe('conversations.store inbox state', () => {
@@ -352,11 +354,4 @@ function inboxSummaryResponse(options: { unreadCount: number; unreadOverflow?: b
     unread_overflow: options.unreadOverflow ?? false,
     last_read_at: null,
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 }

@@ -1,3 +1,17 @@
+const featureNames = ['auth', 'contacts', 'conversations', 'messaging', 'presence', 'search']
+
+const featureIsolationRules = featureNames.map((featureName) => ({
+  name: `feature-${featureName}-does-not-import-other-features`,
+  severity: 'error',
+  comment: 'Features expose product behavior to views and must not import another feature internals.',
+  from: {
+    path: `^src/features/${featureName}/`,
+  },
+  to: {
+    path: `^src/features/(?!${featureName}/)`,
+  },
+}))
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
   forbidden: [
@@ -42,6 +56,7 @@ module.exports = {
         path: '^src/(components|layouts|router|stores|views)/',
       },
     },
+    ...featureIsolationRules,
   ],
   options: {
     doNotFollow: {

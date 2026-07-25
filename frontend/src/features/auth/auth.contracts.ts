@@ -1,4 +1,9 @@
 import type { UserIdentity } from '@/types/user'
+import {
+  requireNullableString,
+  requireRecord,
+  requireString,
+} from '@/shared/contracts/decoders'
 
 export type AuthUser = UserIdentity
 
@@ -75,28 +80,4 @@ function decodeStoredUser(payload: unknown): AuthUser {
     name: requireString(data.name),
     lastSeenAt: requireNullableString(data.lastSeenAt),
   }
-}
-
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Expected object')
-  }
-
-  return value as Record<string, unknown>
-}
-
-function requireString(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('Expected string')
-  }
-
-  return value
-}
-
-function requireNullableString(value: unknown): string | null {
-  if (value === null) {
-    return null
-  }
-
-  return requireString(value)
 }

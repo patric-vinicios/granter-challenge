@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { useMessagesStore, useMessagingStore } from './messaging.store'
 import type { PersistedMessage } from './messaging.contracts'
 
@@ -179,6 +181,30 @@ describe('messages.store', () => {
     })
   })
 
+  it('marks a cached history as stale so the next selection reloads it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          messages: [messageResponse('message-1', 'persistida')],
+          next_cursor: null,
+          has_more: false,
+        }),
+      ),
+    )
+
+    const store = useMessagesStore()
+    await store.loadInitial('conversation-1', 'jwt-token')
+
+    store.invalidate('conversation-1')
+
+    expect(store.histories['conversation-1']).toMatchObject({
+      messages: [{ id: 'message-1' }],
+      didLoadInitial: false,
+      isLoadingInitial: false,
+    })
+  })
+
   it('exposes older-page errors and does not request unavailable pages', async () => {
     const fetchMock = vi
       .fn()
@@ -259,17 +285,10 @@ describe('messages.store', () => {
     expect(conversation.messages.map((item) => item.id)).toEqual(['message-1'])
   })
 
-  it('applies realtime updates, send failures, revocation and activity sorting', () => {
+  it('applies realtime updates and activity sorting', () => {
     const store = useMessagingStore()
-    const sendError = {
-      reason: 'rate_limited' as const,
-      clientRef: 'client-1',
-      retryAfterMs: 1000,
-    }
 
     store.addOptimisticMessage('conversation-1', 'Mensagem longa '.repeat(4), 'client-1')
-    store.failMessage('client-1', sendError)
-    store.failMessage(null, { reason: 'unknown_event', clientRef: null })
     store.applyConversationUpdate(
       {
         conversationId: 'conversation-2',
@@ -282,14 +301,9 @@ describe('messages.store', () => {
       },
       'user-current',
     )
-    store.revokeConversation('conversation-1')
-
-    expect(store.pendingErrors['client-1']).toEqual(sendError)
-    expect(store.revokedConversationIds).toEqual(['conversation-1'])
     expect(store.decorate(conversationItem('conversation-1')).messages[0]).toMatchObject({
       clientRef: 'client-1',
       time: 'Enviando',
-      wide: true,
     })
     expect(store.decorate(conversationItem('conversation-2')).preview).toBe('Voce: Resposta')
     expect(store.sortByActivity([
@@ -298,18 +312,13 @@ describe('messages.store', () => {
     ])[0]?.id).toBe('conversation-1')
   })
 
-  it('appends acknowledgements without client refs and clears matching send failures', () => {
+  it('appends acknowledgements without client refs and reconciles optimistic messages', () => {
     const store = useMessagingStore()
     store.addOptimisticMessage('conversation-1', 'otimista', 'client-1')
-    store.failMessage('client-1', {
-      reason: 'validation_error',
-      clientRef: 'client-1',
-    })
 
     store.confirmMessage(persistedMessage('message-other', 'outra'), 'user-current', null)
     store.confirmMessage(persistedMessage('message-1', 'otimista'), 'user-current', 'client-1')
 
-    expect(store.pendingErrors['client-1']).toBeUndefined()
     expect(
       store.decorate(conversationItem('conversation-1')).messages.map((message) => message.id),
     ).toEqual(['message-1', 'message-other'])
@@ -345,7 +354,6 @@ describe('messages.store', () => {
     expect(messages.histories).toEqual({})
     expect(messages.pendingRefreshIds.size).toBe(0)
     expect(realtime.conversations).toEqual({})
-    expect(realtime.pendingErrors).toEqual({})
   })
 
   it('exposes pending refresh coordination through Pinia state', () => {
@@ -403,11 +411,4 @@ function conversationItem(id: string) {
     time: '',
     messages: [],
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 }

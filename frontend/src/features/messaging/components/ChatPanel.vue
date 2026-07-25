@@ -143,7 +143,6 @@
             :side="message.side"
             :text="message.text"
             :time="message.time"
-            :wide="message.wide"
             :author="conversation.type === 'group' ? message.author : undefined"
             :is-highlighted="message.id === searchActiveMessageId"
             :highlight-ranges="message.id === searchActiveMessageId ? searchActiveMatchOffsets : []"

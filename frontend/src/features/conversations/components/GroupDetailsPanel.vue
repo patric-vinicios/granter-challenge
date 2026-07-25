@@ -33,7 +33,7 @@
         <span
           class="grid h-9 w-9 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[12px] font-bold text-[#444444]"
         >
-          {{ contactInitials(member.name) }}
+          {{ userInitials(member.name) }}
         </span>
         <span class="min-w-0">
           <strong class="block truncate text-[14px] text-[#171717]">{{ member.name }}</strong>
@@ -64,7 +64,7 @@
           <span
             class="grid h-9 w-9 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[12px] font-bold text-[#444444]"
           >
-            {{ contactInitials(contact.user.name) }}
+            {{ userInitials(contact.user.name) }}
           </span>
           <span class="min-w-0">
             <strong class="block truncate text-[14px] text-[#171717]">{{ contact.user.name }}</strong>
@@ -91,7 +91,7 @@
 import { ArrowLeft, Plus, Trash2 } from '@lucide/vue'
 import { computed } from 'vue'
 
-import { contactInitials } from '@/features/contacts/contacts.store'
+import { userInitials } from '@/shared/user/userInitials'
 import type { Contact } from '@/types/contact'
 
 import type { GroupConversation } from '../conversations.contracts'

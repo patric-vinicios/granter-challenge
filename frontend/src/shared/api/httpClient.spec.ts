@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { requestJson, setTerminalAuthFailureHandler } from './httpClient'
 
 describe('httpClient', () => {
@@ -69,10 +71,3 @@ describe('httpClient', () => {
     expect(handler).not.toHaveBeenCalled()
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

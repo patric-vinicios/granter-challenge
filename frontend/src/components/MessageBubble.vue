@@ -10,9 +10,8 @@
       {{ initials(author) }}
     </span>
     <div
-      class="rounded-lg border px-3 py-2 text-[14px] leading-5 shadow-none"
+      class="max-w-[354px] rounded-lg border px-3 py-2 text-[14px] leading-5 shadow-none"
       :class="[
-        wide ? 'max-w-[354px]' : 'max-w-[310px]',
         isHighlighted ? 'ring-2 ring-yellow-300 ring-offset-2' : '',
         side === 'out'
           ? 'border-black bg-black text-white'
@@ -54,13 +53,11 @@ const props = withDefaults(
     side: 'in' | 'out'
     text: string
     time: string
-    wide?: boolean
     author?: string
     isHighlighted?: boolean
     highlightRanges?: HighlightRange[]
   }>(),
   {
-    wide: false,
     author: undefined,
     isHighlighted: false,
     highlightRanges: () => [],

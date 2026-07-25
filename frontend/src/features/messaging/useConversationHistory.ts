@@ -2,6 +2,7 @@ import { storeToRefs } from 'pinia'
 import { computed, toRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
 import { useMessagesStore } from './messaging.store'
+import { createEmptyConversationHistory } from './messaging.history'
 
 interface ConversationIdentity {
   id: string
@@ -29,7 +30,7 @@ export function useConversationHistory({
   persistedConversationSources,
 }: UseConversationHistoryOptions) {
   const messagesStore = useMessagesStore()
-  const { historyByConversationId } = storeToRefs(messagesStore)
+  const { histories } = storeToRefs(messagesStore)
   const tokenRef = toRef(token)
   const selectedPersistedConversationId = computed(() => {
     const conversationId = toValue(selectedConversationId)
@@ -45,7 +46,7 @@ export function useConversationHistory({
       : null
   })
   const state = computed(
-    () => historyByConversationId.value[toValue(displayedConversationId)] ?? emptyHistory(),
+    () => histories.value[toValue(displayedConversationId)] ?? createEmptyConversationHistory(),
   )
 
   watch(
@@ -90,17 +91,5 @@ export function useConversationHistory({
     state,
     loadOlder,
     refresh,
-  }
-}
-
-function emptyHistory() {
-  return {
-    messages: [],
-    nextCursor: null,
-    hasMore: false,
-    isLoadingInitial: false,
-    isLoadingOlder: false,
-    didLoadInitial: false,
-    error: null,
   }
 }

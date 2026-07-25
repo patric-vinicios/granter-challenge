@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { requestJson, setTerminalAuthFailureHandler } from '@/shared/api/httpClient'
 import { useAuthStore } from '@/stores/auth.store'
+import { jsonResponse } from '@/test/http'
 
 import { installTerminalAuthFailureHandler } from './installTerminalAuthFailureHandler'
 
@@ -56,10 +57,3 @@ describe('terminal authentication failure integration', () => {
     expect(window.localStorage.getItem('granter.session')).toBeNull()
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

@@ -5,6 +5,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import {
   authenticate,
   defaultAnaInboxSummary,
+  historyMessageResponse,
   historyResponse,
   inboxSummaryResponse,
   jsonResponse,
@@ -18,17 +19,41 @@ describe('Inbox navigation and summaries', () => {
 
   it('shows the default conversation and switches to another conversation', async () => {
     const user = userEvent.setup()
+    const { pinia } = await renderInbox()
+    vi.stubGlobal(
+      'fetch',
+      mockAuthenticatedFetch({
+        conversations: [
+          defaultAnaInboxSummary(),
+          inboxSummaryResponse({
+            id: 'group-product',
+            type: 'group',
+            title: 'Time de Produto',
+            senderId: 'user-rafael',
+            body: 'Build pronta para validar',
+            unreadCount: 0,
+            memberCount: 5,
+          }),
+        ],
+        historyMessages: [
+          historyMessageResponse(
+            'message-group',
+            'Build pronta para validar',
+            'user-rafael',
+            'Rafael Alves',
+            '2026-07-22T11:02:44.884210Z',
+          ),
+        ],
+      }),
+    )
+    authenticate(pinia)
 
-    await renderInbox()
+    const groupButton = await screen.findByRole('button', { name: /time de produto/i })
+    await user.click(groupButton)
 
-    expect(screen.getByText('visto por ultimo ha 5 min')).toBeTruthy()
-    expect(screen.getByText('Perfeito, fico no aguardo entao')).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: /time de produto/i }))
-
-    expect(screen.getByText('5 membros · Voce, Rafael, Ana, +2')).toBeTruthy()
-    expect(screen.getByText('Bom dia pessoal! Subi a build de staging pra validacao')).toBeTruthy()
-    expect(screen.getAllByText('Rafael Alves')).toHaveLength(2)
+    expect(screen.getByText('5 membros')).toBeTruthy()
+    expect(await screen.findAllByText('Build pronta para validar')).not.toHaveLength(0)
+    expect(screen.getByText('Rafael Alves')).toBeTruthy()
   })
 
   it('filters authenticated inbox summaries through the documented query parameter', async () => {

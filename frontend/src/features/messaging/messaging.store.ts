@@ -1,47 +1,27 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 import { formatMessageTime } from '@/shared/date/formatMessageTime'
+import { toChatMessage } from '@/shared/chat/toChatMessage'
 import type { ChatConversation, ChatMessage } from '@/types/chat'
 
 import { listMessages } from './messaging.api'
-import type { ConversationUpdated, MessageSendError, PersistedMessage } from './messaging.contracts'
-
-interface ConversationHistory {
-  messages: PersistedMessage[]
-  nextCursor: string | null
-  hasMore: boolean
-  isLoadingInitial: boolean
-  isLoadingOlder: boolean
-  didLoadInitial: boolean
-  error: string | null
-}
+import type { ConversationUpdated, PersistedMessage } from './messaging.contracts'
+import {
+  createEmptyConversationHistory,
+  type ConversationHistory,
+} from './messaging.history'
 
 interface RealtimeConversationState {
   messages: ChatMessage[]
   preview: string
   time: string
   lastActivity: number
-  revoked: boolean
-}
-
-function emptyHistory(): ConversationHistory {
-  return {
-    messages: [],
-    nextCursor: null,
-    hasMore: false,
-    isLoadingInitial: false,
-    isLoadingOlder: false,
-    didLoadInitial: false,
-    error: null,
-  }
 }
 
 export const useMessagesStore = defineStore('messages', () => {
   const histories = ref<Record<string, ConversationHistory>>({})
   const pendingRefreshIds = ref<Set<string>>(new Set())
-
-  const historyByConversationId = computed(() => histories.value)
 
   async function loadInitial(
     conversationId: string,
@@ -158,6 +138,24 @@ export const useMessagesStore = defineStore('messages', () => {
     pendingRefreshIds.value = new Set()
   }
 
+  function invalidate(conversationId: string): void {
+    const current = histories.value[conversationId]
+
+    if (!current) {
+      return
+    }
+
+    if (current.isLoadingInitial) {
+      pendingRefreshIds.value = new Set(pendingRefreshIds.value).add(conversationId)
+      return
+    }
+
+    setHistory(conversationId, {
+      ...current,
+      didLoadInitial: false,
+    })
+  }
+
   function removeConversation(conversationId: string): void {
     const nextHistories = { ...histories.value }
     delete nextHistories[conversationId]
@@ -169,7 +167,7 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   function ensureHistory(conversationId: string): ConversationHistory {
-    return histories.value[conversationId] ?? emptyHistory()
+    return histories.value[conversationId] ?? createEmptyConversationHistory()
   }
 
   function setHistory(conversationId: string, history: ConversationHistory): void {
@@ -182,7 +180,7 @@ export const useMessagesStore = defineStore('messages', () => {
   return {
     histories,
     pendingRefreshIds,
-    historyByConversationId,
+    invalidate,
     loadInitial,
     loadOlder,
     removeConversation,
@@ -192,13 +190,6 @@ export const useMessagesStore = defineStore('messages', () => {
 
 export const useMessagingStore = defineStore('messaging', () => {
   const conversations = ref<Record<string, RealtimeConversationState>>({})
-  const pendingErrors = ref<Record<string, MessageSendError>>({})
-
-  const revokedConversationIds = computed(() =>
-    Object.entries(conversations.value)
-      .filter(([, state]) => state.revoked)
-      .map(([conversationId]) => conversationId),
-  )
 
   function decorate(conversation: ChatConversation): ChatConversation {
     const state = conversations.value[conversation.id]
@@ -234,18 +225,16 @@ export const useMessagingStore = defineStore('messaging', () => {
           side: 'out',
           text: body,
           time: 'Enviando',
-          wide: body.length > 42,
         },
       ],
       preview: `Voce: ${body}`,
       time: 'Agora',
       lastActivity: Date.now(),
     })
-    delete pendingErrors.value[clientRef]
   }
 
   function confirmMessage(message: PersistedMessage, currentUserId: string, clientRef: string | null): void {
-    const nextMessage = toConversationMessage(message, currentUserId)
+    const nextMessage = toChatMessage(message, currentUserId)
     const current = getMessages(message.conversationId)
     const wasReconciled = clientRef !== null && current.some((item) => item.clientRef === clientRef)
     const messages = wasReconciled
@@ -259,9 +248,6 @@ export const useMessagingStore = defineStore('messaging', () => {
       lastActivity: Date.parse(message.insertedAt),
     })
 
-    if (clientRef) {
-      delete pendingErrors.value[clientRef]
-    }
   }
 
   function receiveMessage(message: PersistedMessage, currentUserId: string): void {
@@ -272,17 +258,11 @@ export const useMessagingStore = defineStore('messaging', () => {
     }
 
     upsertState(message.conversationId, {
-      messages: [...current, toConversationMessage(message, currentUserId)],
+      messages: [...current, toChatMessage(message, currentUserId)],
       preview: previewFor(message, currentUserId),
       time: formatMessageTime(message.insertedAt),
       lastActivity: Date.parse(message.insertedAt),
     })
-  }
-
-  function failMessage(clientRef: string | null, error: MessageSendError): void {
-    if (clientRef) {
-      pendingErrors.value[clientRef] = error
-    }
   }
 
   function applyConversationUpdate(update: ConversationUpdated, currentUserId: string): void {
@@ -296,19 +276,8 @@ export const useMessagingStore = defineStore('messaging', () => {
     })
   }
 
-  function revokeConversation(conversationId: string): void {
-    upsertState(conversationId, {
-      messages: getMessages(conversationId),
-      preview: 'Voce saiu desta conversa.',
-      time: 'Agora',
-      lastActivity: Date.now(),
-      revoked: true,
-    })
-  }
-
   function reset(): void {
     conversations.value = {}
-    pendingErrors.value = {}
   }
 
   function removeConversation(conversationId: string): void {
@@ -331,24 +300,19 @@ export const useMessagingStore = defineStore('messaging', () => {
         preview: next.preview ?? previous?.preview ?? '',
         time: next.time ?? previous?.time ?? '',
         lastActivity: next.lastActivity ?? previous?.lastActivity ?? 0,
-        revoked: next.revoked ?? previous?.revoked ?? false,
       },
     }
   }
 
   return {
     conversations,
-    pendingErrors,
-    revokedConversationIds,
     addOptimisticMessage,
     applyConversationUpdate,
     confirmMessage,
     decorate,
-    failMessage,
     receiveMessage,
     removeConversation,
     reset,
-    revokeConversation,
     sortByActivity,
   }
 })
@@ -388,17 +352,6 @@ function mergeConversationMessages(history: ChatMessage[], realtime: ChatMessage
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
-}
-
-function toConversationMessage(message: PersistedMessage, currentUserId: string): ChatMessage {
-  return {
-    id: message.id,
-    side: message.sender.id === currentUserId ? 'out' : 'in',
-    author: message.sender.id === currentUserId ? undefined : message.sender.name,
-    text: message.body,
-    time: formatMessageTime(message.insertedAt),
-    wide: message.body.length > 42,
-  }
 }
 
 function previewFor(message: PersistedMessage, currentUserId: string): string {

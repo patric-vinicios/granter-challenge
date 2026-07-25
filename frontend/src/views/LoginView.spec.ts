@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/vue'
 import { describe, expect, it, vi } from 'vitest'
 import type { RouteRecordRaw } from 'vue-router'
 
+import { jsonResponse } from '@/test/http'
 import { renderWithApp } from '@/test/render'
 
 import LoginView from './LoginView.vue'
@@ -173,10 +174,3 @@ describe('LoginView', () => {
     expect(router.currentRoute.value.path).toBe('/')
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

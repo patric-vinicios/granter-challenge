@@ -136,7 +136,6 @@ export function useRealtimeMessaging({
       })
       .receive('error', (payload) => {
         const sendError = decodeMessageSendError(payload)
-        store.failMessage(sendError.clientRef, sendError)
         error.value = messageErrorText(sendError.reason)
       })
 
@@ -167,7 +166,6 @@ export function useRealtimeMessaging({
         event: 'conversation:membership_revoked',
         ref: channel.on('conversation:membership_revoked', (payload) => {
           const revoked = decodeMembershipRevoked(payload)
-          store.revokeConversation(revoked.conversationId)
           onMembershipRevoked?.(revoked.conversationId)
           error.value = 'Voce saiu desta conversa.'
           leaveConversation()
@@ -256,7 +254,10 @@ export function useRealtimeMessaging({
 
     if (currentToken && update.conversationId === selectedConversationIdRef.value) {
       void messagesStore.loadInitial(update.conversationId, currentToken, undefined, { force: true, silent: true })
+      return
     }
+
+    messagesStore.invalidate(update.conversationId)
   }
 
   return {

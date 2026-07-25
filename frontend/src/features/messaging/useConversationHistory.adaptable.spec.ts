@@ -3,6 +3,8 @@ import { ref } from 'vue'
 import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { useConversationHistory } from './useConversationHistory'
 import { useMessagesStore } from './messaging.store'
 
@@ -154,10 +156,3 @@ describe('useConversationHistory adaptable inputs', () => {
     expect(loadInitial).not.toHaveBeenCalled()
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

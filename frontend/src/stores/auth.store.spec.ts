@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonResponse } from '@/test/http'
+
 import { useAuthStore } from './auth.store'
 
 describe('auth store', () => {
@@ -176,10 +178,3 @@ describe('auth store', () => {
     expect(auth.$state).toHaveProperty('didBootstrap')
   })
 })
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}

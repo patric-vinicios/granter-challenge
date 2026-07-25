@@ -26,7 +26,6 @@ export default defineConfig({
       exclude: [
         'src/env.d.ts',
         'src/main.ts',
-        'src/**/*.mock.ts',
         'src/**/*.spec.ts',
         'src/**/*TestHarness.ts',
         'src/test/**',

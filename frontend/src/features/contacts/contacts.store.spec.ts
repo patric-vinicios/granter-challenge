@@ -1,7 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { contactInitials, useContactsStore } from './contacts.store'
+import { deferred, jsonResponse } from '@/test/http'
+
+import { useContactsStore } from './contacts.store'
 
 describe('contacts store', () => {
   beforeEach(() => {
@@ -160,15 +162,6 @@ describe('contacts store', () => {
     expect(store.loadError).toBeNull()
     expect(store.pendingRemovalIds.size).toBe(0)
   })
-
-  it.each([
-    ['Ana Beatriz', 'AB'],
-    ['Prince', 'P'],
-    ['  Maria   da Silva  ', 'MS'],
-    ['', ''],
-  ])('formats %j as %s initials', (name, expected) => {
-    expect(contactInitials(name)).toBe(expected)
-  })
 })
 
 function contactResponse(id: string, userId: string, username: string, name: string) {
@@ -182,20 +175,4 @@ function contactResponse(id: string, userId: string, username: string, name: str
       online: false,
     },
   }
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(body === null ? null : JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-
-  return { promise, resolve }
 }

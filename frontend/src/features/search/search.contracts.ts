@@ -1,4 +1,9 @@
-import { decodePersistedMessage } from '@/features/messaging/messaging.contracts'
+import {
+  requireBoolean,
+  requireNumber,
+  requireRecord,
+} from '@/shared/contracts/decoders'
+import { decodePersistedMessage } from '@/shared/contracts/message'
 import type { PersistedMessage } from '@/types/message'
 import type { SearchMatchOffset } from '@/types/search'
 
@@ -55,28 +60,4 @@ function decodeSearchMatchOffset(payload: unknown): SearchMatchOffset {
     start: requireNumber(data.start),
     length: requireNumber(data.length),
   }
-}
-
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Expected object')
-  }
-
-  return value as Record<string, unknown>
-}
-
-function requireNumber(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error('Expected number')
-  }
-
-  return value
-}
-
-function requireBoolean(value: unknown): boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error('Expected boolean')
-  }
-
-  return value
 }
