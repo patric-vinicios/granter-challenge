@@ -1,0 +1,72 @@
+name: backend release image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-release-image.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-release-image.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-release-image-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  release-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate throwaway deployment secrets
+        run: |
+          {
+            printf 'SECRET_KEY_BASE=%s\n' "$(openssl rand -base64 64 | tr -d '\n')"
+            printf 'JWT_SECRET=%s\n' "$(openssl rand -base64 64 | tr -d '\n')"
+            printf 'PHX_HOST=localhost\n'
+            printf 'CORS_ORIGINS=http://localhost:5173\n'
+            printf 'POSTGRES_USER=api\n'
+            printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)"
+            printf 'POSTGRES_DB=api_prod\n'
+          } > .env.prod
+
+      - name: Build and start the release
+        run: docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+
+      - name: Wait for the container to report healthy
+        run: |
+          container=$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q api)
+          for _ in $(seq 1 60); do
+            health=$(docker inspect --format '{{.State.Health.Status}}' "$container")
+            [ "$health" = healthy ] && exit 0
+            sleep 2
+          done
+          echo "container never became healthy (last state: $health)"
+          exit 1
+
+      - name: The release answers and authenticates
+        run: |
+          curl -fsS localhost:4000/api/health | grep -q '"database":"up"'
+          curl -fsS -X POST localhost:4000/api/auth/register \
+            -H 'content-type: application/json' \
+            -d '{"username":"ciuser","name":"CI User","password":"senha123456"}' \
+            | grep -q '"token"'
+
+      - name: Container logs
+        if: failure()
+        run: docker compose --env-file .env.prod -f docker-compose.prod.yml logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose --env-file .env.prod -f docker-compose.prod.yml down -v

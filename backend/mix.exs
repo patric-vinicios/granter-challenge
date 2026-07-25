@@ -67,6 +67,7 @@ defmodule Api.MixProject do
   def cli do
     [
       preferred_envs: [
+        ci: :test,
         precommit: :test,
         coveralls: :test,
         "coveralls.detail": :test,
@@ -137,6 +138,17 @@ defmodule Api.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
+        "credo --strict",
+        "coveralls",
+        "ex_dna",
+        "sobelow --exit --skip",
+        "deps.audit --exit",
+        "cmd mix hex.audit"
+      ],
+      ci: [
+        "compile --warnings-as-errors",
+        "deps.unlock --check-unused",
+        "format --check-formatted",
         "credo --strict",
         "coveralls",
         "ex_dna",
