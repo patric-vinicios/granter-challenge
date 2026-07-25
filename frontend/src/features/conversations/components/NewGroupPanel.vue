@@ -35,21 +35,26 @@
       </div>
     </section>
 
-    <div class="flex flex-wrap gap-2 border-b border-[#e8e8e8] px-3 pb-5">
-      <button
-        v-for="contact in selectedContacts"
-        :key="contact.id"
-        class="inline-flex h-8 items-center gap-2 rounded-full border border-[#e8e8e8] bg-[#fbfbfb] pl-1 pr-3 text-[13px] font-bold text-[#444444]"
-        type="button"
-        :aria-label="`Remover ${contact.user.name} da selecao`"
-        @click="$emit('toggleContact', contact.user.id)"
-      >
-        <span class="grid h-6 w-6 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[10px]">
-          {{ contactInitials(contact.user.name) }}
-        </span>
-        {{ contact.user.name }}
-        <X :size="14" :stroke-width="2" class="text-[#a3a3a3]" aria-hidden="true" />
-      </button>
+    <div
+      class="min-w-0 overflow-x-auto border-b border-[#e8e8e8] px-3 pb-5"
+      aria-label="Contatos selecionados"
+    >
+      <div class="flex w-max max-w-none gap-2">
+        <button
+          v-for="contact in selectedContacts"
+          :key="contact.id"
+          class="inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-[#e8e8e8] bg-[#fbfbfb] pl-1 pr-3 text-[13px] font-bold text-[#444444]"
+          type="button"
+          :aria-label="`Remover ${contact.user.name} da selecao`"
+          @click="$emit('toggleContact', contact.user.id)"
+        >
+          <span class="grid h-6 w-6 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[10px]">
+            {{ contactInitials(contact.user.name) }}
+          </span>
+          {{ contact.user.name }}
+          <X :size="14" :stroke-width="2" class="text-[#a3a3a3]" aria-hidden="true" />
+        </button>
+      </div>
     </div>
 
     <section class="min-h-0 overflow-hidden px-3 py-5">
@@ -131,6 +136,7 @@ import { ArrowLeft, Check, Search, UsersRound, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import { contactInitials } from '@/features/contacts/contacts.store'
+import { useDebouncedValue } from '@/shared/reactivity/useDebouncedValue'
 import type { Contact } from '@/types/contact'
 
 const props = defineProps<{
@@ -142,9 +148,13 @@ const props = defineProps<{
 }>()
 
 const contactSearchQuery = ref('')
+const debouncedContactSearchQuery = useDebouncedValue(contactSearchQuery, {
+  delayMs: 800,
+  immediateWhen: (value) => value.trim() === '',
+})
 const selectedContacts = computed(() => props.contacts.filter((contact) => props.selectedContactIds.has(contact.user.id)))
 const filteredContacts = computed(() => {
-  const query = contactSearchQuery.value.trim().toLocaleLowerCase()
+  const query = debouncedContactSearchQuery.value.trim().toLocaleLowerCase()
 
   if (!query) {
     return props.contacts
