@@ -139,9 +139,10 @@ defmodule Api.MixProject do
         "format",
         "credo --strict",
         "coveralls",
-        "dna",
-        "sobelow --exit",
-        "deps.audit --exit"
+        "ex_dna",
+        "sobelow --exit --skip",
+        "deps.audit --exit",
+        "cmd mix hex.audit"
       ]
     ]
   end
