@@ -53,17 +53,15 @@ defmodule ApiWeb.Conversations.ConversationController do
   # `limit` is validated before the domain call, so a non-numeric or
   # out-of-range page size is a 422 naming the field rather than a value the
   # context silently clamps — the same contract the message history offers.
+  @doc "`GET /api/conversations` — one page of the caller's inbox, filtered by `q` when given."
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t() | {:error, term()}
   def index(conn, params) do
     with {:ok, page_params} <- validate_page(params),
          page <- Conversations.list_conversations(conn.assigns.current_user, page_params),
-         {:ok, page} <- page_or_error(page) do
+         {:ok, page} <- ApiWeb.Pagination.ok_or_error(page) do
       render(conn, :index, page)
     end
   end
-
-  defp page_or_error({:error, reason}), do: {:error, reason}
-  defp page_or_error(page), do: {:ok, page}
 
   defp validate_page(params),
     do:
