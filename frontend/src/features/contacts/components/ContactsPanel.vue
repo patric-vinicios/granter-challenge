@@ -104,6 +104,8 @@
 import { MessageCircle, Plus, Search, Trash2, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
+import { useDebouncedValue } from '@/shared/reactivity/useDebouncedValue'
+
 import { contactInitials } from '../contacts.store'
 import type { ContactGroup } from '../contacts.contracts'
 
@@ -117,8 +119,12 @@ const props = defineProps<{
 }>()
 
 const searchQuery = ref('')
+const debouncedSearchQuery = useDebouncedValue(searchQuery, {
+  delayMs: 800,
+  immediateWhen: (value) => value.trim() === '',
+})
 const filteredContactGroups = computed(() => {
-  const query = searchQuery.value.trim().toLocaleLowerCase()
+  const query = debouncedSearchQuery.value.trim().toLocaleLowerCase()
 
   if (!query) {
     return props.contactGroups

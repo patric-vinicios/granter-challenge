@@ -1,4 +1,4 @@
-import { computed, shallowRef, type MaybeRefOrGetter } from 'vue'
+import { computed, shallowRef, toRef, watch, type MaybeRefOrGetter } from 'vue'
 
 import type { SearchMatchOffset } from './search.contracts'
 import { useConversationSearch } from './useConversationSearch'
@@ -12,6 +12,7 @@ export function useConversationSearchPanel({
   token,
   conversationId,
 }: UseConversationSearchPanelOptions) {
+  const conversationIdRef = toRef(conversationId)
   const isOpen = shallowRef(false)
   const term = shallowRef('')
   const activeQuery = computed(() => (isOpen.value ? term.value : ''))
@@ -44,17 +45,13 @@ export function useConversationSearchPanel({
     term.value = ''
   }
 
-  function closeOnFocusOut(event: FocusEvent): void {
-    const nextTarget = event.relatedTarget
-
-    if (nextTarget instanceof Node && event.currentTarget instanceof Node) {
-      if (event.currentTarget.contains(nextTarget)) {
-        return
-      }
+  watch(conversationIdRef, (currentConversationId, previousConversationId) => {
+    if (previousConversationId === undefined || currentConversationId === previousConversationId) {
+      return
     }
 
     close()
-  }
+  })
 
   return {
     activeHit,
@@ -68,7 +65,6 @@ export function useConversationSearchPanel({
     truncated,
     status,
     close,
-    closeOnFocusOut,
     open,
     selectNext,
     selectPrevious,
