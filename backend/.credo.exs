@@ -69,6 +69,10 @@
       checks: %{
         enabled: [
           #
+          ## Excellent Migrations Check
+          #
+          {ExcellentMigrations.CredoCheck.MigrationsSafety},
+          #
           ## Consistency Checks
           #
           {Credo.Check.Consistency.ExceptionNames, []},

@@ -19,6 +19,8 @@ config :api, Repo,
   migration_foreign_key: [type: :binary_id],
   migration_timestamps: [type: :utc_datetime_usec]
 
+config :excellent_migrations, start_after: "20260724133326"
+
 # Configure the endpoint
 config :api, ApiWeb.Endpoint,
   url: [host: "localhost"],
