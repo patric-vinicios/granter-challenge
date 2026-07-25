@@ -7,7 +7,6 @@ import type { PersistedMessage } from '@/types/message'
 import {
   inboxPreview,
   toInboxConversationItem,
-  toMessageItem,
   unreadLabel,
   withActiveSearchHit,
   type InboxPresenterContext,
@@ -55,11 +54,6 @@ describe('inbox presenter', () => {
       time: '09:42',
       unreadLabel: '99+',
     })
-  })
-
-  it('marks persisted messages as wide only above 44 characters', () => {
-    expect(toMessageItem(messageWithBody('a'.repeat(44)), currentUserId).wide).toBe(false)
-    expect(toMessageItem(messageWithBody('a'.repeat(45)), currentUserId).wide).toBe(true)
   })
 
   it('appends an active search hit once', () => {

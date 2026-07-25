@@ -45,7 +45,7 @@
         @click="$emit('toggleContact', contact.user.id)"
       >
         <span class="grid h-6 w-6 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[10px]">
-          {{ contactInitials(contact.user.name) }}
+          {{ userInitials(contact.user.name) }}
         </span>
         {{ contact.user.name }}
         <X :size="14" :stroke-width="2" class="text-[#a3a3a3]" aria-hidden="true" />
@@ -80,7 +80,7 @@
           <span
             class="grid h-10 w-10 place-items-center rounded-full border border-[#e8e8e8] bg-[#f4f4f5] text-[13px] font-bold text-[#444444]"
           >
-            {{ contactInitials(contact.user.name) }}
+            {{ userInitials(contact.user.name) }}
           </span>
           <strong class="text-[15px]">{{ contact.user.name }}</strong>
           <input
@@ -130,7 +130,8 @@
 import { ArrowLeft, Check, Search, UsersRound, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
-import { contactInitials } from '@/features/contacts/contacts.store'
+import { matchesUserQuery } from '@/shared/user/matchesUserQuery'
+import { userInitials } from '@/shared/user/userInitials'
 import type { Contact } from '@/types/contact'
 
 const props = defineProps<{
@@ -144,16 +145,9 @@ const props = defineProps<{
 const contactSearchQuery = ref('')
 const selectedContacts = computed(() => props.contacts.filter((contact) => props.selectedContactIds.has(contact.user.id)))
 const filteredContacts = computed(() => {
-  const query = contactSearchQuery.value.trim().toLocaleLowerCase()
-
-  if (!query) {
-    return props.contacts
-  }
-
-  return props.contacts.filter((contact) => {
-    const searchable = `${contact.user.name} ${contact.user.username}`.toLocaleLowerCase()
-    return searchable.includes(query)
-  })
+  return props.contacts.filter((contact) =>
+    matchesUserQuery(contact.user, contactSearchQuery.value),
+  )
 })
 
 defineEmits<{

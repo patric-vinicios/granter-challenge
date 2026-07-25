@@ -9,7 +9,7 @@ import {
 } from '@/features/auth/auth.api'
 import { clearSession, readSession, writeSession } from '@/features/auth/auth.storage'
 import { type AuthSession, type AuthUser, type LoginRequest, type RegisterRequest } from '@/features/auth/auth.contracts'
-import { isApiError, type ApiError } from '@/shared/api/errors'
+import { isApiError } from '@/shared/api/errors'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
@@ -103,5 +103,3 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
   }
 })
-
-export type AuthFormError = ApiError

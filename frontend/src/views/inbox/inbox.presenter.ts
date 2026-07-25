@@ -4,7 +4,8 @@ import type {
 } from '@/features/conversations/conversations.contracts'
 import type { ConversationSearchHit } from '@/features/search/search.contracts'
 import { formatMessageTime } from '@/shared/date/formatMessageTime'
-import type { ChatConversation, ChatMessage } from '@/types/chat'
+import { toChatMessage } from '@/shared/chat/toChatMessage'
+import type { ChatConversation } from '@/types/chat'
 import type { PersistedMessage } from '@/types/message'
 import type { ChatUser } from '@/types/user'
 
@@ -25,7 +26,7 @@ export function toConversationItem(
 ): ChatConversation {
   const messages =
     context.histories[conversation.id]?.messages.map((message) =>
-      toMessageItem(message, context.currentUserId),
+      toChatMessage(message, context.currentUserId),
     ) ?? []
 
   if (conversation.type === 'private') {
@@ -59,7 +60,7 @@ export function toInboxConversationItem(
 ): ChatConversation & { unreadLabel?: string } {
   const messages =
     context.histories[conversation.id]?.messages.map((message) =>
-      toMessageItem(message, context.currentUserId),
+      toChatMessage(message, context.currentUserId),
     ) ?? []
 
   return {
@@ -103,20 +104,6 @@ export function unreadLabel(conversation: InboxConversationSummary): string | un
   return conversation.unreadOverflow ? '99+' : String(conversation.unreadCount)
 }
 
-export function toMessageItem(
-  message: PersistedMessage,
-  currentUserId: string | null,
-): ChatMessage {
-  return {
-    id: message.id,
-    side: message.sender.id === currentUserId ? 'out' : 'in',
-    author: message.sender.id === currentUserId ? undefined : message.sender.name,
-    text: message.body,
-    time: formatMessageTime(message.insertedAt),
-    wide: message.body.length > 44,
-  }
-}
-
 export function withActiveSearchHit(
   conversation: ChatConversation,
   hit: ConversationSearchHit | null,
@@ -132,6 +119,6 @@ export function withActiveSearchHit(
 
   return {
     ...conversation,
-    messages: [...conversation.messages, toMessageItem(hit.message, currentUserId)],
+    messages: [...conversation.messages, toChatMessage(hit.message, currentUserId)],
   }
 }
