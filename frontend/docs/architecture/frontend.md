@@ -1,54 +1,54 @@
-# Arquitetura do frontend
+# Frontend Architecture
 
-## Objetivo
+## Goal
 
-Organizar o frontend como uma aplicação Vue 3 modular, orientada a features e implementada em
-vertical slices. Cada entrega deve atravessar contrato, estado, interação e testes sem espalhar a
-mesma feature por diretórios técnicos sem um proprietário claro.
+Organize the frontend as a modular Vue 3 application, oriented around features and implemented as
+vertical slices. Each delivery should cross contract, state, interaction and tests without spreading
+the same feature across technical folders with no clear owner.
 
-A arquitetura deve suportar:
+The architecture must support:
 
-- autenticação compartilhada entre HTTP e WebSocket;
-- contatos, conversas privadas e grupos;
-- histórico com paginação por cursor;
-- mensagens em tempo real com reconciliação otimista;
-- inbox ordenada, unread, busca e presença;
-- implementação incremental seguindo as dependências do PRD;
-- testes rápidos sem rede ou backend reais.
+- authentication shared between HTTP and WebSocket;
+- contacts, private conversations and groups;
+- cursor-paginated history;
+- realtime messages with optimistic reconciliation;
+- ordered inbox, unread state, search and presence;
+- incremental implementation following PRD dependencies;
+- fast tests without real network or backend access.
 
-Esta não é uma arquitetura de camadas cerimoniais. Interfaces, stores, composables e componentes
-só devem existir quando houver comportamento real que justifique sua criação.
+This is not an architecture of ceremonial layers. Interfaces, stores, composables and components
+should exist only when real behavior justifies their creation.
 
-## Fontes de verdade
+## Sources of Truth
 
-Use esta precedência ao implementar uma feature:
+Use this precedence when implementing a feature:
 
-1. O PRD e a especificação da feature definem intenção e critérios de aceite.
-2. Router, controllers, renderizadores JSON, channels e testes do backend definem o contrato
-   disponível para integração.
-3. O comportamento frontend existente define compatibilidade que deve ser preservada.
-4. Este documento define a organização e a direção das dependências no frontend.
+1. The PRD and feature specification define intent and acceptance criteria.
+2. Router, controllers, JSON renderers, channels and backend tests define the integration contract
+   that is available.
+3. Existing frontend behavior defines compatibility that must be preserved.
+4. This document defines organization and dependency direction in the frontend.
 
-Nunca invente endpoint, campo, código de erro, tópico ou evento para resolver uma divergência. Se o
-contrato documentado não estiver implementado, separe o trabalho que continua verdadeiro e registre
-explicitamente o que permanece sem integração.
+Never invent an endpoint, field, error code, topic or event to resolve a mismatch. If the documented
+contract is not implemented, separate the work that remains true and explicitly record what is still
+not integrated.
 
-## Estilo arquitetural
+## Architectural Style
 
-Adote uma arquitetura modular por feature, com vertical slices e infraestrutura compartilhada nas
-fronteiras de entrada e saída.
+Adopt a modular feature architecture, with vertical slices and shared infrastructure at input and
+output boundaries.
 
 ```text
 src/
-├── app/                    # bootstrap e composição global
-├── domain/                 # tipos puros compartilhados entre features
+├── app/                    # bootstrap and global composition
+├── domain/                 # pure types shared between features
 ├── shared/
-│   ├── api/                # cliente HTTP e normalização de erros
-│   ├── realtime/           # Phoenix Socket e lifecycle da conexão
-│   ├── config/             # leitura centralizada de configuração
-│   ├── storage/            # persistência da sessão
-│   ├── ui/                 # elementos compartilhados com contrato real
-│   └── utils/              # funções puras reutilizadas
+│   ├── api/                # HTTP client and error normalization
+│   ├── realtime/           # Phoenix Socket and connection lifecycle
+│   ├── config/             # centralized configuration reading
+│   ├── storage/            # session persistence
+│   ├── ui/                 # shared elements with a real contract
+│   └── utils/              # reusable pure functions
 ├── features/
 │   ├── auth/
 │   ├── contacts/
@@ -56,18 +56,18 @@ src/
 │   ├── messaging/
 │   ├── search/
 │   └── presence/
-├── views/                  # composição das rotas
-└── router/                 # rotas e guards
+├── views/                  # route composition
+└── router/                 # routes and guards
 ```
 
-Essa estrutura é um destino incremental. Não mova o protótipo inteiro antes de implementar a
-primeira feature. Crie um módulo quando a vertical slice correspondente começar e migre somente o
-código necessário para ela.
+This structure is an incremental destination. Do not move the whole prototype before implementing
+the first feature. Create a module when the corresponding vertical slice begins, and migrate only
+the code it needs.
 
-## Direção das dependências
+## Dependency Direction
 
 ```text
-main e router
+main and router
       ↓
     views
       ↓
@@ -76,59 +76,59 @@ main e router
  domain   shared
 ```
 
-Regras obrigatórias:
+Mandatory rules:
 
-- `app`, router e views podem compor features.
-- Features podem depender de `domain` e `shared`.
-- `domain` contém apenas tipos e funções puras; não importa Vue, Pinia ou transporte.
-- `shared` não importa features, views ou stores de domínio.
-- Views não chamam `fetch`, não criam socket e não interpretam payload externo.
-- Módulos de API não importam componentes, router ou stores.
-- Stores não acessam DOM e não executam navegação.
-- Uma feature não importa arquivos internos de outra feature. Compartilhe tipos puros pelo domínio
-  ou componha as duas features na view.
-- Dependência circular é falha arquitetural, não motivo para criar um singleton global.
+- `app`, router and views may compose features.
+- Features may depend on `domain` and `shared`.
+- `domain` contains only types and pure functions; it does not import Vue, Pinia or transport.
+- `shared` does not import features, views or domain stores.
+- Views do not call `fetch`, create sockets or interpret external payloads.
+- API modules do not import components, router or stores.
+- Stores do not access the DOM and do not perform navigation.
+- A feature does not import internal files from another feature. Share pure types through the domain
+  or compose both features in the view.
+- A circular dependency is an architectural failure, not a reason to create a global singleton.
 
-## Anatomia de uma feature
+## Feature Anatomy
 
-Uma feature começa pequena e cresce sob demanda:
+A feature starts small and grows on demand:
 
 ```text
 features/auth/
-├── auth.api.ts             # operações HTTP da feature
-├── auth.contracts.ts       # schemas, decoders e tipos de transporte
-├── auth.store.ts           # apenas se o estado for compartilhado
+├── auth.api.ts             # feature HTTP operations
+├── auth.contracts.ts       # schemas, decoders and transport types
+├── auth.store.ts           # only if state is shared
 ├── auth.spec.ts
-├── components/             # UI exclusiva da feature
-└── views/                  # opcional quando a rota pertence à feature
+├── components/             # UI exclusive to the feature
+└── views/                  # optional when the route belongs to the feature
 ```
 
-Não crie todos esses arquivos por padrão:
+Do not create all of these files by default:
 
-- estado usado por um único componente permanece local;
-- uma chamada simples pode ficar em um único módulo da feature;
-- crie composable quando existir lifecycle, efeito reutilizável ou coordenação entre fontes;
-- crie store quando o estado atravessar componentes, rotas ou eventos em tempo real;
-- extraia componente quando ele possuir responsabilidade e contrato próprios;
-- tipos usados apenas por uma feature permanecem na feature;
-- mova um tipo para `domain` somente quando duas ou mais features o consumirem.
+- state used by a single component remains local;
+- a simple call can stay in a single feature module;
+- create a composable when there is lifecycle, a reusable effect or coordination between sources;
+- create a store when state crosses components, routes or realtime events;
+- extract a component when it has its own responsibility and contract;
+- types used by only one feature remain in that feature;
+- move a type to `domain` only when two or more features consume it.
 
-## Mapeamento das features
+## Feature Map
 
-| Módulo | Responsabilidade | PRD |
+| Module | Responsibility | PRD |
 | --- | --- | --- |
-| `auth` | sessão, identidade, bootstrap e guards | F02 |
-| `contacts` | lista, inclusão, remoção e seleção de contatos | F03 |
-| `conversations` | conversa privada, grupos, detalhes e inbox | F04, F05, F08 |
-| `messaging` | histórico, cursor, envio e eventos de mensagem | F06, F07 |
-| `search` | filtro da inbox e busca dentro da conversa | F09 |
-| `presence` | estado online e último acesso | F10 |
-| `shared` | HTTP, socket, configuração, erros e sessão persistida | F01 |
+| `auth` | session, identity, bootstrap and guards | F02 |
+| `contacts` | contact list, add, remove and selection | F03 |
+| `conversations` | private conversation, groups, details and inbox | F04, F05, F08 |
+| `messaging` | history, cursor, send and message events | F06, F07 |
+| `search` | inbox filtering and in-conversation search | F09 |
+| `presence` | online state and last seen | F10 |
+| `shared` | HTTP, socket, configuration, errors and persisted session | F01 |
 
-F11 fornece dados demonstrativos consumidos pelos módulos existentes e não exige uma feature
-frontend própria. F12 documenta os contratos utilizados pelo frontend.
+F11 provides demo data consumed by existing modules and does not require a dedicated frontend
+feature. F12 documents the contracts used by the frontend.
 
-Implemente na ordem das dependências do produto:
+Implement in product dependency order:
 
 ```text
 shared → auth → contacts → conversations → messaging
@@ -137,189 +137,189 @@ shared → auth → contacts → conversations → messaging
 auth + messaging → presence
 ```
 
-## Estado e ownership
+## State and Ownership
 
-O backend é a fonte de verdade dos dados persistidos. Pinia mantém sessão, cache e coordenação do
-cliente; não replica regras de autorização pertencentes ao servidor.
+The backend is the source of truth for persisted data. Pinia keeps session, cache and client
+coordination; it does not replicate authorization rules that belong to the server.
 
-| Estado | Proprietário recomendado | Motivo |
+| State | Recommended owner | Reason |
 | --- | --- | --- |
-| usuário, token e bootstrap | `authStore` | usado por rotas, HTTP e socket |
-| contatos | `contactsStore` | reutilizado em contatos, conversa privada e grupos |
-| resumos, ordem e unread | `inboxStore` | atualizado por REST e tópico pessoal |
-| histórico por conversa | `messagesStore` | cursor, deduplicação e reconciliação |
-| presença da conversa aberta | composable da feature | lifecycle ligado à rota atual |
-| formulário, modal e draft | componente ou composable local | não precisa ser global |
-| resultados de busca | composable local | pertence à interação aberta |
+| user, token and bootstrap | `authStore` | used by routes, HTTP and socket |
+| contacts | `contactsStore` | reused in contacts, private conversation and groups |
+| summaries, order and unread | `inboxStore` | updated by REST and personal topic |
+| history by conversation | `messagesStore` | cursor, deduplication and reconciliation |
+| presence for the open conversation | feature composable | lifecycle tied to the current route |
+| form, modal and draft | local component or composable | does not need to be global |
+| search results | local composable | belongs to the open interaction |
 
-Diretrizes de estado:
+State guidelines:
 
-- normalize coleções com `byId` e listas de ids quando houver atualização incremental;
-- derive ordenação, agrupamento e rótulos com `computed`;
-- não copie dados derivados para outro `ref`;
-- não use `watch` para manter duas cópias sincronizadas;
-- mutations compartilhadas passam por actions;
-- use `storeToRefs` ao desestruturar estado ou getters;
-- mantenha navegação em views ou guards, fora das stores.
+- normalize collections with `byId` and id lists when there is incremental update;
+- derive ordering, grouping and labels with `computed`;
+- do not copy derived data into another `ref`;
+- do not use `watch` to keep two copies synchronized;
+- shared mutations go through actions;
+- use `storeToRefs` when destructuring state or getters;
+- keep navigation in views or guards, outside stores.
 
-## Fronteira HTTP
+## HTTP Boundary
 
-`src/shared/api/` deve fornecer somente capacidades comuns:
+`src/shared/api/` should provide only common capabilities:
 
-- resolução de `VITE_API_URL`;
-- serialização e leitura de JSON;
-- headers comuns;
-- suporte a `AbortSignal`;
-- normalização do envelope `{ errors: { code, detail, fields? } }`;
-- erro distinto para falha de rede, resposta inválida e erro da API.
+- `VITE_API_URL` resolution;
+- JSON serialization and reading;
+- common headers;
+- `AbortSignal` support;
+- normalization of the `{ errors: { code, detail, fields? } }` envelope;
+- distinct errors for network failure, invalid response and API error.
 
-Cada feature declara seus endpoints e contratos no próprio módulo. Funções autenticadas recebem o
-token explicitamente; o cliente compartilhado não importa a `authStore`.
+Each feature declares its endpoints and contracts in its own module. Authenticated functions receive
+the token explicitly; the shared client does not import `authStore`.
 
-Payload externo entra como `unknown`. Valide os campos usados para estado ou controle de fluxo antes
-de transformá-lo em um tipo confiável. Tipos TypeScript não substituem validação runtime.
+External payload enters as `unknown`. Validate the fields used for state or control flow before
+turning it into a trusted type. TypeScript types do not replace runtime validation.
 
-Não duplique mensagens do servidor dentro de componentes. A camada de apresentação recebe erros já
-normalizados e decide apenas como exibi-los.
+Do not duplicate server messages inside components. The presentation layer receives normalized
+errors and only decides how to display them.
 
-## Fronteira WebSocket
+## WebSocket Boundary
 
-`src/shared/realtime/` possui a criação e a conexão do Phoenix Socket. Ele recebe o token no momento
-da conexão e não conhece stores ou componentes.
+`src/shared/realtime/` owns Phoenix Socket creation and connection. It receives the token at
+connection time and does not know stores or components.
 
-Composables das features controlam tópicos e eventos:
+Feature composables control topics and events:
 
-- a sessão autenticada abre uma conexão;
-- a inbox entra em `user:<user_id>`;
-- a conversa aberta entra em `conversation:<conversation_id>`;
-- desmontagem ou troca de rota encerra o channel anterior e remove handlers;
-- logout encerra todos os channels e a conexão;
-- reconnect dispara recuperação por REST porque o channel não faz replay.
+- the authenticated session opens a connection;
+- the inbox joins `user:<user_id>`;
+- the open conversation joins `conversation:<conversation_id>`;
+- unmounting or route changes close the previous channel and remove handlers;
+- logout closes all channels and the connection;
+- reconnect triggers REST recovery because the channel does not replay events.
 
-Stores recebem dados já decodificados por callbacks ou actions. O módulo de socket nunca altera
-estado de UI diretamente.
+Stores receive data already decoded by callbacks or actions. The socket module never mutates UI
+state directly.
 
-## REST e tempo real
+## REST and Realtime
 
-REST e WebSocket têm papéis diferentes:
+REST and WebSocket have different roles:
 
 ```text
 REST
-├── bootstrap da sessão
-├── lista inicial da inbox
-├── detalhes e histórico
-├── paginação por cursor
-└── recuperação depois de reconnect
+├── session bootstrap
+├── initial inbox list
+├── details and history
+├── cursor pagination
+└── recovery after reconnect
 
 WebSocket
-├── mensagens novas
-├── acknowledgements de envio
-├── atualizações incrementais da inbox
-├── revogação de membership
-└── presença
+├── new messages
+├── send acknowledgements
+├── incremental inbox updates
+├── membership revocation
+└── presence
 ```
 
-Regras de reconciliação:
+Reconciliation rules:
 
-- histórico REST chega em ordem cronológica e é armazenado sem reordenar pelo cliente;
-- páginas antigas são inseridas antes das mensagens existentes;
-- mensagens em tempo real são deduplicadas pelo id do servidor;
-- envio otimista usa `client_ref` e um estado transitório;
-- o acknowledgement substitui a mensagem transitória pelo registro persistido;
-- o remetente não adiciona novamente o mesmo registro pelo broadcast;
-- falha de envio remove ou marca a mensagem transitória e preserva o texto para nova tentativa;
-- após reconnect, refaça histórico e inbox para preencher eventos perdidos;
-- o tópico pessoal atualiza resumo, unread e posição da conversa sem entrar em todos os tópicos.
+- REST history arrives in chronological order and is stored without client-side reordering;
+- older pages are inserted before existing messages;
+- realtime messages are deduplicated by server id;
+- optimistic send uses `client_ref` and a transient state;
+- acknowledgement replaces the transient message with the persisted record;
+- the sender does not add the same record again from the broadcast;
+- send failure removes or marks the transient message and preserves the text for retry;
+- after reconnect, reload history and inbox to fill missed events;
+- the personal topic updates summary, unread and conversation position without joining every topic.
 
-## Rotas e composição
+## Routes and Composition
 
-Views são composition roots de UI:
+Views are UI composition roots:
 
-- leem parâmetros da rota;
-- iniciam stores e composables necessários;
-- coordenam navegação após resultados de negócio;
-- compõem estados de carregamento, vazio, sucesso e falha;
-- passam dados e callbacks tipados para componentes.
+- read route params;
+- initialize the required stores and composables;
+- coordinate navigation after business results;
+- compose loading, empty, success and failure states;
+- pass typed data and callbacks to components.
 
-Guards dependem apenas do estado público da sessão. Preserve um destino de retorno seguro ao mandar
-um usuário não autenticado para login. Nunca confie em uma URL externa como destino de navegação.
+Guards depend only on public session state. Preserve a safe return destination when sending an
+unauthenticated user to login. Never trust an external URL as a navigation destination.
 
-## Segurança no cliente
+## Client Security
 
-- Não renderize conteúdo de mensagem com `v-html`.
-- Não grave token, senha ou payload sensível em logs e fixtures.
-- Centralize a persistência da sessão em `shared/storage`.
-- Limpe sessão, socket e caches autenticados no logout ou token expirado.
-- Trate 401 por código: `token_expired` e `unauthenticated` encerram a sessão; credenciais inválidas
-  pertencem ao formulário de login.
-- Não replique autorização de contatos ou membership como garantia do cliente. A UI pode ocultar uma
-  ação, mas o servidor continua responsável por autorizá-la.
-- Escape é o comportamento padrão do template Vue; não contorne essa proteção para mensagens.
+- Do not render message content with `v-html`.
+- Do not write tokens, passwords or sensitive payloads to logs or fixtures.
+- Centralize session persistence in `shared/storage`.
+- Clear session, socket and authenticated caches on logout or expired token.
+- Handle 401 by code: `token_expired` and `unauthenticated` end the session; invalid credentials
+  belong to the login form.
+- Do not replicate contact or membership authorization as a client guarantee. The UI may hide an
+  action, but the server remains responsible for authorizing it.
+- Escaping is Vue template default behavior; do not bypass this protection for messages.
 
-## Estratégia de testes
+## Testing Strategy
 
-Coloque testes próximos do comportamento que protegem:
+Place tests close to the behavior they protect:
 
-- contratos da feature: método, caminho, headers, corpo, resposta e erro normalizado;
-- store/composable: transições de estado, deduplicação, paginação e cleanup;
-- componente: interação acessível e estados percebidos pelo usuário;
-- router: guards e parâmetros com `createMemoryHistory`;
-- socket: entrada, saída, acknowledgement e reconnect com transporte falso.
+- feature contracts: method, path, headers, body, response and normalized error;
+- store/composable: state transitions, deduplication, pagination and cleanup;
+- component: accessible interaction and states perceived by the user;
+- router: guards and params with `createMemoryHistory`;
+- socket: join, leave, acknowledgement and reconnect with fake transport.
 
-Regras:
+Rules:
 
-- cada teste cria Pinia e router próprios;
-- rede e WebSocket reais permanecem bloqueados;
-- não selecione classes Tailwind;
-- não use snapshots extensos;
-- restaure timers e mocks;
-- não use espera arbitrária para sincronizar testes;
-- fake de transporte prova integração do cliente, não disponibilidade real do backend.
+- each test creates its own Pinia and router;
+- real network and WebSocket remain blocked;
+- do not select Tailwind classes;
+- do not use large snapshots;
+- restore timers and mocks;
+- do not use arbitrary waits to synchronize tests;
+- fake transport proves client integration, not real backend availability.
 
-Cada vertical slice deve mapear critérios de aceite para testes ou para uma verificação manual
-explícita. Antes de concluir, execute teste direcionado, testes relacionados e `npm run verify`.
+Each vertical slice should map acceptance criteria to tests or to an explicit manual verification.
+Before finishing, run targeted tests, related tests and `npm run verify`.
 
-## Evolução incremental do protótipo
+## Incremental Prototype Evolution
 
-Evite uma migração estrutural isolada. Para cada feature:
+Avoid an isolated structural migration. For each feature:
 
-1. leia PRD, pasta da feature e contrato executável;
-2. escreva o feature brief;
-3. crie a pasta da feature e somente a infraestrutura consumida por ela;
-4. mova da view apenas o estado e o comportamento pertencentes à feature;
-5. preserve markup e aparência que não fazem parte da mudança;
-6. substitua mocks apenas quando a vertical slice estiver testada;
-7. execute o harness e confira o diff por mudanças não relacionadas.
+1. read the PRD, feature folder and executable contract;
+2. write the feature brief;
+3. create the feature folder and only the infrastructure it consumes;
+4. move from the view only the state and behavior that belong to the feature;
+5. preserve markup and appearance that are not part of the change;
+6. replace mocks only when the vertical slice is tested;
+7. run the harness and review the diff for unrelated changes.
 
-O `InboxView.vue` atual pode ser decomposto enquanto F03-F09 forem implementadas. Não o divida em
-componentes vazios ou wrappers apenas para reduzir o tamanho do arquivo.
+The current `InboxView.vue` can be decomposed while F03-F09 are implemented. Do not split it into
+empty components or wrappers only to reduce file size.
 
-## Anti-padrões
+## Anti-Patterns
 
-Não introduza:
+Do not introduce:
 
-- uma store global única para toda a aplicação;
-- chamadas HTTP ou socket dentro de templates e componentes de apresentação;
-- um diretório genérico de serviços sem ownership por feature;
-- DTOs duplicados em várias camadas;
-- eventos globais sem contrato e cleanup;
-- watchers usados como mecanismo principal de derivação;
-- abstrações de repository ou use case para chamadas triviais sem segundo consumidor;
-- refatoração de estrutura antes da primeira vertical slice;
-- comportamento otimista sem reconciliação por `client_ref` e id persistido;
-- confiança em testes com fakes como prova de integração real.
+- a single global store for the whole application;
+- HTTP or socket calls inside templates and presentation components;
+- a generic services directory without feature ownership;
+- duplicated DTOs across multiple layers;
+- global events without a contract and cleanup;
+- watchers used as the main derivation mechanism;
+- repository or use case abstractions for trivial calls without a second consumer;
+- structural refactoring before the first vertical slice;
+- optimistic behavior without reconciliation by `client_ref` and persisted id;
+- trust in tests with fakes as proof of real integration.
 
-## Checklist de decisão
+## Decision Checklist
 
-Antes de criar um arquivo, responda:
+Before creating a file, answer:
 
-1. Qual feature é proprietária deste comportamento?
-2. Existe consumidor real agora?
-3. O estado precisa atravessar componente ou rota?
-4. O efeito possui lifecycle ou cleanup?
-5. O tipo é compartilhado por mais de uma feature?
-6. O dado veio de uma fronteira externa e foi validado?
-7. A dependência respeita a direção definida neste documento?
-8. O comportamento possui teste observável?
+1. Which feature owns this behavior?
+2. Is there a real consumer now?
+3. Does the state need to cross a component or route?
+4. Does the effect have lifecycle or cleanup?
+5. Is the type shared by more than one feature?
+6. Did the data come from an external boundary and was it validated?
+7. Does the dependency respect the direction defined in this document?
+8. Does the behavior have an observable test?
 
-Se as respostas não justificarem uma nova camada, mantenha a solução no menor escopo possível.
+If the answers do not justify a new layer, keep the solution in the smallest possible scope.
