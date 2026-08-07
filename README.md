@@ -1,7 +1,6 @@
-# Granter Chat
+# Real Time Chat
 
-Granter Chat is a full-stack real-time messaging application built for the Granter engineering
-challenge. It combines a Phoenix JSON API, PostgreSQL persistence and Phoenix Channels with a
+Real Time Chat is a full-stack real-time messaging application. It combines a Phoenix JSON API, PostgreSQL persistence and Phoenix Channels with a
 Vue 3 single-page frontend focused on contacts, private conversations, groups, inbox search,
 message history and live delivery.
 
